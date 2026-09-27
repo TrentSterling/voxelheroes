@@ -11,7 +11,17 @@ import { setManual, isManual } from '../core/loop.js';
 import { seedRandom } from '../core/random.js';
 import { setMode } from '../core/modes.js';
 import { camera as camera3d } from '../core/renderer.js';
-import { CAMERA_PRESETS, FRAME_MARGIN, HERO_HEAD, HERO_HALF, setCameraPreset, cameraPreset, camTarget, subjectFor } from '../core/camera.js';
+import {
+  CAMERA_PRESETS,
+  currentHeroOutline,
+  currentCameraPreset,
+  playerCameraPresets,
+  setCameraPreset,
+  cameraPreset,
+  camTarget,
+  southReach,
+  subjectFor,
+} from '../core/camera.js';
 import { world, currentScreen } from '../world/world.js';
 import { allAreas } from '../world/areas.js';
 import { edgeReport } from '../world/links.js';
@@ -104,19 +114,56 @@ export function installTestHook({ update, render }) {
     overlayVisible,
     camera: {
       presets: CAMERA_PRESETS,
+      // The presets a player may choose (A-D).
+      choices: playerCameraPresets,
       // The player's choice (kept across screens and in save data; dungeons keep their own).
       choose: transitions.chooseCameraPreset,
       // Only until the next screen change.
       set: setCameraPreset,
       get: cameraPreset,
+      // The lens in use: the preset fitted to the room (interior), or a blend mid-slide.
+      lens: currentCameraPreset,
       target: camTarget,
       object: camera3d,
-      // Frame rules (core/camera.js): the hero's feet stay FRAME_MARGIN inside
-      // the frame when the camera must move; his head HERO_HALF either side
-      // of his centre, HERO_HEAD up.
-      rules: { margin: FRAME_MARGIN, heroHead: HERO_HEAD, heroHalf: HERO_HALF },
+      // Frame rules (core/camera.js): the hero's outline ([reach, bottom,
+      // top] slabs, tiles), how far north of the frame's bottom edge his
+      // centre stays under a preset, and the south line of a screen (how far
+      // north of its south edge he leaves it).
+      rules: {
+        outline: () => currentHeroOutline(),
+        southReach: (name = cameraPreset()) => southReach(CAMERA_PRESETS[name]),
+        southLine: (key) => transitions.southLine(key ? world.screen(key) : currentScreen()),
+      },
       // Where the follow rule puts the subject for the hero now (world units).
       expected: () => subjectFor(player, currentScreen()),
+      // Every vertex of the hero's model (the sword and the flat contact
+      // shadow left out) in normalised device coordinates: worst is the
+      // largest |x| or |y| (over 1 lies outside the frame), out the vertices
+      // outside, of total; side names the edge the worst one is past.
+      heroInFrame() {
+        camera3d.updateMatrixWorld();
+        const skip = new Set();
+        player.hero.swordPivot?.traverse((o) => skip.add(o));
+        player.hero.root.updateMatrixWorld(true);
+        const v = new THREE.Vector3();
+        const r = { worst: 0, out: 0, total: 0, side: null };
+        player.hero.root.traverse((o) => {
+          if (!o.isMesh || skip.has(o) || o.material?.transparent) return;
+          const pos = o.geometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld).project(camera3d);
+            const m = Math.max(Math.abs(v.x), Math.abs(v.y));
+            r.total++;
+            if (m > 1 + 1e-4) r.out++;
+            if (m > r.worst) {
+              r.worst = m;
+              r.side = Math.abs(v.x) >= Math.abs(v.y) ? (v.x > 0 ? 'east' : 'west') : v.y > 0 ? 'top' : 'bottom';
+            }
+          }
+        });
+        r.worst = +r.worst.toFixed(4);
+        return r;
+      },
       // World point -> normalised device coordinates [x, y, depth]; x and y
       // are -1..1 inside the frame.
       project(x, y, z) {

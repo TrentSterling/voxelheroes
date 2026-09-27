@@ -101,7 +101,7 @@ registerArea({
   name: 'Hedge Burrow',
   tileset: 'dungeon',
   lighting: 'crypt',
-  camera: 'dungeon',
+  camera: 'interior', // the dungeon camera fitted to the room's width
   rooms: true,
   screen: [12, 9],
   at: [476 * 16, 0],

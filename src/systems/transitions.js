@@ -3,7 +3,9 @@
 //   slide  The hero walks off an edge into another screen of the same area:
 //          the camera slides over (SLIDE_TIME, ease in-out) while the hero
 //          is carried a tile in (SLIDE_STEP from the edge; in a room,
-//          ROOM_STEP past the wall the doorway is in). Mode 'scroll'.
+//          ROOM_STEP past the wall the doorway is in). Mode 'scroll'. At a
+//          south edge he goes as soon as any of him would leave the frame's
+//          bottom edge, which is held on the screen's edge (southLine).
 //   fade   The hero walks off an edge into another area, or takes a warp
 //          (doorway, stairs): fade to black, move, fade back in. Mode 'warp'.
 //          Arriving in another area is a load: FADE_OUT, AREA_HOLD seconds
@@ -38,9 +40,11 @@ import { registerMode, setMode } from '../core/modes.js';
 import { applyLighting } from '../core/renderer.js';
 import {
   CAMERA_PRESETS,
-  easeInOutQuad,
+  lensFor,
+  playerCameraPresets,
   setCameraPreset,
   snapCamera,
+  southReach,
   startCameraTween,
   stepCameraTween,
   subjectFor,
@@ -90,15 +94,17 @@ export function placeAtSpot(spot) {
 // a slide is running (the slide already aims at the new screen).
 export function applyScreenAmbience(screen) {
   applyLighting(screen.lighting);
-  setCameraPreset(presetNameFor(screen));
+  setCameraPreset(presetNameFor(screen), screen);
   if (state.mode !== 'scroll') snapCamera(subjectFor(player, screen));
 }
 
-// The player's camera choice (for an options menu). It applies on every
-// screen that does not fix its own preset, starting with this one, and is
-// kept in save data ('camera' field; a new game keeps the current choice).
+// The player's camera choice (for an options menu): one of the selectable
+// presets (A-D, playerCameraPresets()). It applies on every screen that does
+// not fix its own preset, starting with this one, and is kept in save data
+// ('camera' field; a new game keeps the current choice).
 export function chooseCameraPreset(name) {
-  if (!CAMERA_PRESETS[name]) throw new Error(`Unknown camera preset "${name}"`);
+  if (!CAMERA_PRESETS[name]?.selectable)
+    throw new Error(`Camera preset "${name}" is not a player choice (${playerCameraPresets().join(', ')})`);
   state.settings.camera = name;
   const screen = currentScreen();
   if (screen) applyScreenAmbience(screen);
@@ -107,7 +113,7 @@ export function chooseCameraPreset(name) {
 registerSaveField('camera', {
   save: () => state.settings.camera,
   load: (v) => {
-    if (typeof v === 'string' && CAMERA_PRESETS[v]) state.settings.camera = v;
+    if (typeof v === 'string' && CAMERA_PRESETS[v]?.selectable) state.settings.camera = v;
   },
   reset: () => {},
 });
@@ -195,13 +201,31 @@ export function syncScreenVisibility() {
 }
 
 // ---------------------------------------------------------------- edges
+// How far north of a screen's south edge the hero leaves it through that
+// edge. Wherever the frame's bottom edge is held on the screen's south edge
+// (every preset outside a room), that is as soon as all of him would no
+// longer fit above it (core/camera.js southReach): he is never cut off at
+// the bottom of the frame. In a room the fixed camera follows him down into
+// the doorway instead, so there it is his centre crossing the edge.
+export function southLine(screen) {
+  const p = lensFor(CAMERA_PRESETS[presetNameFor(screen)], screen);
+  return p.fixed && screen.area.rooms ? 0 : southReach(p);
+}
+
 // The hero's centre has left the current screen through `dir` ('north',
-// 'south', 'east' or 'west'). Slide to the screen it is now on, or fade into
-// that screen's area. Returns true if a transition started.
+// 'south', 'east' or 'west'), or reached its south line. Slide to the screen
+// past that edge, level with him, or fade into that screen's area. Returns
+// true if a transition started.
 export function crossEdge(dir) {
   const from = currentScreen();
-  const next = world.screenAt(player.x, player.z);
-  if (!next || next === from || !DIRS[dir]) return false;
+  if (!from || !DIRS[dir]) return false;
+  const [ux, uz] = DIRS[dir];
+  const past = 1e-6; // a hair past the west and north edges (x0 and z0 belong to this screen)
+  const next = world.screenAt(ux > 0 ? from.x1 : ux < 0 ? from.x0 - past : player.x, uz > 0 ? from.z1 : uz < 0 ? from.z0 - past : player.z);
+  if (!next || next === from) return false;
+  // This tick's step (or a knock) may have taken him a little past the south
+  // line; he leaves from the line, so no frame shows him cut off.
+  if (uz > 0) player.z = Math.min(player.z, from.z1 - southLine(from));
   const land = landing(next, dir);
   if (next.area === from.area) startSlide(from, next, land);
   else startFade({ screen: next, x: land.x - next.x0, z: land.z - next.z0, yaw: player.yaw }, { via: 'edge', walkTo: land });
@@ -211,11 +235,15 @@ export function crossEdge(dir) {
 // Where the hero stops after walking `dir` into `next`: SLIDE_STEP tiles in
 // from the edge, or in a room ROOM_STEP tiles past the inside face of the
 // wall the doorway is in (a tile thick; side walls stand WALL_INSET further
-// in), so the hero ends up clear of the doorway. Stops short of anything solid.
+// in), so the hero ends up clear of the doorway; walking north, always clear
+// of the new screen's south line, so he never slides straight back. Stops
+// short of anything solid.
 function landing(next, dir) {
   const [ux, uz] = DIRS[dir];
-  const dist = next.area.rooms ? (ux ? 1 + WALL_INSET : 1) + ROOM_STEP : SLIDE_STEP;
-  // how far past the edge the hero already is
+  let dist = next.area.rooms ? (ux ? 1 + WALL_INSET : 1) + ROOM_STEP : SLIDE_STEP;
+  if (uz < 0) dist = Math.max(dist, southLine(next) + SLIDE_STEP / 4);
+  // how far past the edge the hero already is (less than nothing when he
+  // leaves at the south line)
   const past = ux > 0 ? player.x - next.x0 : ux < 0 ? next.x1 - player.x : uz > 0 ? player.z - next.z0 : next.z1 - player.z;
   const step = clearDistance(player, ux, uz, Math.max(0, dist - past));
   return { x: player.x + ux * step, z: player.z + uz * step };
@@ -230,7 +258,7 @@ function startSlide(from, next, land) {
   const preset = presetNameFor(next);
   // The hero walks in linearly; the camera keeps him in frame on the way.
   const anchor = { from: { x: player.x, z: player.z }, to: land };
-  startCameraTween(subjectFor(land, next, CAMERA_PRESETS[preset]), SLIDE_TIME, easeInOutQuad, preset, anchor);
+  startCameraTween(subjectFor(land, next, CAMERA_PRESETS[preset]), SLIDE_TIME, { preset, rect: next, anchor });
   state.screenKey = next.key;
   world.regrow(next);
   showScreens(next, from);
@@ -284,11 +312,14 @@ export function startWarp(dest) {
   emit('warp', { dest });
 }
 
-// Tile hook for doorways and stairs: onEnter: enterWarp.
+// Tile hook for doorways and stairs: onEnter: enterWarp. The world checks
+// at startup that every tile with this hook has a destination and that no
+// destination lands on one (isWarp marks it without an import).
 export function enterWarp(ctx) {
   const dest = ctx.world.warpAt(ctx.tx, ctx.tz);
   if (dest) startWarp(dest);
 }
+enterWarp.isWarp = true;
 
 registerMode('warp', {
   update(dt) {

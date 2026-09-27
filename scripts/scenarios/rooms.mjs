@@ -6,6 +6,8 @@
 // frame, and that only the current room is drawn. On the way: Escape during
 // a slide, a save and load in a room, and falling in the crypt, which puts
 // the hero back on his feet at its entrance.
+import { clearFoes, pushUntilMoving } from '../lib/helpers.mjs';
+
 export const description = "Every door of Cairn Crypt both ways: slides, 'room-enter', landing spots, the dungeon camera on each room centre; in by the doorway and out by the stairs ('area-enter'); pause during a slide, save and load in a room, falling and getting up at the entrance.";
 
 const near = (a, b, eps = 0.01) => Math.abs(a - b) <= eps;
@@ -16,23 +18,6 @@ const KEYS = { north: 'ArrowUp', south: 'ArrowDown', east: 'ArrowRight', west: '
 // line (doors are columns 7-8 or rows 5-6), a few tiles in.
 const APPROACH = { north: [8, 2.5], south: [8, 9.5], east: [13, 6], west: [3, 6] };
 const ROOMS = ['crypt:0,0', 'crypt:1,0', 'crypt:0,1', 'crypt:1,1'];
-
-// Take the enemies (and anything they threw) out of the current room so the
-// walk is not knocked about. The default scenario does the fighting.
-const clearFoes = (t) =>
-  t.eval(() => {
-    for (const e of window.__voxelHeroes.entities) if (e.kind === 'enemy' || e.kind === 'projectile') e.remove();
-  });
-
-// Hold `key` until the mode leaves 'play' (a slide or a fade starts), then let go.
-async function pushUntilMoving(t, key) {
-  await t.page.keyboard.down(key);
-  try {
-    await t.waitFor((s) => s.mode !== 'play', { seconds: 4 });
-  } finally {
-    await t.page.keyboard.up(key);
-  }
-}
 
 // Everything about the hero having arrived in a room, as one object.
 // shown: the crypt rooms drawn; drawn: every screen drawn, of any area.

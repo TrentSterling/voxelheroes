@@ -6,6 +6,8 @@
 // checked for its events, timing and where the hero lands. A cave door leads
 // into Hedge Burrow, a 12 x 9 room placed by tile, and its stairs lead out;
 // a tunnel warps between two screens of one area without a loading card.
+import { pushUntilMoving } from '../lib/helpers.mjs';
+
 export const description = "Walking between areas: slides inside an area in all four directions, fades with 'area-enter' and the loading-card hold into another area in all four directions, landing spots and edge links, a door into a 12 x 9 interior and out, and a warp inside one area.";
 
 const near = (a, b, eps = 0.02) => Math.abs(a - b) <= eps;
@@ -15,15 +17,6 @@ const KEYS = { north: 'ArrowUp', south: 'ArrowDown', east: 'ArrowRight', west: '
 // Start points on the centre line of each gap in the tree border (columns
 // 6-9 on the north and south edges, rows 4-6 on the east and west edges).
 const APPROACH = { north: [8, 3], south: [8, 8], east: [13, 5.5], west: [3, 5.5] };
-
-async function pushUntilMoving(t, key) {
-  await t.page.keyboard.down(key);
-  try {
-    await t.waitFor((s) => s.mode !== 'play', { seconds: 4 });
-  } finally {
-    await t.page.keyboard.up(key);
-  }
-}
 
 // Walk off the current screen through `dir` into screen `to` (a name) of area
 // `area` (a name). kind: 'slide' or 'fade'.
@@ -145,7 +138,7 @@ export default async function areasScenario(t) {
   });
   t.expect(s.size.join() === '12,9' && burrow.x0 === 476 * 16 && burrow.z0 === 0, `  a 12 x 9 room with its corner at tile ${burrow.x0}, ${burrow.z0} (at: [476 * 16, 0])`);
   t.expect(near(s.lx, 6) && near(s.lz, 7.4) && !burrow.blocked, `  the hero stands at ${s.lx}, ${s.lz}, clear of the walls`);
-  t.expect(s.cam.preset === 'dungeon' && near(s.cam.x, 6) && near(s.cam.z, 4.5), `  the dungeon camera centres on the room (${s.cam.x}, ${s.cam.z})`);
+  t.expect(s.cam.preset === 'interior' && near(s.cam.x, 6) && near(s.cam.z, 4.5), `  the interior camera centres on the room (${s.cam.x}, ${s.cam.z})`);
   t.expect(burrow.inFrame && burrow.shown.join() === 'test-burrow:0,0', `  the hero is in frame and only the Burrow is drawn (${burrow.shown.join(', ')})`);
   await t.step(0.3);
   await t.shot('02-burrow');
