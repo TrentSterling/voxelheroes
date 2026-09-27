@@ -6,7 +6,7 @@
 // taller than camera A (4.56 tiles), so they close the top of the frame.
 //
 // The backdrop is built from ordinary overworld tiles (world/tiles/overworld.js) by terrain.js,
-// in chunks of 16 x 16 tiles, and nobody can walk there.
+// in chunks of 8 x 8 tiles, and nobody can walk there.
 import { hash3 } from '../../core/vox.js';
 import { registerBackdrop } from '../terrain.js';
 

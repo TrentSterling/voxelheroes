@@ -18,8 +18,9 @@
 //                    visible floor is 13 tiles wide
 //   anywhere else    a full block of wall
 // Doorways are gaps in a wall (two tiles wide, full height). In room areas each room is drawn with a
-// ring of tiles outside it (terrain.js registerRing): a corridor with its own side walls beyond a
-// north doorway, floor running out of the other doorways, the stairs going on down, black elsewhere.
+// ring of tiles outside it (terrain.js registerRing): a corridor with its own side walls running
+// CORRIDOR tiles north from a north doorway (to the top of the frame), one tile of floor running out
+// of the other doorways, the stairs going on down, black elsewhere. The ring is hidden during slides.
 // Floors are fine (16 voxels per tile) rounded-square tiles: grout, a lighter ring, a darker centre.
 import * as THREE from 'three';
 import * as renderer from '../../core/renderer.js';
@@ -220,6 +221,8 @@ const ringWall = (west) => ({
 const RING_WALL_W = ringWall(true);
 const RING_WALL_E = ringWall(false);
 
+const CORRIDOR = 5; // tiles of corridor drawn beyond a north doorway (to the top of the frame)
+
 registerRing('dungeon', (room, tx, tz) => {
   const b = room._box;
   const lx = Math.min(Math.max(tx - b.x0, 0), b.w - 1);
@@ -240,7 +243,7 @@ registerRing('dungeon', (room, tx, tz) => {
   if (!isDoorway(edge)) return null;
   if (outZ && edge.name === 'stairs-out') return cell(RING_STAIRS);
   return cell(RING_FLOOR);
-});
+}, { north: CORRIDOR });
 
 // ---------------------------------------------------------------- tiles
 registerTile('dungeon', '.', { name: 'floor', build: (ctx) => fineFloor(ctx) });

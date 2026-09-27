@@ -18,7 +18,7 @@ for adding to it. The short version:
 Contents: [Module map](#module-map) ·
 [Frame, modes and coordinates](#frame-modes-and-coordinates) ·
 [Registries](#registries) · [Events](#events) · [How to add things](#how-to-add-things) ·
-[Test hook](#test-hook) · [Play-test harness](#play-test-harness) ·
+[Kits and models](#kits-and-models) · [Test hook](#test-hook) · [Play-test harness](#play-test-harness) ·
 [Working in parallel (M2)](#working-in-parallel-m2) · [Build rules](#build-rules) ·
 [Known quirks](#known-quirks-kept-from-the-prototype)
 
@@ -46,8 +46,10 @@ src/
     math.js             lerpAngle, clamp, dist2d, yawDir
   world/
     tiles.js            TILE REGISTRY: defineTileset, registerTile, getTile
-    tiles/overworld.js  overworld tileset: grass, flowers, path, sand, tree, boulder, cliff, water, bush, cave door
-    tiles/dungeon.js    dungeon tileset: floor, wall, dark water, pillar, brazier, stairs, locked door, chest
+    tiles/overworld.js  overworld kit (1/8 tile blocks): ground kinds, trees, rocks, raised ground and cliffs, caves, stairs, water, bridge, fence, bush, sign, grave, pot, chest
+    tiles/dungeon.js    dungeon kit: walls by room position, fine floors, statues, braziers, lamps, dark water, stairs, pits, plates, doors, chests; the room ring
+    tiles/farband.js    the far distance: a backdrop of forest and plateaus around overworld areas
+    terrain.js          terrain builder: layers (terrain 1/8, fine and detail 1/16), margins, room rings, backdrops
     tilekit.js          shared tile behaviour: bush/door/chest/flame props, cutPlant, unlockDoor, openChest
     palette.js          terrain colours
     areas.js            AREA REGISTRY: registerArea, getArea, START
@@ -65,8 +67,8 @@ src/
     enemies/            slime.js, spitter.js
     projectiles/        rock-shot.js
     pickups/            heart.js, gem.js (gem, gem5), key.js
-  models/               voxel models built in code: hero (+ sword), slime, spitter, rock, pickups, props
-    part.js, cache.js   model helpers: meshed parts with pivots, build-once geometry cache
+  models/               voxel models at 1/16 tile: hero.js (+ sword), characters.js, pickups.js, props.js, icons.js
+    kit.js, palette.js  model cache, PoseMesh, contact shadows; the character palette (see Kits and models)
   systems/
     sword.js            SWORD stats (data), swing, blade pose, blade hit tests; setSwordStats
     combat.js           hurtPlayer, shield, enemiesLeft, room-cleared
@@ -100,8 +102,8 @@ Dependency direction: `core` imports nothing from the game. `world`, `entities`,
 `systems`, `items` and `ui` import `core` and each other's registries or small
 APIs. Content files (a tile, an enemy, an item) import what they need, and
 only `content.js` imports them, except for helpers a content file exports on
-purpose (the floor builders in `tiles/dungeon.js` and `ground()` in
-`tiles/overworld.js`).
+purpose (the kit helpers in `tiles/overworld.js` and `tiles/dungeon.js`,
+see [Kits and models](#kits-and-models)).
 
 ## Frame, modes and coordinates
 
@@ -197,6 +199,11 @@ ground layer), `layer('water')` another mesh layer (`registerLayer` in
 only from `ctx.rand` so screens look the same on every load; the world replays
 each tile's random stream when a screen is re-meshed, so changing one tile
 never recolours its neighbours.
+
+The kits build with a richer `ctx` (`ctx.T`, `ctx.F`, `ctx.D` in global voxel
+coordinates, `ctx.water()`, `ctx.fixture()`, neighbour lookups) and read more
+tile fields (`level`, `ground`, `water`, `height`, `detailHeight`, `doorway`):
+see [Kits and models](#kits-and-models).
 
 Hooks get `{ world, screen, area, tx, tz, x, z, ch, def, ...extra }`. To change
 a tile at run time use `world.setTile(tx, tz, ch, opts)`:
@@ -381,28 +388,30 @@ A bombable cracked wall for dungeons, in a new file
 `src/world/tiles/cracked-wall.js` (loaded automatically):
 
 ```js
-import { R } from '../../core/constants.js';
+import { GROUND_Y } from '../../core/constants.js';
+import { hash3 } from '../../core/vox.js';
 import { sfx } from '../../core/audio.js';
 import { burst } from '../../systems/particles.js';
 import { registerTile } from '../tiles.js';
-import { underlayer } from './dungeon.js';
+import { wallColor } from './dungeon.js';
 
-const STONE = [0x6b5f78, 0x2a2230];
+const CRACK = 0x2a2230;
 
 registerTile('dungeon', '%', {
   name: 'cracked-wall',
   solid: true,
+  height: 16, // blocks above the ground (sizes the terrain grid)
   becomes: '.',
   build(ctx) {
-    underlayer(ctx);
-    const { g, bx, bz, rand } = ctx;
-    for (let vx = 0; vx < R; vx++)
-      for (let vz = 0; vz < R; vz++)
-        for (let y = 0; y <= 10; y++) g.set(bx + vx, y, bz + vz, rand() < 0.12 ? STONE[1] : STONE[0], 0.08);
+    // a block of wall on the floor (terrain blocks of 1/8 tile; this tile's north-west block is
+    // X0, Z0 and block Y = 1 stands on the floor), the wall pattern with dark cracks in it
+    const { T, X0, Z0 } = ctx;
+    T.box(X0, 1, Z0, X0 + 8, 17, Z0 + 8, (X, Y, Z) =>
+      hash3(X, Y, Z, 5) < 0.12 ? CRACK : wallColor(X, Y - 1, Z0 + 7 - Z));
   },
   onBomb(ctx) {
     ctx.world.setTile(ctx.tx, ctx.tz, ctx.def.becomes, { persist: true, reason: 'bombed' });
-    burst(ctx.tx + 0.5, 0.5, ctx.tz + 0.5, STONE, 30);
+    burst(ctx.tx + 0.5, GROUND_Y + 0.5, ctx.tz + 0.5, [0xd09a50, CRACK], 30);
     sfx.door();
   },
 });
@@ -413,35 +422,23 @@ Then use `%` in a dungeon map. Pick characters that are free in the tileset
 
 ### (b) An enemy
 
-Model in `src/models/bat.js`, behaviour in `src/entities/enemies/bat.js`:
-
-```js
-// src/models/bat.js
-import { VoxelGrid, buildGeometry, rng } from '../core/voxel.js';
-import { MV } from './part.js';
-import { cached } from './cache.js';
-
-export function makeBat() {
-  const g = new VoxelGrid(rng(21));
-  g.ellipsoid(0, 4, 0, 3, 3, 3, () => 0x5a3a78);
-  g.box(-7, -3, 4, 4, -1, 1, 0x3b2552);
-  g.box(3, 7, 4, 4, -1, 1, 0x3b2552);
-  return buildGeometry(g, MV, [-0.5, 0, -0.5]);
-}
-export const batGeometry = () => cached('bat', makeBat);
-```
+The bat's two wing frames are already in `models/characters.js` (a new model
+is a function returning a `DenseGrid`, cached with `model(key, make)`; see
+[Kits and models](#kits-and-models)). The behaviour goes in
+`src/entities/enemies/bat.js`:
 
 ```js
 // src/entities/enemies/bat.js
+import { state } from '../../core/state.js';
 import { random } from '../../core/random.js';
-import { batGeometry } from '../../models/bat.js';
+import { CHARACTER_MODELS } from '../../models/characters.js';
 import { moveBody } from '../../systems/physics.js';
 import { Enemy } from '../enemy.js';
 import { registerEntity } from '../registry.js';
 
 class Bat extends Enemy {
   constructor(opts) {
-    super(opts, { hp: 1, r: 0.3, speed: 3, colors: [0x5a3a78, 0x3b2552], geometry: batGeometry() });
+    super(opts, { hp: 1, r: 0.3, speed: 3, poses: { up: CHARACTER_MODELS.bat0(), down: CHARACTER_MODELS.bat1() } });
   }
   think(dt, { toP, dist, bounds }) {
     this.thinkT -= dt;
@@ -453,6 +450,7 @@ class Bat extends Enemy {
     }
     moveBody(this, this.dx * this.speed * dt, this.dz * this.speed * dt, bounds);
     this.yaw = Math.atan2(this.dx, this.dz);
+    this.mesh.setPose(Math.floor(state.time * 8) % 2 ? 'down' : 'up'); // flap: frames swapped like cels
   }
 }
 
@@ -559,6 +557,256 @@ defineState('sword', () => ({ id: 'starter', length: 1, width: 1 }));
 Test it with `__voxelHeroes.save()` / `load(data)` or
 `saveToSlot(n)` / `loadFromSlot(n)`. Do not rename existing keys; add new
 ones. Bump `SAVE_VERSION` only for a change `loadState` cannot absorb.
+
+## Kits and models
+
+The content look of the art bible (sections 2 and 7 to 11): terrain at 1/8
+tile per block; characters, props, pickups and dungeon floors at 1/16 tile per
+voxel. Every mesh is a `DenseGrid` meshed by `meshVoxels` (`core/vox.js`) and
+drawn with the material kinds of `core/materials.js` (see Look). Content makes
+no materials of its own beyond the contract: `getMaterial('terrain' |
+'character' | 'fine')`, `makeCharacterMaterial()` (an enemy's own hit flash),
+`makeGlowMaterial(color, intensity)` (flames, lamp strips, sparks; pass
+`0xffffff` and set `vertexColors` for models that carry their own colours) and
+`makeWaterMaterial()`.
+
+| What | Where |
+|------|-------|
+| Terrain builder: layers, margins, rings, backdrops | `world/terrain.js` |
+| Overworld kit (section 8) | `world/tiles/overworld.js`; colours `TP`, `GROUND`, `PROP` in `world/palette.js` |
+| The far distance around overworld areas | `world/tiles/farband.js` |
+| Dungeon kit (section 9), the golden temple | `world/tiles/dungeon.js`; colours `GOLD` in `world/palette.js` |
+| Props on tiles and their behaviours | `world/tilekit.js`; models in `models/props.js` |
+| Model kit: cache, poses, contact shadows | `models/kit.js`; character palette `CP` in `models/palette.js` |
+| Hero and sword (section 10) | `models/hero.js`; animation in `entities/player.js` |
+| Enemies and NPCs | `models/characters.js` |
+| Pickups and HUD icons | `models/pickups.js`, `models/icons.js` |
+| Effects (section 11) | `systems/particles.js` |
+| Kit test areas | `world/areas/kitroom.js` (`?kitroom=1`) |
+
+### Terrain: `world/terrain.js`
+
+`world.js` builds each screen with `buildScreenTerrain(world, screen)` and,
+once every screen exists, the far distance with `buildBackdrops(world)`. A
+tile's `build(ctx)` writes voxels into three layers, each meshed once per
+screen:
+
+| Layer | Resolution | Material | For |
+|-------|------------|----------|-----|
+| `ctx.T` terrain | blocks of 1/8 tile | `terrain` | ground, cliffs, trees, rocks, walls |
+| `ctx.F` fine | voxels of 1/16 tile | `fine` | dungeon floors |
+| `ctx.D` detail | voxels of 1/16 tile | `character` | small static models: flowers, signs, graves, statues, braziers |
+
+plus `ctx.water({ drop, y })`, a flat water plane on the tile (by default
+0.35 block below the ground's top, `WATER_Y`), and `ctx.fixture(object3d)`,
+an object in world coordinates (lamp lights, glow strips) that the screen owns
+like its meshes. Everything ends up in `screen.meshes` as
+`{ name, mesh, layer }`, which is what shows, hides and disposes a screen.
+
+Coordinates are global, so a tile looks the same whichever screen builds it.
+Terrain block `X = tx * 8 + i`, `Z = tz * 8 + k` (`ctx.X0`, `ctx.Z0`: the
+tile's north-west block); `Y = 0` is the ground's top layer (top face at
+`GROUND_Y`) and raised ground of level L has its top layer at `Y = L * 8`.
+Fine and detail voxels: `X = tx * 16 + i` (`ctx.FX0`, `ctx.FZ0`); `Y = 0` is a
+fine floor's top layer and things standing on the ground start at `Y = 1`.
+Writers: `set(X, Y, Z, c)`, `box(X0, Y0, Z0, X1, Y1, Z1, c)` (upper bounds
+exclusive; `c` a colour, `null` to clear, or `fn(X, Y, Z)` returning either),
+`ellipsoid`, `clear`, `stamp(grid, X, Y, Z)` (a model grid into the layer),
+`get` / `has` / `color`.
+
+The rest of `ctx`: `x, z` (local) and `tx, tz` (global) tile coordinates,
+`ch`, `def`, `level`, `rand` / `pick` (seeded per tile), `cellAt(dx, dz)`,
+`tileAt(dx, dz)` and `defAt(dx, dz)` (neighbours, across screen edges and into
+the backdrop), `screen` (the screen being built; null for a backdrop chunk),
+`owner` (the screen the tile belongs to), `own` (false while the tile is only
+built as another screen's margin), `world`, `area`. M1 builders still work:
+`ctx.g` and `ctx.layer(name)` write terrain blocks counted from the screen's
+corner (`ctx.bx`, `ctx.bz`).
+
+Rules:
+
+- **Seamless edges.** A screen is built with a one-tile margin of its
+  neighbours' tiles and meshes only its own, so faces and ambient occlusion
+  match across screen edges; `setTile` re-meshes every screen whose margin
+  shows the tile (`marginScreens`). So builders must be deterministic per
+  tile: vary colours with `hash3` on global coordinates, and use `ctx.rand`
+  only for decisions made before drawing, never per voxel.
+- **No bottom faces** at or below the ground's top. Faces facing north stay on
+  shadow casters (three.js shadow maps render back faces).
+- **Tile fields the kits read**: `level` (raised ground, in tiles), `ground`
+  (`'grass'`, `'dirt'`, `'path'`, `'sand'`: kinds bleed raggedly into each
+  other), `water` (banks and bridges look at it), `height` (blocks above the
+  level's top layer; sizes the grid, default 16), `detailHeight` (fine voxels
+  of detail above the ground), `doorway` (a solid tile that still counts as a
+  doorway of a room wall, like a locked door).
+
+**Rooms.** Areas with `rooms: true` are drawn one room at a time with black
+around them. `registerRing(tileset, (room, tx, tz) => cell | null, { north,
+south, west, east })` supplies the tiles around a room in place of the
+neighbouring rooms' tiles, reaching the given number of tiles out (default 1).
+The dungeon ring draws a corridor with its own side walls five tiles north
+from a north doorway (to the top of the frame), one tile of floor out of the
+other doorways, the stairs going on down, and black elsewhere. The ring is
+meshed apart from the room into the screen mesh named `'ring'` (a Group,
+`layer.ring` true). Rings overlap the neighbouring rooms, which are drawn too
+during a slide, so every ring hides itself from `'screen-leave'` until the next
+`'screen-enter'`; the group's own `visible` stays with whoever shows and hides
+the room.
+
+**Backdrops.** `registerBackdrop(tileset, { charAt(tx, tz, info), north,
+south, side, spread })` fills the tiles around every area of that tileset with
+ordinary tiles, so the camera sees the world go on (section 8, "The far
+distance"). They are meshed in chunks of 8 x 8 tiles; chunks four or more
+tiles from the play area are meshed at half resolution (1/4 tile blocks),
+without north faces and without casting shadows. `cellAt` returns backdrop
+tiles too, so a screen's edge tiles blend into them. The overworld's band
+(`farband.js`) continues the edge tiles for a tile, then forest, then plateaus
+of one, two and four levels fronted by tree lines, up to 19 tiles north: the
+top of the frame in camera A shows distant plateaus and trees, with sky only
+in the corners.
+
+### Overworld kit: `world/tiles/overworld.js`
+
+```
+.  grass       ,  flowers      p  dirt path    s  sand        d  dirt
+T  tree        R  rock         B  bush (cut it with the sword; grows back)
+#  raised ground, one level (cliff faces where it drops)     2  two levels
+D  cave mouth in a raised tile's south face (warp)           ^  stairs cut into it
+~  water       =  stone bridge over water                    f  wooden fence
+g  gravestone  i  signpost     v  clay pot     C  chest (walk into it)
+4, u, t, w     backdrop only: four levels; a tree on ground of level 1, 2, 4
+```
+
+Ground (`land(ctx)`) is a two-block slab: soil under a top layer of the tile's
+kind with the fixed 8 x 8 accent pattern (two-block dashes, dark and light,
+staggered by half a tile) and a 1.5 % brightness jitter per block
+(`surfaceColor`). Its border blocks may take a same-level neighbour's kind,
+so transitions are ragged. Raised ground stands 8 blocks a level; where it
+drops the cliff face is tan with darker and lighter clumps (`cliffColor`),
+has runs of full-height ridges, the odd extra block on top, a ragged dirt rim
+along the edge and thin dark cracks. Cave mouths are 4 blocks wide and 6 tall,
+stairs are one-block steps cut into the face. One tree per tile (`tree`),
+rocks (`rock`), water planes with banks, a stone bridge, a fence of posts and
+two rails. Bushes, pots and chests are props, so cutting or opening one does
+not re-mesh the screen. The signpost and gravestone are character models
+stamped into the detail layer.
+
+### Dungeon kit: `world/tiles/dungeon.js`
+
+```
+.  floor           W  wall (its look depends on where it stands in its room)
+S  statue on a plinth           F  brazier with a flame
+~  dark water      X  stairs out (warp)      O  pit (a black hole)
+L  locked door (walk into it with a small key)   C  chest (walk into it)
+_  pressure plate, X mark       =  pressure plate, ring mark
+P  push block (solid for now)   *  spike ball (solid for now)
+```
+
+Walls are 16 blocks tall: a darker base course, a band of long slabs, a teal
+trim, tall panels split by grooves every 8 blocks, a second trim, an upper
+tier set back one block and a lit ledge 5 blocks deep, then black
+(`wallColor(along, h, depth)`). A `W` takes its look from its place in the
+room that owns it: row 0 is the north wall with its inner face between rows 0
+and 1 and two lamps at +-4.4 tiles from the room centre; the last row is the
+south wall, one tile tall and pure black (a screen with `southWall: false`
+shows floor there instead); the first and last columns are side walls, drawn
+half a tile inward in room areas (13 tiles of floor show); a `W` anywhere else
+is a full block of wall. So the same maps work in 16 x 11 screens and in the
+16 x 12 room layout. Doorways are gaps in a wall; a locked door is a pair of
+leaves one tile wide each and the full wall height, flush with the wall's
+inner face (`doorProp`). Floors are fine voxels (`fineFloor(ctx)`,
+`floorColor(X, Z)`): rounded-square tiles with a grout line, a lighter ring and
+a darker centre.
+
+A lamp is a small dark sconce on the wall, a glow strip on it and a warm point
+light, all fixtures of the screen. The light comes from `makeLampLight()` in
+`core/renderer.js` when the renderer has it, else it is a single
+`PointLight(0xffb060, 4.5, 8, 1.5)`; lamps never cast shadows.
+
+### Models: `models/`
+
+A model is a `DenseGrid` at 16 voxels per tile, facing +z (south, toward the
+camera), x east, y up, standing on y = 0 (the mesh origin is the bottom
+centre). Nothing bends: poses and animation frames are whole models swapped
+like sprite cels.
+
+```js
+import { model, modelMesh, PoseMesh, contactShadow, settleShadow, jitter } from './kit.js';
+const m = model('pot', () => pot());          // { key, grid, geometry, colors }, built once
+const mesh = modelMesh(m);                     // shared character material, casts and receives shadows
+const own = modelMesh(m, makeCharacterMaterial()); // an own material (hit flash)
+const body = new PoseMesh({ tall: slimeModel(0), squat: slimeModel(1) }, material);
+body.setPose('squat');                         // body.pose, body.model
+const blob = contactShadow(0.36);              // soft dark disc under a character (radius, tiles)
+settleShadow(blob, heightAboveGround, 0.36);   // shrinks and fades it while hopping
+```
+
+`model(key, make, { origin, scale })` caches by key; `colors` lists the
+model's colours by weight, which is what bursts use. `jitter(hex, x, y, z)`
+varies a voxel's brightness reproducibly.
+
+**The hero** (`models/hero.js`): 16 x 16 x 16, one tile tall, the body plan of
+section 10 with seven colour slots (`HERO_SLOTS`).
+
+```js
+const hero = makeHero(material);  // { root, sway, body, figure, swordPivot, sword, shadow, ... }
+hero.setPose('walk1');            // HERO_POSES: stand, walk1, walk2, cheer, swordOut, windUp
+hero.pose();                      // the current pose name
+hero.setSword(mesh);              // another blade; makeSwordMesh(material, length, width) builds one
+```
+
+Aliases (`HERO_ALIASES`): idle, walkA, walkB, raise, attack, attack1 and
+attack2 (the last three are swordOut). `root` stands at the feet; `sway` rolls
+the whole model while walking; `body` is what the sword system twists;
+`swordPivot` (YXZ, at hand height `PIVOT_Y`) carries the sword with its grip
+at `SWORD_GRIP` in the swordOut hand, so turning the pivot sweeps the blade
+through the arc the hit test uses. `armR`, `armL`, `legL`, `legR` are inert
+handles kept for M1 code. `entities/player.js` animates him: walking swaps
+walk1 and walk2 8 times a second, standing still he walks in place at 2.5,
+the whole model sways with the steps, swordOut is held while a swing lasts
+(`attackT > 0`; the sword is only shown then), and `player.cheer(seconds)`
+holds the cheer pose (on `'chest-opened'`, `'item-gained'` and a key pickup).
+
+**Enemies** pass their look to the `Enemy` base: `model` (one frame),
+`poses` (`{ name: model }`, swapped with `this.mesh.setPose(name)`) or
+`geometry`, plus `shadow` (contact shadow radius; default `r * 1.15`). The
+burst colours default to the model's. Slimes (`slimeModel(frame, variant)`,
+green, red or blue; frames tall and squat) and the spitter (`spitterModel`,
+idle and aiming) are in the game; `CHARACTER_MODELS` holds the ported
+thornbug, skeleton, bat (two frames), sentry, golem, elder, a leader's gem and
+an alert mark for the features that will use them, and `stoneBrute()` builds a
+large enemy from parts. Pickups: `heartModel`, `gemModel(value)`,
+`keyModel`, `coinModel`. `ICONS` are small grids for HUD glyphs (heart and vial
+with a fill level, coin, key); the HUD does not use them yet. Props:
+`models/props.js` (bush, pot, signpost, gravestone, flowers, chest base and
+lid, brazier and two flame frames, door leaves, statue, spike ball, push
+block), placed by `world/tilekit.js` (`bushProp`, `potProp`, `chestProp`,
+`doorProp`, `flameProp`, `spikeBallProp`, `pushBlockProp`, `modelProp(make)`).
+
+### Effects: `systems/particles.js`
+
+```js
+burst(x, y, z, colors, count, { speed, size, up, life });  // cubes of 0.1 to 0.15 tile in the object's
+                                                           // colours: scatter, bounce, lie still, vanish
+sparks(x, y, z, colors, count, { speed, size, up, life }); // small glowing cubes that fly off and fade (hits)
+smoke(x, y, z, count, { radius, spread, life });           // white puffs that swell, rise and shrink
+```
+
+Each kind is one instanced mesh used round-robin, and randomness comes from
+`fxRandom()`. Enemies appear and vanish in smoke, spark and shed a few cubes
+when hit and burst when they die; cut bushes, opened doors and chests and
+shattered rock shots burst too.
+
+### Kit test areas: `world/areas/kitroom.js`
+
+Registered only with `?kitroom=1`, at screen columns 488 to 496 (clear of
+every reserved region): `kitroom` (one room of the 16 x 12 layout with every
+dungeon piece: corridor, locked double door, side doorway, stairs out,
+statues, braziers, plates, push block, pit, spike balls, dark water, chest;
+16 x 11 screens drop one of its floor rows), `kitfield` (every overworld
+piece on one screen) and `kitlineup` (every model: hero poses and sword,
+enemies and their frames, pickups, props, icons). Teleport there with
+`teleport('kitroom:0,0', 7.5, 8.5)`.
 
 ## Test hook
 

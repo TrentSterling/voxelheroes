@@ -37,6 +37,7 @@ import { DenseGrid, meshVoxels, FACE_ALL, FACE_NZ } from '../core/vox.js';
 import { rng } from '../core/voxel.js';
 import { getMaterial, makeWaterMaterial } from '../core/materials.js';
 import { SCREEN_W, SCREEN_H, GROUND_Y } from '../core/constants.js';
+import { on } from '../core/events.js';
 import { getTile } from './tiles.js';
 
 export const BPT = 8; // terrain blocks per tile edge
@@ -268,16 +269,22 @@ const hashTile = (tx, tz) => (Math.imul(tx | 0, 73856093) ^ Math.imul(tz | 0, 19
 
 // Build one rectangle of tiles (a screen or a backdrop chunk). Returns the meshes and fixtures.
 // env: { x0, z0, w, h, screen, cells(tx, tz) -> cell | null for the rectangle's own tiles,
-// ring(tx, tz) -> cell | null for the margin (rooms: drawn and meshed with the rectangle) }.
+// ring(tx, tz) -> cell | null for the margin (rooms: drawn with the rectangle, meshed apart),
+// margin: { n, s, w, e } tiles built around the rectangle (default MARGIN on every side) }.
 function buildRect(world, env) {
   const { x0, z0, w, h } = env;
-  const M = MARGIN;
+  const mg = env.margin ?? { n: MARGIN, s: MARGIN, w: MARGIN, e: MARGIN };
+  // the window built, in tiles: the rectangle and its margin
+  const wx0 = x0 - mg.w;
+  const wz0 = z0 - mg.n;
+  const wx1 = x0 + w + mg.e;
+  const wz1 = z0 + h + mg.s;
   const cells = [];
   let top = 1;
   let detailTop = 0;
   const voids = [];
-  for (let tz = z0 - M; tz < z0 + h + M; tz++)
-    for (let tx = x0 - M; tx < x0 + w + M; tx++) {
+  for (let tz = wz0; tz < wz1; tz++)
+    for (let tx = wx0; tx < wx1; tx++) {
       const inside = tx >= x0 && tx < x0 + w && tz >= z0 && tz < z0 + h;
       const cell = inside ? env.cells(tx, tz) : env.ring ? env.ring(tx, tz) : cellAt(world, tx, tz, env.screen);
       const own = inside || !!env.ring;
@@ -289,11 +296,11 @@ function buildRect(world, env) {
       detailTop = Math.max(detailTop, d.detailHeight ?? 0);
     }
 
-  const wx = w + 2 * M;
-  const wz = h + 2 * M;
-  const T = new VoxelLayer(BPT, (x0 - M) * BPT, (z0 - M) * BPT, wx * BPT, wz * BPT, -TERRAIN_BELOW, top);
-  const F = new VoxelLayer(FPT, (x0 - M) * FPT, (z0 - M) * FPT, wx * FPT, wz * FPT, -FINE_BELOW, FINE_ABOVE);
-  const D = new VoxelLayer(FPT, (x0 - M) * FPT, (z0 - M) * FPT, wx * FPT, wz * FPT, -1, Math.max(4, detailTop + 2));
+  const wx = wx1 - wx0;
+  const wz = wz1 - wz0;
+  const T = new VoxelLayer(BPT, wx0 * BPT, wz0 * BPT, wx * BPT, wz * BPT, -TERRAIN_BELOW, top);
+  const F = new VoxelLayer(FPT, wx0 * FPT, wz0 * FPT, wx * FPT, wz * FPT, -FINE_BELOW, FINE_ABOVE);
+  const D = new VoxelLayer(FPT, wx0 * FPT, wz0 * FPT, wx * FPT, wz * FPT, -1, Math.max(4, detailTop + 2));
   const custom = new Map(); // legacy registered layers
   const water = [];
   const fixtures = [];
@@ -399,14 +406,41 @@ function buildRect(world, env) {
     meshes.push({ name, mesh, layer: L });
   };
   const faces = env.faces ?? FACE_ALL;
-  // the meshed rectangle: the own tiles, plus the ring around a room
-  const r = env.ring ? M : 0;
-  const [mx0, mz0, mx1, mz1] = [x0 - r, z0 - r, x0 + w + r, z0 + h + r];
+  // the rectangle's own tiles
+  const [mx0, mz0, mx1, mz1] = [x0, z0, x0 + w, z0 + h];
   const terrainGeo = env.coarse ? coarseMesh(T, x0, z0, w, h, faces) : T.mesh(mx0, mz0, mx1, mz1, x0, z0, { faces });
   add('terrain', terrainGeo, { ...LAYERS.terrain, ...(env.terrainLayer ?? {}) });
   add('fine', F.mesh(mx0, mz0, mx1, mz1, x0, z0, { faces }), LAYERS.fine);
   add('detail', D.mesh(mx0, mz0, mx1, mz1, x0, z0, { faces }), LAYERS.detail);
   for (const [name, l] of custom) add(name, l.mesh(mx0, mz0, mx1, mz1, x0, z0), LAYERS[name]);
+  // the ring around a room: the rest of the window, meshed in strips into a group of its own
+  if (env.ring) {
+    const group = ringGroup();
+    const strips = [
+      [wx0, wz0, wx1, z0], // north
+      [wx0, z0 + h, wx1, wz1], // south
+      [wx0, z0, x0, z0 + h], // west
+      [x0 + w, z0, wx1, z0 + h], // east
+    ];
+    for (const [sx0, sz0, sx1, sz1] of strips) {
+      if (sx1 <= sx0 || sz1 <= sz0) continue;
+      for (const [name, V] of [['terrain', T], ['fine', F], ['detail', D]]) {
+        const geo = V.mesh(sx0, sz0, sx1, sz1, x0, z0, { faces });
+        if (!geo) continue;
+        const L = LAYERS[name];
+        const mesh = new THREE.Mesh(geo, layerMaterial(L));
+        mesh.name = `ring ${name}`;
+        mesh.castShadow = !!L.castShadow;
+        mesh.receiveShadow = !!L.receiveShadow;
+        mesh.visible = ringsShown;
+        group.add(mesh);
+      }
+    }
+    if (group.children.length) {
+      group.position.set(x0, 0, z0);
+      meshes.push({ name: 'ring', mesh: group, layer: { ring: true } });
+    }
+  }
   if (water.length) {
     const mesh = new THREE.Mesh(waterGeometry(water, x0, z0), waterMaterial());
     mesh.name = 'water';
@@ -488,6 +522,7 @@ export function waterGeometry(tiles, ox = 0, oz = 0) {
 function disposeMeshes(scene, list) {
   for (const m of list) {
     scene.remove(m.mesh);
+    ringGroups.delete(m.mesh);
     m.mesh.traverse?.((o) => {
       if (o.isMesh && !o.userData.sharedGeometry) o.geometry?.dispose();
     });
@@ -510,7 +545,8 @@ export function buildScreenTerrain(world, screen) {
       const ch = screen.tiles[tz - b.z0][tx - b.x0];
       return { ch, def: getTile(screen.tileset, ch), screen };
     },
-    ring: ring ? (tx, tz) => ring(screen, tx, tz) : null,
+    ring: ring ? (tx, tz) => ring.fn(screen, tx, tz) : null,
+    margin: ring ? ring.margin : null,
   });
   for (const m of meshes) world.scene.add(m.mesh);
   screen.meshes = meshes;
@@ -520,15 +556,38 @@ export function buildScreenTerrain(world, screen) {
 
 // ---------------------------------------------------------------- rooms
 // Room areas (area.rooms, art bible section 9) are drawn one room at a time with black all around.
-// A room is built with a ring one tile wide around it that holds what its tileset's ring function
-// returns instead of the neighbouring rooms' tiles (corridors and floors running out of its
-// doorways; null for black), and the ring is meshed with the room.
-//   registerRing(tileset, (room, tx, tz) -> { ch, def, screen: null, ... } | null)
+// A room is built with a ring around it that holds what its tileset's ring function returns instead
+// of the neighbouring rooms' tiles (corridors and floors running out of its doorways; null for
+// black). The ring reaches `north`, `south`, `west` and `east` tiles out (default MARGIN).
+//   registerRing(tileset, (room, tx, tz) -> { ch, def, screen: null, ... } | null, { north, ... })
+// The ring is meshed apart from the room, into a group that is the screen mesh named 'ring'
+// ({ name: 'ring', mesh: group, layer: { ring: true } }). It overlaps the neighbouring rooms, which
+// are drawn too while the view slides from room to room, so every ring is hidden from the moment
+// a screen is left ('screen-leave') until the next one is entered ('screen-enter'); the group's own
+// `visible` stays with whoever shows and hides the room.
 const rings = new Map();
 
-export function registerRing(tileset, fn) {
-  rings.set(tileset, fn);
+export function registerRing(tileset, fn, { north = MARGIN, south = MARGIN, west = MARGIN, east = MARGIN } = {}) {
+  rings.set(tileset, { fn, margin: { n: north, s: south, w: west, e: east } });
 }
+
+const ringGroups = new Set();
+let ringsShown = true;
+
+function ringGroup() {
+  const group = new THREE.Group();
+  group.name = 'ring';
+  ringGroups.add(group);
+  return group;
+}
+
+function showRings(on) {
+  ringsShown = on;
+  for (const g of ringGroups) for (const m of g.children) m.visible = on;
+}
+
+on('screen-leave', () => showRings(false));
+on('screen-enter', () => showRings(true));
 
 // ---------------------------------------------------------------- backdrops
 // registerBackdrop(tileset, { charAt(tx, tz, info) -> char, north, south, side, spread })
