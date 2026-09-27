@@ -2,12 +2,12 @@
 // plus checks of the quality levels, lighting presets, depth-of-field focus, polished floor and the
 // frame-time watchdog. Frames are 1280x720:
 //   crossroads-A, crossroads-B   the hero centred in the Crossroads under camera presets A and B
-//   mirror-lake-A                water in preset A (lab water material on the lake)
-//   crypt-dungeon                a crypt room under the fixed dungeon camera (lamp lights on the braziers)
+//   mirror-lake-A                water in preset A
+//   crypt-dungeon                a crypt room under the fixed dungeon camera, the other rooms hidden
 //   quality-<level>              the Crossroads at every quality level
-// Until the content port lands, the lake and the braziers are switched to the look's water, glow and
-// lamp materials here (a preview); once content uses them itself these steps change nothing.
-export const description = 'Look: Crossroads A/B, Mirror Lake water, crypt room; quality levels, DOF focus, mirror, watchdog.';
+// It also checks that content draws with the look's materials (kinds, water, glow, lamps) and that
+// the options in state.settings apply.
+export const description = 'Look: Crossroads A/B, Mirror Lake water, crypt room; quality levels, DOF focus, mirror, options, watchdog.';
 
 const info = (t) => t.eval(() => window.__voxelHeroes.look.info());
 
@@ -100,17 +100,51 @@ export default async function lookScenario(t) {
   i = await info(t);
   t.expect(i.quality === 'high' && i.path === 'post', `quality high: ${i.passes} passes, ${i.calls} draw calls`);
 
-  // a settings choice applies when it changes
+  // settings choices apply when they change
   await t.eval(() => {
     window.__voxelHeroes.state.settings.look = 'low';
     window.__voxelHeroes.render();
   });
   i = await info(t);
-  t.expect(i.quality === 'low', `state.settings.look = 'low' applies (${i.quality})`);
+  t.expect(i.quality === 'low' && i.pinned, `state.settings.look = 'low' applies (${i.quality})`);
   await t.eval(() => {
-    delete window.__voxelHeroes.state.settings.look;
+    window.__voxelHeroes.state.settings.look = 'auto';
+    window.__voxelHeroes.render();
+  });
+  i = await info(t);
+  t.expect(i.quality === 'high' && !i.pinned, `state.settings.look = 'auto' goes back to the device default, unpinned (${i.quality})`);
+  const opts = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    Object.assign(h.state.settings, { seams: false, brightness: 1.2, saturation: 0.5 });
+    h.render();
+    const off = { seams: h.look.materials().seams, exposure: h.look.info().exposure };
+    Object.assign(h.state.settings, { seams: true, brightness: 1, saturation: 1 });
+    h.render();
+    return { off, on: { seams: h.look.materials().seams, exposure: h.look.info().exposure } };
+  });
+  t.expect(
+    opts.off.seams === false && opts.on.seams === true && Math.abs(opts.off.exposure - 0.88 * 1.2) < 1e-6 && opts.on.exposure === 0.88,
+    `settings seams and brightness apply (${JSON.stringify(opts)})`
+  );
+  await t.eval(() => {
+    const S = window.__voxelHeroes.state.settings;
+    for (const k of ['look', 'seams', 'brightness', 'saturation']) delete S[k];
     window.__voxelHeroes.look.set('high');
   });
+
+  // content draws with the look's material kinds
+  const kinds = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const s = [...h.world.screens.values()].find((s) => s.sx === h.state.sx && s.sy === h.state.sy);
+    const out = {};
+    for (const m of s.meshes) if (m.mesh.material) out[m.name] = m.mesh.material.kind ?? m.mesh.material.type;
+    let hero = null;
+    h.player.object.traverse((o) => {
+      if (o.isMesh && !hero && o.material.isVoxelMaterial) hero = o.material.kind;
+    });
+    return { ...out, hero };
+  });
+  t.expect(kinds.terrain === 'terrain' && kinds.hero === 'character', `material kinds: ${JSON.stringify(kinds)}`);
 
   // ---------------------------------------------------------------- Crossroads, camera B
   await t.eval(() => window.__voxelHeroes.camera.choose('B'));
@@ -121,51 +155,43 @@ export default async function lookScenario(t) {
   await t.eval(() => window.__voxelHeroes.camera.choose('A'));
 
   // ---------------------------------------------------------------- Mirror Lake water, camera A
-  await t.teleport('overworld:2,0', 8, 6.5, { yaw: 0 });
-  const swapped = await t.eval(() => {
+  await t.teleport('overworld:2,0', 8, 5.5, { yaw: 0 });
+  const lake = await t.eval(() => {
     const h = window.__voxelHeroes;
-    const water = h.look.makeWaterMaterial();
-    let n = 0;
-    for (const s of h.world.screens.values())
-      for (const m of s.meshes)
-        if (m.name === 'water' && !m.mesh.material.isWaterMaterial) {
-          m.mesh.material = water;
-          n++;
-        }
-    return n;
+    const s = [...h.world.screens.values()].find((s) => s.sx === h.state.sx && s.sy === h.state.sy);
+    return s.meshes.filter((m) => m.name === 'water').map((m) => !!m.mesh.material.isWaterMaterial);
   });
-  await t.step(1.0);
+  t.expect(lake.length > 0 && lake.every(Boolean), `the lake is drawn with the water material (${lake.length} meshes)`);
+  await t.step(2.5);
   await t.shot('mirror-lake-A');
   i = await info(t);
-  t.expect(i.materials.water.trough === 0.5 && i.materials.water.sheen === 0.35, `lab water values (${swapped} lake meshes previewed with makeWaterMaterial)`);
+  t.expect(i.materials.water.trough === 0.5 && i.materials.water.sheen === 0.35, 'lab water values');
 
   // ---------------------------------------------------------------- crypt room, dungeon camera
   await t.teleport('crypt:0,1', 8, 5.5, { yaw: 0 });
-  await t.step(0.5);
-  i = await info(t);
-  if (i.lamps === 0) {
-    const lamps = await t.eval(() => {
-      const h = window.__voxelHeroes;
-      const s = [...h.world.screens.values()].find((s) => s.sx === h.state.sx && s.sy === h.state.sy);
-      const glow = h.look.makeGlowMaterial(0xffffff, 3);
-      let n = 0;
-      for (const obj of s.props.values()) {
-        if (!obj.material?.isMeshBasicMaterial) continue;
-        obj.material = glow;
-        const l = h.look.makeLampLight();
-        l.position.set(obj.position.x, 1.3, obj.position.z); // sconce height (lab: 9.5 blocks + 0.12)
-        h.world.scene.add(l);
-        n++;
-      }
-      return n;
-    });
-    t.note(`previewed ${lamps} brazier lamps (glow material and lamp light each)`);
-  }
-  await t.step(0.5);
+  await t.step(2.5);
   await t.shot('crypt-dungeon');
   i = await info(t);
   t.expect(i.lighting === 'crypt' && i.camera === 'dungeon' && i.exposure === 1.1, `crypt look under the dungeon camera (exposure ${i.exposure})`);
   t.expect(i.mirror && i.shadowMap === 2048 && i.lamps > 0, `polished floor on, shadow map ${i.shadowMap}, ${i.lamps} lamps lit`);
+  const room = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const here = [...h.world.screens.values()].find((s) => s.sx === h.state.sx && s.sy === h.state.sy);
+    const others = [...h.world.screens.values()].filter((s) => s !== here);
+    const drawn = (s) => s.meshes.some((m) => m.mesh.visible);
+    const statues = here.meshes.find((m) => m.name === 'stone-props');
+    let flames = 0;
+    for (const obj of here.props.values()) if (obj.material?.userData?.glow) flames++;
+    return {
+      here: drawn(here),
+      othersDrawn: others.filter((s) => s.area.id === 'crypt' && drawn(s)).map((s) => s.name),
+      overworldDrawn: others.filter((s) => s.area.id === 'overworld' && drawn(s)).length,
+      statues: statues?.mesh.material.kind ?? null,
+      flames,
+    };
+  });
+  t.expect(room.here && room.othersDrawn.length === 0 && room.overworldDrawn === 0, `only the current room is drawn (${JSON.stringify(room)})`);
+  t.expect(room.statues === 'prop' && room.flames > 0, `statues in the prop kind, ${room.flames} glowing flames`);
 
   // ---------------------------------------------------------------- frame-time watchdog
   // The real-time loop at medium quality (unpinned) in software GL: frames take seconds, so the
