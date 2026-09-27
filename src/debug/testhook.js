@@ -145,6 +145,7 @@ export function installTestHook({ update, render }) {
       WARP_HOLD: transitions.WARP_HOLD,
       AREA_HOLD: transitions.AREA_HOLD,
       shown: (key) => transitions.screenShown(world.screen(key)),
+      shownRect: transitions.shownRect, // world rect around the drawn screens
     },
     // Where screens of different areas touch, and edge tiles that do not match.
     links: () => edgeReport(world),

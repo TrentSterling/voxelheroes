@@ -324,7 +324,9 @@ the land beyond the screen, except screens wholly south of the current one:
 the camera never looks there, and trees on their first row would otherwise
 poke up at the frame's bottom edge. During a slide both screens' sets are
 drawn. Tile builders do not need to care: `syncScreenVisibility()` toggles a
-screen's meshes and props every frame.
+screen's meshes and props every frame. `shownRect()` gives the world rect
+around what is drawn (in a dungeon the room, or both rooms mid-slide), for
+the look's polished floor and lamp culling: `look.bind({ roomRect: shownRect })`.
 
 **Camera.** The subject is the hero, clamped to the current screen's rect:
 the ground at the frame's bottom edge never lies south of the screen, and on
@@ -748,7 +750,7 @@ ones. Bump `SAVE_VERSION` only for a change `loadState` cannot absorb.
 | `showDialog(lines, opts)`, `dialogOpen()`, `overlayVisible()` | UI |
 | `camera.presets`, `camera.choose(name)`, `camera.set(name)`, `camera.get()`, `camera.target`, `camera.object` | camera presets (`choose` is the player's setting, saved; `set` lasts until the next screen), the subject point, the three.js camera |
 | `camera.expected()`, `camera.project(x, y, z)`, `camera.groundAt(nx, ny)`, `camera.rules` | where the framing rule wants the subject now; world point to normalised device coordinates `[x, y, depth]`; a device point to the ground it shows (or null); the framing constants |
-| `transitions` | `SLIDE_TIME`, `SLIDE_STEP`, `ROOM_STEP`, `FADE_OUT`, `FADE_IN`, `AREA_HOLD`, `WARP_FADE`, `WARP_HOLD`, and `shown(key)`: is that screen drawn |
+| `transitions` | `SLIDE_TIME`, `SLIDE_STEP`, `ROOM_STEP`, `FADE_OUT`, `FADE_IN`, `AREA_HOLD`, `WARP_FADE`, `WARP_HOLD`, `shown(key)`: is that screen drawn, and `shownRect()`: the world rect `{ x0, z0, x1, z1 }` around the drawn screens |
 | `links()` | `edgeReport(world)`: `{ links, mismatches }` between areas |
 | `registries.tilesets()`, `.areas()`, `.entities()`, `.items()`, `.grants()` | what is registered |
 | `snapshot()` | JSON summary: mode, area, screen (`[i, j]`), key, size (`[w, h]`), screenName, hp, maxHp, gems, keys, keysByGroup, x, z (world), lx, lz (local), cam (`{ preset, x, z }`, local), yaw, invT, attacking, enemies, entities, flags, inventory, overlay, dialog, particles, time |

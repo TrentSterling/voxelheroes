@@ -164,6 +164,23 @@ export function showScreens(screen, also = null) {
 
 export const screenShown = (screen) => shown.has(screen);
 
+// The world rect { x0, z0, x1, z1 } around every drawn screen: in a dungeon
+// the current room, or both rooms during a slide. For the look's polished
+// floor and lamp culling (look.bind({ roomRect: shownRect })).
+export function shownRect() {
+  let r = null;
+  for (const s of shown) {
+    if (!r) r = { x0: s.x0, z0: s.z0, x1: s.x1, z1: s.z1 };
+    else {
+      r.x0 = Math.min(r.x0, s.x0);
+      r.z0 = Math.min(r.z0, s.z0);
+      r.x1 = Math.max(r.x1, s.x1);
+      r.z1 = Math.max(r.z1, s.z1);
+    }
+  }
+  return r;
+}
+
 // Hide what is not shown. Runs every frame (main.js) so meshes rebuilt and
 // props added on hidden screens stay hidden; shown screens are touched only
 // when they come back into view.

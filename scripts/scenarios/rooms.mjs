@@ -49,6 +49,8 @@ const arrival = (t) =>
       inFrame: [feet, head].every(([x, y]) => Math.abs(x) < 0.95 && Math.abs(y) < 0.95),
       shown: rooms.filter((k) => g.transitions.shown(k)),
       drawn: [...g.world.screens.keys()].filter((k) => g.transitions.shown(k)),
+      rect: Object.values(g.transitions.shownRect() ?? {}).join(), // x0, z0, x1, z1 of what is drawn
+      own: [s.x0, s.z0, s.x1, s.z1].join(),
       w: s.w,
       h: s.h,
     };
@@ -83,6 +85,7 @@ async function throughDoor(t, dir, to, land, { shot, midway = null } = {}) {
   t.expect(s.cam.preset === 'dungeon' && near(s.cam.x, 8) && near(s.cam.z, 6), `  the camera is on the room centre (${s.cam.x}, ${s.cam.z})`);
   t.expect(a.inFrame, '  the hero is in frame');
   t.expect(a.shown.length === 1 && a.shown[0] === s.key, `  only ${to} is drawn (${a.shown.join(', ')})`);
+  t.expect(a.rect === a.own, `  shownRect() (the look's room rect) is the room: ${a.rect}`);
   if (shot) {
     await t.step(0.3);
     await t.shot(shot);
@@ -93,7 +96,7 @@ let SLIDE_TIME = 0.5;
 
 export default async function rooms(t) {
   await t.track('room-enter', 'area-enter', 'screen-leave', 'warp', 'door-opened');
-  const tr = await t.eval(() => ({ ...window.__voxelHeroes.transitions, shown: undefined }));
+  const tr = await t.eval(() => ({ ...window.__voxelHeroes.transitions, shown: undefined, shownRect: undefined }));
   SLIDE_TIME = tr.SLIDE_TIME;
   const wall = { ns: 1 + tr.ROOM_STEP, ew: 1.5 + tr.ROOM_STEP }; // landing distance from the edge
   let s;
@@ -151,6 +154,13 @@ export default async function rooms(t) {
       const m = await t.state();
       const both = await t.eval((rooms) => rooms.filter((k) => window.__voxelHeroes.transitions.shown(k)), ROOMS);
       t.expect(m.mode === 'scroll' && both.join() === 'crypt:0,1,crypt:1,1', `  halfway through the slide both rooms are drawn (${both.join(', ')})`);
+      const rects = await t.eval(() => {
+        const g = window.__voxelHeroes;
+        const [a, b] = [g.world.screen('crypt:0,1'), g.world.screen('crypt:1,1')];
+        const want = [Math.min(a.x0, b.x0), Math.min(a.z0, b.z0), Math.max(a.x1, b.x1), Math.max(a.z1, b.z1)];
+        return { got: Object.values(g.transitions.shownRect()).join(), want: want.join() };
+      });
+      t.expect(rects.got === rects.want, `  and shownRect() covers both (${rects.got})`);
       const camX = await t.eval(() => window.__voxelHeroes.camera.target.x - window.__voxelHeroes.world.screen('crypt:0,1').x0);
       t.expect(camX > 8 + 4 && camX < 8 + 12, `  and the camera is between the room centres (${camX.toFixed(2)} of 8 to 24)`);
       await t.shot('04-mid-slide');
