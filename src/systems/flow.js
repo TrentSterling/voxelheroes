@@ -1,7 +1,8 @@
 // Game flow: starting, pausing, falling and getting back up, new game, load,
 // and the test hook's teleport. Also registers the 'play' mode.
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../core/constants.js';
-import { state, defineState, registerSaveField, resetState, loadState } from '../core/state.js';
+import { state, defineState, registerSaveField, resetState, loadState, serializeState } from '../core/state.js';
+import { writeSlot, readSlot } from '../core/save.js';
 import { initAudio, sfx } from '../core/audio.js';
 import { input } from '../core/input.js';
 import { registerMode, setMode, pushMode, popMode } from '../core/modes.js';
@@ -88,6 +89,28 @@ export function newGame() {
   setAreaLabel(currentScreen().name);
   standUp();
   setMode('title');
+}
+
+// ---------------------------------------------------------------- save slots
+// The slot this game was loaded from or last saved to. The inn and the pause
+// menu save into it; the title screen's file select picks it.
+let slot = 1;
+export const activeSlot = () => slot;
+
+// Write the game into a localStorage slot (core/save.js). false if storage is
+// unavailable (private windows, sandboxed previews).
+export function saveToSlot(n = slot) {
+  slot = n;
+  return writeSlot(n, serializeState());
+}
+
+// Load a slot and resume play there. false if the slot is empty or unreadable.
+export function loadFromSlot(n) {
+  const saved = readSlot(n);
+  if (!saved?.data) return false;
+  slot = n;
+  loadGame(saved.data);
+  return true;
 }
 
 // Apply save data (serializeState() output) and resume play where it was made.

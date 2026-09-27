@@ -10,7 +10,7 @@ import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
 import { applyLighting } from '../core/renderer.js';
-import { setCameraPreset, snapCamera, startCameraTween, stepCameraTween } from '../core/camera.js';
+import { CAMERA_PRESETS, setCameraPreset, snapCamera, startCameraTween, stepCameraTween } from '../core/camera.js';
 import { world, currentScreen } from '../world/world.js';
 import { screenCenter } from '../world/grid.js';
 import { clearScreenEntities } from '../entities/manager.js';
@@ -38,6 +38,15 @@ export function placeAt(sx, sy, x, z, yaw = player.yaw) {
 export function applyScreenAmbience(screen) {
   applyLighting(screen.lighting);
   setCameraPreset(screen.camera ?? state.settings.camera);
+}
+
+// The player's camera choice (for an options menu). It applies on every
+// screen that does not fix its own preset, starting with this one.
+export function chooseCameraPreset(name) {
+  if (!CAMERA_PRESETS[name]) throw new Error(`Unknown camera preset "${name}"`);
+  state.settings.camera = name;
+  const screen = currentScreen();
+  if (screen) applyScreenAmbience(screen);
 }
 
 export function clearScreen() {

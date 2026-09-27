@@ -6,15 +6,26 @@ A Three.js voxel action adventure in the spirit of 3D Dot Game Heroes and the SN
 npm install
 npm run dev        # play locally at http://localhost:5173
 npm run artifact   # build a single self-contained HTML page into dist-artifact/
+npm run playtest   # headless play-through with screenshots in playtest-out/
 ```
 
-Controls: WASD or arrows to move, Space or J to swing, P to pause, M to mute. On touch screens a stick and an A button appear.
+Controls:
+
+| | Keyboard | Touch |
+|-|----------|-------|
+| Move | WASD or arrows | stick |
+| Sword (A) | Space, J or Z | A |
+| Item (B) | K or X (once you own one) | B |
+| Pause (Start) | Enter, Esc or P | Menu |
+| Next / previous item | E / Q | |
+| Mute | M | |
+
+Face a shot to block it with the shield (not while swinging).
 
 ## Layout
 
-- `src/voxel.js` voxel grid plus a face-culling mesher that turns voxels into one geometry
-- `src/maps.js` the overworld screens and the crypt rooms as 16 x 11 ASCII tile maps (edit these to change the world); `WARPS` links the crypt doorway and stairs
-- `src/world.js` builds terrain, trees, rocks, water and bushes from the maps; tile collision
-- `src/models.js` hero, slime, spitter, pickups, all built from voxels in code
-- `src/main.js` game loop, combat, enemy AI, screen-scroll transitions, HUD
-- `src/audio.js` WebAudio sound effects
+The code is split into small modules with registries for tiles, areas,
+entities, items, HUD widgets and UI screens, so most additions are new files.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map, every
+registry's contract, worked examples, the `window.__voxelHeroes` test hook and
+the play-test harness. [docs/PLAN.md](docs/PLAN.md) has the milestone plan.

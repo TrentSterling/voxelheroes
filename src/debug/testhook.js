@@ -22,7 +22,8 @@ import { grant, grantIds } from '../systems/grants.js';
 import { keyCount } from '../systems/keys.js';
 import { hurtPlayer } from '../systems/combat.js';
 import { liveParticles } from '../systems/particles.js';
-import { startGame, teleport, loadGame, newGame } from '../systems/flow.js';
+import { startGame, teleport, loadGame, newGame, saveToSlot, loadFromSlot } from '../systems/flow.js';
+import { chooseCameraPreset } from '../systems/transitions.js';
 import { showDialog, dialogOpen } from '../ui/dialog.js';
 import { overlayVisible } from '../ui/overlay.js';
 
@@ -89,11 +90,17 @@ export function installTestHook({ update, render }) {
     newGame,
     save: () => serializeState(),
     load: (data) => loadGame(data),
+    // localStorage save slots (false when storage is blocked).
+    saveToSlot: (n) => saveToSlot(n),
+    loadFromSlot: (n) => loadFromSlot(n),
     showDialog,
     dialogOpen,
     overlayVisible,
     camera: {
       presets: CAMERA_PRESETS,
+      // The player's choice (kept across screens; dungeons keep their own).
+      choose: chooseCameraPreset,
+      // Only until the next screen change.
       set: setCameraPreset,
       get: cameraPreset,
       target: camTarget,

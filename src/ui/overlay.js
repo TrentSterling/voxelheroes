@@ -30,5 +30,9 @@ export function setFade(opacity) {
 }
 
 export function initOverlay() {
-  $('start').addEventListener('click', () => action?.());
+  // Only while the panel shows: a focused button must not fire again after
+  // the keyboard has already acted (Space on a focused button clicks on keyup).
+  $('start').addEventListener('click', () => {
+    if (overlayVisible()) action?.();
+  });
 }
