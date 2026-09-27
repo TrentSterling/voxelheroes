@@ -163,6 +163,32 @@
     }
   }
 
+  // Walk onto local (x, z), a tile whose onEnter hook starts something (a
+  // door or stairs: a warp), and wait through the fade (or slide) until play
+  // resumes, as exit() does for edges. Returns { ok, t, screen, moved }:
+  // screen is where play resumed, moved whether it is another screen.
+  function enter(x, z, { timeout = 20 } = {}) {
+    const g = hook();
+    const from = screenKey();
+    const w = walkTo(x, z, { timeout, allowHooks: true });
+    let t = w.t;
+    if (!w.ok && !/^mode became (warp|scroll)$/.test(w.reason)) return { ...w, reason: `walking onto ${x},${z}: ${w.reason}` };
+    // Arrived without anything starting: one more tick for the hook.
+    if (g.state.mode === 'play') {
+      g.update(DT);
+      t += DT;
+    }
+    if (g.state.mode === 'play')
+      return { ok: false, reason: `nothing started at ${x},${z} (for a doorway in a screen edge use exit(dir))`, t };
+    for (let i = 0; i < 600; i++) {
+      if (g.state.mode === 'play') return { ok: true, t, screen: screenKey(), moved: screenKey() !== from };
+      g.input.setStick(0, 0);
+      g.update(DT);
+      t += DT;
+    }
+    return { ok: false, reason: `still in mode ${g.state.mode} after 10 s`, t };
+  }
+
   // Fight until the screen has no enemies (or `maxKills` enemies are down).
   // The hero walks up to the nearest one, turns to face it and swings. If
   // health drops to `heal` half-hearts or less it is topped up (counted in
@@ -260,5 +286,5 @@
     return { ok: false, reason: 'timeout', t };
   }
 
-  window.__vhBot = { walkTo, exit, fight, waitFor, bfs, walkable };
+  window.__vhBot = { walkTo, exit, enter, fight, waitFor, bfs, walkable };
 })();

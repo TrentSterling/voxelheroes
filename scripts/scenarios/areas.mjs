@@ -153,10 +153,10 @@ export default async function areasScenario(t) {
   // A tunnel from Hedge Hollow to Hedge Crossing, a warp inside one area:
   // it fades out and back in (WARP_FADE each) with no card and no 'area-enter'.
   const areasBefore = (await t.events('area-enter')).length;
+  const warpsBefore = (await t.events('warp')).length;
   await t.walkTo(3.5, 5.7);
-  await pushUntilMoving(t, 'ArrowUp');
-  t.expect((await t.state()).mode === 'warp', 'Hedge Hollow: the tunnel starts a fade');
-  await t.waitFor((st) => st.mode === 'play', { seconds: 3 });
+  const through = await t.enter(3.5, 4.5); // the bot walks onto the tunnel and waits out the warp
+  t.expect(through.moved && through.screen === 'test-hedgerows:1,1' && (await t.events('warp')).length === warpsBefore + 1, 'Hedge Hollow: the tunnel warps (bot enter())');
   s = await t.state();
   const tunnel = (await t.events('warp')).at(-1);
   const out = (await t.events('room-enter')).at(-1);
