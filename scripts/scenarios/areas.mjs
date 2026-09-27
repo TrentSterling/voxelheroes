@@ -96,7 +96,7 @@ async function takeWarp(t, tr, key, to, area, fromName) {
 
 export default async function areasScenario(t) {
   await t.track('room-enter', 'area-enter', 'screen-leave', 'warp');
-  const tr = await t.eval(() => ({ ...window.__voxelHeroes.transitions, shown: undefined }));
+  const tr = await t.eval(() => ({ ...window.__voxelHeroes.transitions, shown: undefined, shownRect: undefined }));
   await t.press('Enter');
   await t.step(1.1);
 
