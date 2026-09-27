@@ -577,6 +577,12 @@ registerTile('dungeon', '%', {
 Then use `%` in a dungeon map. Pick characters that are free in the tileset
 (`listTilesets()` or the hook's `registries.tilesets()` shows them).
 
+Merge note: `underlayer` and `ground` are the M1 tilesets' builders.
+feat/look-kits (carried into feat/look) rebuilds both tilesets without
+them (`land()` in `tiles/overworld.js`; `floorColor`, `fineFloor` in
+`tiles/dungeon.js`), so the merge that brings it in keeps the two names as
+aliases or rewrites this example and the helper list under Layout.
+
 ### (b) An enemy
 
 Model in `src/models/bat.js`, behaviour in `src/entities/enemies/bat.js`:
