@@ -16,7 +16,7 @@ for adding to it. The short version:
   `window.__voxelHeroes`.
 
 Contents: [Module map](#module-map) ·
-[Frame, modes and coordinates](#frame-modes-and-coordinates) ·
+[Frame, modes and coordinates](#frame-modes-and-coordinates) · [Look](#look) ·
 [Registries](#registries) · [Events](#events) · [How to add things](#how-to-add-things) ·
 [Test hook](#test-hook) · [Play-test harness](#play-test-harness) ·
 [Working in parallel (M2)](#working-in-parallel-m2) · [Build rules](#build-rules) ·
@@ -42,6 +42,8 @@ src/
     save.js             localStorage slots (writeSlot, readSlot, listSlots), all in try/catch
     audio.js            WebAudio voices; sfx table + registerSfx
     voxel.js            seeded rng, VoxelGrid, face-culled mesher, shared voxel material
+    materials.js        material kinds (terrain, character, fine), glow, water, setSeams (see Look)
+    look/               lighting presets, light rigs, post stack, polished floor, quality levels (see Look)
     random.js           random() gameplay RNG (seeded), fxRandom() for effects
     math.js             lerpAngle, clamp, dist2d, yawDir
   world/
@@ -109,7 +111,8 @@ purpose (the floor builders in `tiles/dungeon.js` and `ground()` in
 the mute key, `updateMode(dt)`, particles, `world.flush()` (re-mesh changed
 screens), camera placement, `input.endFrame()`. Rendering then refreshes the
 HUD widgets and draws the scene. The loop clamps `dt` to 1/30 s. In manual mode
-the loop keeps rendering but only tests advance the simulation.
+only tests advance the simulation, and the loop no longer draws either: tests
+call the hook's `render()` (a full look frame takes seconds in software GL).
 
 **Modes** (`core/modes.js`) decide what a frame does. `state.mode` is the top
 of a stack.
@@ -158,6 +161,163 @@ is counted in half-hearts (`START_HP` 6 = three hearts). Terrain voxels are
 uses `fxRandom()`, terrain uses the per-screen `ctx.rand`. Never
 `Math.random()` or wall-clock time in gameplay: it breaks play-test
 determinism.
+
+## Look
+
+The look is the art bible's render pipeline (sections 3 to 7, appendix A),
+ported from its look lab: lighting presets, light rigs, material kinds, the
+post stack, the polished dungeon floor and the quality levels. Content never
+builds lights, voxel materials or passes of its own; it asks for them here and
+the active preset sets their values.
+
+```
+src/core/
+  renderer.js           renderer, scene, camera; LIGHTING, registerLighting, applyLighting, makeLampLight
+  materials.js          getMaterial(kind), makeCharacterMaterial, makeGlowMaterial, makeWaterMaterial, setSeams
+  voxel.js              old mesher: writes faceUv and baked voxel AO (vox.js meshVoxels does the same)
+  look/
+    index.js            createLook: presets, quality levels, frame-time watchdog, the per-frame driver, info()
+    presets.js          LOOK_DAY, LOOK_CRYPT, DOF_PRESETS, QUALITY_LEVELS, mergeLook
+    lights.js           LightRig (hemisphere fill, key light + shadow box, lamp culling), wall lamps
+    environment.js      gradient reflection environment (PMREM "orb")
+    pipeline.js         the post stack
+    mirror.js           the polished floor
+```
+
+**One drawn frame** (`look.render()`, called by `renderScene()`): apply a
+changed `state.settings.look`; place the key light's shadow box (on the hero
+in the overworld, on the room centre in dungeons, snapped to shadow-map
+texels); switch off point lights outside the room the camera shows; lay the
+polished floor over that room when the preset has one; advance the water; put
+the depth-of-field focus on the hero's feet; then draw:
+
+| Step | high | medium | low | flat |
+|------|------|--------|-----|------|
+| scene into a half-float target, 4x MSAA, depth-stencil texture | yes | yes | straight to the canvas | straight to the canvas |
+| GTAO (normals rebuilt from depth) | yes | | | |
+| depth of field: prepare, 16 px tile-max CoC, dilate, Vogel gather | 96 samples | 32 samples | | |
+| bloom (UnrealBloomPass), added | yes | yes | | |
+| glare: four 45-degree streaks from the brightest pixels (above 3.2), half resolution | yes | | | |
+| grade: ACES filmic at the preset's exposure, saturation, contrast, lift, gain, vignette + edge, dither | yes | yes | ACES only | nothing |
+| polished floor (dungeon presets) | yes | yes | | |
+| shadow map size cap (day asks 4096, crypt 2048) | 4096 | 4096 | 2048 | 2048 |
+| bevel, edge light and seams in the materials | yes | yes | yes | no |
+
+**Lighting presets** are whole looks. Built in: `day` (the bible's measured
+overworld, OW_A) and `crypt` (its golden dungeon room, DGN_GOLD). Areas and
+screens pick one by name (`lighting: 'crypt'`); `transitions.js` applies it on
+screen entry. A preset holds:
+
+| Key | What |
+|-----|------|
+| `background`, `fog` | clear colour (sky in the overworld, the black void in dungeons); fog is off in both built-ins |
+| `lights.hemi` `{ sky, ground, intensity }` | the fill (violet-blue outdoors: shadows stay #203229-ish, never black) |
+| `lights.sun` `{ color, intensity, dir, castShadow }` | the key light, `dir` points at the light |
+| `lights.shadow` `{ mapSize, extent, follow: 'hero' \| 'subject', offset, bias, normalBias, radius }` | shadow box; `radius` is the PCF softness in texels |
+| `lights.lamp` `{ color, intensity, distance, decay, out, drop, fill }` | the wall lamps content places with `makeLampLight()` |
+| `env` `{ zenith, horizon, ground, sun, intensity }` | reflection environment; `intensity` scales it for every material |
+| `material`, `charMaterial`, `fineMaterial` | the three voxel kinds: `roughness`, `bevel`, `bevelTilt`, `edgeLight`, `grid: { width, dark }` (seams) |
+| `water` | colour, opacity, roughness, ripple, glints (`sparkle`, `glintSize`, `glintDensity`, `glintFar`), wave troughs, grazing sheen |
+| `ao`, `bloom`, `glare` | post values (bible section 5) |
+| `tone.exposure`, `grade` | exposure before ACES; `saturation`, `contrast`, `lift`, `gain`, `vignette`, `rim`, `edge` |
+| `reflect`, `reflectBlur`, `reflectTint` | polished floor strength (0 = none), gloss blur, polish colour |
+| `arrivalFlash` `{ from, boost, seconds }` | brief over-bright exposure on arriving from one of the `from` looks |
+
+```js
+registerLighting('ember-cave', { extends: 'crypt', lights: { hemi: { intensity: 0.9 } }, tone: { exposure: 1.3 }, reflect: 0 });
+registerLighting('dusk', { background: 0x303850, sky: 0x8090c0, ground: 0x302830, hemi: 0.8, sunColor: 0xffa060, sun: 1.2 });
+```
+
+`registerLighting` deep-merges the partial preset over the one it `extends`
+(default `'day'`); arrays and numbers replace. The prototype's flat keys
+(`background, sky, ground, hemi, sunColor, sun`) still work.
+
+**Depth of field belongs to the camera**, not the lighting: `DOF_PRESETS`
+(`look/presets.js`) is keyed by camera preset name, a camera preset may carry
+its own `dof` block, and `fixed` presets fall back to `dungeon`. The focus is
+the view depth of the hero's feet plus `focusOffset` (0.9 in camera A, so the
+sharp band sits just behind the hero). Nothing blurs within `focusRange`;
+the blur ramps to `farMaxBlur` / `nearMaxBlur` px (at 720p) over `farRamp` /
+`nearRamp` tiles. A and B are measured; C and D are guesses until someone
+fits them.
+
+**Materials** (`core/materials.js`, bible section 6):
+
+- Voxel meshes use `getMaterial('terrain')` (1/8-tile blocks, faint seams),
+  `getMaterial('character')` (1/16 voxels: characters, props, pickups, clear
+  seams) or `getMaterial('fine')` (floors built at 1/16). The geometry carries
+  `position`, `normal`, linear `color` with the voxel AO baked in, and
+  `faceUv` (0..1 across each face); both meshers write all four. No per-face
+  shading in colours: the lights do that.
+- `makeCharacterMaterial()` is an unshared character material for per-entity
+  hit flashes; it follows look changes like the shared one.
+- `makeGlowMaterial(color, intensity)`: unlit HDR colour for flames, lamp
+  fixtures and beams, so bloom and glare catch it. Vertex colours multiply it
+  (pass `0xffffff` for a voxel model with its own colours).
+- `makeWaterMaterial()`: one flat plane per water surface, 0.35 block
+  (0.35 x TV) below the ground surface, `receiveShadow` on, not bobbing: the
+  ripples, troughs, glints and sheen are all in the shader.
+- `setSeams(on)` switches seam lines everywhere (an options menu).
+
+**Lamps.** `makeLampLight(overrides)` returns a group with the active look's
+lamp lights: a short bright pool 0.25 in front of the fixture plus a weak
+wide fill lower down. Put it at the fixture with its +z pointing into the
+room. Lamps never cast shadows. Every point light in the scene counts: the
+rig switches off (layer 0) those more than 2 tiles outside the room the camera
+shows, rescanning the scene on screen entry and every 30 frames. The number of
+lit lights is part of every lit shader's program, so a room with a new lamp
+count compiles once on first entry; keep rooms to a few lamps.
+
+**Polished floor** (`reflect > 0`, the crypt look): an additive, glossy,
+tinted planar reflection laid 0.002 above the floor of the room or rooms the
+camera shows (both during a slide). Pits, moats and water more than 0.02 below
+the floor are masked out through the stencil buffer. `setMirrorRect({ x0, x1,
+z0, z1 })` narrows it for the current room until the next screen change. The
+room rectangle comes from the 16 x 11 screen grid around the camera subject;
+areas with other screen sizes bind a getter: `look.bind({ roomRect })`.
+
+**Choosing the quality**: `?look=high|medium|low|flat` wins, then
+`state.settings.look` (a menu writes it; it applies on the next frame), then
+the device: a coarse pointer or a window whose longer side is under 900 px
+starts at medium, anything else at high. The first two pin the level.
+Unpinned, the frame-time watchdog in the real-time loop drops one level when
+the median frame time over 3 s is above 24 ms (never below low; 2 s grace
+after every change; a hidden tab restarts the timing).
+`look.setQuality(level, { pin })` sets it from code.
+
+**Manual mode draws nothing.** The loop only refreshes the HUD; the hook's
+`render()` draws one frame and play-test shots call it. Tests reach the look
+through `window.__voxelHeroes.look`:
+
+| Member | Use |
+|--------|-----|
+| `levels`, `set(level, { pin })`, `get()` | quality levels (`set` pins unless `pin: false`) |
+| `lighting()`, `presets()`, `applyLighting(name)`, `registerLighting(name, preset)` | lighting presets |
+| `dof`, `camera` | DOF presets; the three.js camera (project points to find pixels) |
+| `info()` | the last frame: quality, pinned, lighting, path, size, pixelRatio, camera, dof, focusDistance, exposure, mirror, shadowMap, lamps, passes, calls, triangles, targetsMB, cpuMs, watchdog, drops, materials |
+| `getMaterial`, `makeWaterMaterial`, `makeGlowMaterial`, `makeLampLight`, `setMirrorRect`, `setSeams`, `materials()` | the material and lamp API, for probes and previews |
+
+`scripts/scenarios/look.mjs` shoots the validation frames (Crossroads under
+camera A and B, Mirror Lake water, a crypt room) and checks the quality
+levels, the DOF band, the polished floor and the watchdog.
+
+**Frame cost.** Headless Chromium with SwiftShader (software GL on 4 shared
+CPUs) at 1280 x 720; only the ratios mean anything. JS is the CPU time of
+`look.render()` without the GPU wait.
+
+| Frame | Quality | Frame ms | JS ms | Draw calls | Passes | Targets MB |
+|-------|---------|----------|-------|------------|--------|------------|
+| Crossroads (day) | high | 3665 | 2.8 | 83 | 37 | 107 |
+| | medium | 1849 | 2.3 | 65 | 19 | 73 |
+| | low | 1211 | 1.4 | 47 | 1 | 0 |
+| | flat | 1109 | 1.0 | 47 | 1 | 0 |
+| Crypt room `crypt:0,1`, polished floor | high | 3061 | 4.2 | 94 | 37 | 156 |
+| | medium | 1736 | - | 76 | 19 | 123 |
+| | low | 769 | - | 37 | 1 | 0 |
+
+The post stack is two thirds of a high frame here, and GTAO, the 96-sample
+gather and the glare (what medium leaves out) are half of it. The polished
+floor draws the scene a second time, into a full-size 4x MSAA target.
 
 ## Registries
 
