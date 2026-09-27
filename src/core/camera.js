@@ -12,14 +12,17 @@
 // In the overworld the subject is the hero, clamped so the frame stays inside
 // the current screen where the frame is small enough: the ground at the
 // bottom edge never shows the screen to the south, and the frame's sides at
-// the hero's row never show the screens east or west. The north is never
-// clamped: the low presets always see far past the screen, as in the
-// reference. Fixed presets aim at the middle of the screen or room (for a
-// room, the floor centre); where the frame is too narrow for that to keep
-// the hero in view (a phone held upright) they follow the hero across,
-// still clamped to the room. Areas can fix a preset (`camera: 'dungeon'`);
-// other screens use the player's choice in state.settings.camera. A slide
-// between screens with different presets blends the lens as it moves.
+// the hero's row never show the screens east or west, except for the few
+// tenths of a tile it takes to keep all of the hero in frame when he stands
+// at an east or west edge. The north is never clamped: the low presets
+// always see far past the screen, as in the reference. Fixed presets aim at
+// the middle of the screen or room (for a room, the floor centre) and move
+// only as far as it takes to keep the hero's feet in frame; where the frame
+// is less than half as wide as the room (a phone held upright) they follow
+// the hero across instead, still inside the room. Areas can fix a preset
+// (`camera: 'dungeon'`); other screens use the player's choice in
+// state.settings.camera. A slide between screens with different presets
+// blends the lens as it moves.
 import * as THREE from 'three';
 import { camera, renderer, followSun } from './renderer.js';
 import { DEG } from './constants.js';
@@ -41,6 +44,11 @@ export const CAMERA_FAR = 400;
 // The hero's centre stays at least this far (tiles) inside the frame's sides
 // and bottom when the camera has to move off its preferred subject.
 export const FRAME_MARGIN = 0.5;
+// The widest part of the hero, for keeping all of him in frame: his head and
+// hat reach about 0.6 tiles either side of his centre, HERO_HEAD tiles up;
+// HERO_HALF adds a little room.
+export const HERO_HEAD = 1;
+export const HERO_HALF = 0.8;
 
 export function registerCameraPreset(name, preset) {
   CAMERA_PRESETS[name] = { ...CAMERA_PRESETS[DEFAULT_PRESET], ...preset };
@@ -96,13 +104,14 @@ export function poseCamera(cam, p, subject) {
   cam.lookAt(subject.x, 0, lookZ);
 }
 
-// Half the frame's width, in tiles, on the ground row dz tiles south of the
-// subject (negative: north of it). Rows nearer the camera are narrower.
-export function halfWidthAt(p = CAMERA_PRESETS[presetName], dz = 0, aspect = camera.aspect) {
+// Half the frame's width, in tiles, on the row dz tiles south of the subject
+// (negative: north of it), at height y above the ground. Rows nearer the
+// camera are narrower, and so is the frame higher up.
+export function halfWidthAt(p = CAMERA_PRESETS[presetName], dz = 0, aspect = camera.aspect, y = 0) {
   const pitch = p.pitch * DEG;
   const back = p.height / Math.tan(pitch) - (p.lead ?? 0); // camera z minus subject z
-  // View depth of the ground point: (point - camera) . forward (0, -sin, -cos).
-  const depth = p.height * Math.sin(pitch) + (back - dz) * Math.cos(pitch);
+  // View depth of the point: (point - camera) . forward (0, -sin, -cos).
+  const depth = (p.height - y) * Math.sin(pitch) + (back - dz) * Math.cos(pitch);
   return depth * Math.tan((p.fov * DEG) / 2) * aspect;
 }
 
@@ -126,13 +135,19 @@ export function cameraFootprint(p = CAMERA_PRESETS[presetName], aspect = camera.
 //   depth   follow presets track the hero's row; fixed presets aim at the
 //           middle. Either way the ground at the frame's bottom edge stays
 //           inside the rect, and the hero stays above that edge.
-//   across  measured at the hero's row, which is the narrowest row the hero
-//           is on: follow presets track the hero and fixed presets hold the
-//           middle, then the frame's sides at that row are kept inside the
-//           rect when the frame is narrower than the rect, and the hero is
-//           kept inside the frame (FRAME_MARGIN).
+//   across  measured on the hero's row (rows nearer the camera are
+//           narrower). Where the frame is wider than the rect there, it is
+//           centred. Otherwise follow presets track the hero with the
+//           frame's sides kept inside the rect, except that all of the
+//           hero stays in frame (HERO_HALF at HERO_HEAD), which wins. Fixed
+//           presets hold the middle and move only to keep the hero's feet
+//           FRAME_MARGIN inside the frame, never past the rect's sides;
+//           where the frame is less than half as wide as the rect (at the
+//           subject's row, so this does not flip as the hero walks) they
+//           track the hero like the others.
 export function subjectFor(pos, rect, p = CAMERA_PRESETS[presetName], aspect = camera.aspect) {
   const { clamp } = THREE.MathUtils;
+  const w = rect.x1 - rect.x0;
   const cx = (rect.x0 + rect.x1) / 2;
   const cz = (rect.z0 + rect.z1) / 2;
   const { south } = cameraFootprint(p, aspect);
@@ -140,13 +155,15 @@ export function subjectFor(pos, rect, p = CAMERA_PRESETS[presetName], aspect = c
   let z;
   if (p.fixed) z = Math.min(Math.max(cz, pos.z - south + FRAME_MARGIN), zMax);
   else z = zMax >= rect.z0 ? clamp(pos.z, rect.z0, zMax) : zMax;
-  const hw = halfWidthAt(p, Math.max(0, pos.z - z), aspect);
-  let x = cx;
-  if (rect.x1 - rect.x0 < 2 * hw) x = cx; // the frame spans the whole rect at the hero's row
-  else {
-    x = p.fixed ? cx : pos.x;
-    if (hw > FRAME_MARGIN) x = clamp(x, pos.x - hw + FRAME_MARGIN, pos.x + hw - FRAME_MARGIN);
-    x = clamp(x, rect.x0 + hw, rect.x1 - hw);
+  const dz = pos.z - z; // the hero's row, from the subject
+  const hw = halfWidthAt(p, dz, aspect); // the frame's half-width on the hero's row
+  let x;
+  if (p.fixed && 4 * halfWidthAt(p, 0, aspect) >= w) {
+    x = w <= 2 * hw ? cx : clamp(clamp(cx, pos.x - hw + FRAME_MARGIN, pos.x + hw - FRAME_MARGIN), rect.x0 + hw, rect.x1 - hw);
+  } else {
+    x = w <= 2 * hw ? cx : clamp(pos.x, rect.x0 + hw, rect.x1 - hw);
+    const reach = halfWidthAt(p, dz, aspect, HERO_HEAD) - HERO_HALF; // hero centre to camera, at most
+    if (reach > 0) x = clamp(x, pos.x - reach, pos.x + reach);
   }
   return new THREE.Vector3(x, 0, z);
 }
@@ -178,25 +195,41 @@ export function snapCamera(target) {
 // stepCameraTween(dt) advances it and returns the linear progress 0..1 so the
 // caller can move other things (the hero) in step with the camera. Given a
 // preset, the tween also switches to it, blending the lens on the way.
+//
+// Given an anchor { from, to } (points the caller moves something along,
+// linearly with that progress: the hero walking into the next screen), it is
+// the anchor's offset from the subject that eases instead of the subject
+// itself. The anchor's place in the frame then moves steadily from where it
+// was to where it ends, so a hero who starts and ends in frame stays in
+// frame, however far the camera goes; the camera starts at the hero's pace.
 export const easeInOutQuad = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
 
 let tween = null;
 
-export function startCameraTween(to, dur, ease = easeInOutQuad, preset = null) {
+export function startCameraTween(to, dur, ease = easeInOutQuad, preset = null, anchor = null) {
   let lensFrom = null;
   if (preset && preset !== presetName) {
     if (!CAMERA_PRESETS[preset]) throw new Error(`Unknown camera preset "${preset}"`);
     lensFrom = { ...currentLens() };
     presetName = preset;
   }
-  tween = { from: camTarget.clone(), to: to.clone(), t: 0, dur, ease, lensFrom };
+  const a = anchor && { x0: anchor.from.x, z0: anchor.from.z, x1: anchor.to.x, z1: anchor.to.z };
+  tween = { from: camTarget.clone(), to: to.clone(), t: 0, dur, ease, lensFrom, anchor: a };
 }
 
 export function stepCameraTween(dt) {
   if (!tween) return 1;
   tween.t += dt;
-  const k = Math.min(1, tween.t / tween.dur);
-  camTarget.lerpVectors(tween.from, tween.to, tween.ease(k));
+  // (with a hair of slack, so 30 ticks of 1/60 s make exactly 0.5 s)
+  const k = tween.t >= tween.dur - 1e-6 ? 1 : tween.t / tween.dur;
+  const e = tween.ease(k);
+  const { from, to, anchor: a } = tween;
+  if (a) {
+    // anchor now, minus its offset from the subject eased from start to end
+    const x = a.x0 + (a.x1 - a.x0) * k - THREE.MathUtils.lerp(a.x0 - from.x, a.x1 - to.x, e);
+    const z = a.z0 + (a.z1 - a.z0) * k - THREE.MathUtils.lerp(a.z0 - from.z, a.z1 - to.z, e);
+    camTarget.set(x, 0, z);
+  } else camTarget.lerpVectors(from, to, e);
   if (k >= 1) tween = null;
   return k;
 }

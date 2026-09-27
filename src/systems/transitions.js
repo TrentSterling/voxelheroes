@@ -2,7 +2,8 @@
 //
 //   slide  The hero walks off an edge into another screen of the same area:
 //          the camera slides over (SLIDE_TIME, ease in-out) while the hero
-//          walks about a tile in (SLIDE_STEP). Mode 'scroll'.
+//          walks about a tile in (SLIDE_STEP from the edge; in a room,
+//          ROOM_STEP past the wall the doorway is in). Mode 'scroll'.
 //   fade   The hero walks off an edge into another area, or takes a warp
 //          (doorway, stairs): fade to black, move, fade back in. Mode 'warp'.
 //          Arriving in another area holds the black for AREA_HOLD seconds, the
@@ -21,9 +22,11 @@
 //   'warp'         { dest }              a warp starts; dest { screen, x, z, yaw }
 //
 // Drawing: in room areas only the current room is drawn (both rooms during a
-// slide), so everything outside it is black; elsewhere every screen of the
-// hero's group of joined areas is drawn (world/links.js), so the low cameras
-// see the land beyond the screen.
+// slide), so everything outside it is black; elsewhere the screens of the
+// hero's group of joined areas (world/links.js) are drawn so the low cameras
+// see the land beyond the screen, except those wholly south of the current
+// screen: the camera never looks there, and the trees on the next screen's
+// first row would otherwise poke up at the frame's bottom edge.
 import { state, registerSaveField } from '../core/state.js';
 import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
@@ -38,7 +41,7 @@ import {
   stepCameraTween,
   subjectFor,
 } from '../core/camera.js';
-import { world, currentScreen } from '../world/world.js';
+import { world, currentScreen, WALL_INSET } from '../world/world.js';
 import { DIRS } from '../world/grid.js';
 import { areaGroups } from '../world/links.js';
 import { clearScreenEntities } from '../entities/manager.js';
@@ -50,7 +53,8 @@ import { clearDistance } from './physics.js';
 import { spawnScreen } from './spawner.js';
 
 export const SLIDE_TIME = 0.5; // seconds for the slide to the next screen (a guess until the gameplay spec)
-export const SLIDE_STEP = 1.1; // tiles the hero walks into the next screen or area
+export const SLIDE_STEP = 1.1; // tiles the hero walks in from the edge of the next screen or area
+export const ROOM_STEP = 1; // in a room: tiles past the inside face of the doorway's wall
 export const FADE_OUT = 0.35; // seconds to black
 export const FADE_IN = 0.35; // seconds back from black
 export const WARP_HOLD = 0.15; // seconds of black for a warp inside one area
@@ -127,9 +131,8 @@ let groups = null; // area id -> Set of the areas drawn with it
 let byArea = null; // area id -> its screens
 const shown = new Set();
 
-// Draw the screens that belong around `screen`, plus `also` (the other room
-// of a slide).
-export function showScreens(screen, also = null) {
+// The screens drawn while the hero is on `screen` (see the top).
+function around(screen) {
   if (!groups) {
     groups = areaGroups(world);
     byArea = new Map();
@@ -138,11 +141,19 @@ export function showScreens(screen, also = null) {
       byArea.get(s.area.id).push(s);
     }
   }
+  if (screen.area.rooms) return [screen];
+  const out = [];
+  for (const area of groups.get(screen.area.id))
+    if (!area.rooms) for (const s of byArea.get(area.id)) if (s.z0 < screen.z1) out.push(s);
+  return out;
+}
+
+// Draw the screens around `screen`, and during a slide also those around
+// `also`, the screen it comes from.
+export function showScreens(screen, also = null) {
   shown.clear();
-  if (!screen.area.rooms)
-    for (const area of groups.get(screen.area.id)) if (!area.rooms) for (const s of byArea.get(area.id)) shown.add(s);
-  shown.add(screen);
-  if (also) shown.add(also);
+  for (const s of around(screen)) shown.add(s);
+  if (also) for (const s of around(also)) shown.add(s);
   syncScreenVisibility();
 }
 
@@ -169,12 +180,23 @@ export function crossEdge(dir) {
   const from = currentScreen();
   const next = world.screenAt(player.x, player.z);
   if (!next || next === from || !DIRS[dir]) return false;
-  const [ux, uz] = DIRS[dir];
-  const step = clearDistance(player, ux, uz, SLIDE_STEP);
-  const land = { x: player.x + ux * step, z: player.z + uz * step };
+  const land = landing(next, dir);
   if (next.area === from.area) startSlide(from, next, land);
   else startFade({ screen: next, x: land.x - next.x0, z: land.z - next.z0, yaw: player.yaw }, { via: 'edge', walkTo: land });
   return true;
+}
+
+// Where the hero stops after walking `dir` into `next`: SLIDE_STEP tiles in
+// from the edge, or in a room ROOM_STEP tiles past the inside face of the
+// wall the doorway is in (a tile thick; side walls stand WALL_INSET further
+// in), so the hero ends up clear of the doorway. Stops short of anything solid.
+function landing(next, dir) {
+  const [ux, uz] = DIRS[dir];
+  const dist = next.area.rooms ? (ux ? 1 + WALL_INSET : 1) + ROOM_STEP : SLIDE_STEP;
+  // how far past the edge the hero already is
+  const past = ux > 0 ? player.x - next.x0 : ux < 0 ? next.x1 - player.x : uz > 0 ? player.z - next.z0 : next.z1 - player.z;
+  const step = clearDistance(player, ux, uz, Math.max(0, dist - past));
+  return { x: player.x + ux * step, z: player.z + uz * step };
 }
 
 // ---------------------------------------------------------------- slide
@@ -184,7 +206,9 @@ function startSlide(from, next, land) {
   clearScreen();
   slide = { x0: player.x, z0: player.z, x1: land.x, z1: land.z };
   const preset = presetNameFor(next);
-  startCameraTween(subjectFor(land, next, CAMERA_PRESETS[preset]), SLIDE_TIME, easeInOutQuad, preset);
+  // The hero walks in linearly; the camera keeps him in frame on the way.
+  const anchor = { from: { x: player.x, z: player.z }, to: land };
+  startCameraTween(subjectFor(land, next, CAMERA_PRESETS[preset]), SLIDE_TIME, easeInOutQuad, preset, anchor);
   state.screenKey = next.key;
   world.regrow(next);
   showScreens(next, from);
@@ -245,7 +269,7 @@ export function enterWarp(ctx) {
 registerMode('warp', {
   update(dt) {
     const f = fade;
-    f.t += dt;
+    f.t += dt + 1e-9; // (a hair of slack, so 21 ticks of 1/60 s reach FADE_OUT)
     const inAt = FADE_OUT + f.hold; // the fade-in starts
     setFade(f.t < FADE_OUT ? f.t / FADE_OUT : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / FADE_IN));
     if (!f.moved && f.walk) {

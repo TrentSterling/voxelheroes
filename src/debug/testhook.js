@@ -11,7 +11,7 @@ import { setManual, isManual } from '../core/loop.js';
 import { seedRandom } from '../core/random.js';
 import { setMode } from '../core/modes.js';
 import { camera as camera3d } from '../core/renderer.js';
-import { CAMERA_PRESETS, setCameraPreset, cameraPreset, camTarget, subjectFor } from '../core/camera.js';
+import { CAMERA_PRESETS, FRAME_MARGIN, HERO_HEAD, HERO_HALF, setCameraPreset, cameraPreset, camTarget, subjectFor } from '../core/camera.js';
 import { world, currentScreen } from '../world/world.js';
 import { allAreas } from '../world/areas.js';
 import { edgeReport } from '../world/links.js';
@@ -111,6 +111,10 @@ export function installTestHook({ update, render }) {
       get: cameraPreset,
       target: camTarget,
       object: camera3d,
+      // Frame rules (core/camera.js): the hero's feet stay FRAME_MARGIN inside
+      // the frame when the camera must move; his head HERO_HALF either side
+      // of his centre, HERO_HEAD up.
+      rules: { margin: FRAME_MARGIN, heroHead: HERO_HEAD, heroHalf: HERO_HALF },
       // Where the follow rule puts the subject for the hero now (world units).
       expected: () => subjectFor(player, currentScreen()),
       // World point -> normalised device coordinates [x, y, depth]; x and y
@@ -134,6 +138,7 @@ export function installTestHook({ update, render }) {
     transitions: {
       SLIDE_TIME: transitions.SLIDE_TIME,
       SLIDE_STEP: transitions.SLIDE_STEP,
+      ROOM_STEP: transitions.ROOM_STEP,
       FADE_OUT: transitions.FADE_OUT,
       FADE_IN: transitions.FADE_IN,
       WARP_HOLD: transitions.WARP_HOLD,

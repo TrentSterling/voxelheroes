@@ -32,14 +32,15 @@ export function moveBody(b, dx, dz, bounds) {
 }
 
 // How far (up to `dist`) body b can go in direction (ux, uz) before anything
-// solid stops it, in steps of 1/16 tile. Used to walk the hero into a new
+// solid stops it, tested every 1/16 tile. Used to walk the hero into a new
 // screen without ending up inside a wall.
 export function clearDistance(b, ux, uz, dist) {
   const step = 1 / 16;
   let d = 0;
-  while (d + step <= dist + 1e-9) {
-    if (world.blocked(b.x + ux * (d + step), b.z + uz * (d + step), b.r, b)) break;
-    d += step;
+  while (d < dist) {
+    const next = Math.min(dist, d + step);
+    if (world.blocked(b.x + ux * next, b.z + uz * next, b.r, b)) break;
+    d = next;
   }
   return d;
 }
