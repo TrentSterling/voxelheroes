@@ -318,7 +318,7 @@ export class LookPipeline {
     return this.gatherQ[samples];
   }
 
-  // f: { look, dof, quality, focusDistance, exposure }
+  // f: { look, dof, quality, focusDistance, exposure, saturation (x the grade's, default 1) }
   render(f) {
     const { renderer, scene, camera } = this;
     const { look: L, quality: Q } = f;
@@ -367,7 +367,7 @@ export class LookPipeline {
     const G = L.grade;
     g.tDiffuse.value = src.texture;
     g.toneMappingExposure.value = f.exposure;
-    g.saturation.value = G.saturation;
+    g.saturation.value = G.saturation * (f.saturation ?? 1);
     g.contrast.value = G.contrast;
     g.lift.value.set(...G.lift);
     g.gain.value.set(...(G.gain ?? [1, 1, 1]));

@@ -42,7 +42,7 @@ src/
     save.js             localStorage slots (writeSlot, readSlot, listSlots), all in try/catch
     audio.js            WebAudio voices; sfx table + registerSfx
     voxel.js            seeded rng, VoxelGrid, face-culled mesher, shared voxel material
-    materials.js        material kinds (terrain, character, fine), glow, water, setSeams (see Look)
+    materials.js        material kinds (terrain, character, fine, prop), glow, water, setSeams (see Look)
     look/               lighting presets, light rigs, post stack, polished floor, quality levels (see Look)
     random.js           random() gameplay RNG (seeded), fxRandom() for effects
     math.js             lerpAngle, clamp, dist2d, yawDir
@@ -58,6 +58,7 @@ src/
     areas/overworld.js  the six overworld screens
     areas/crypt.js      the four crypt rooms
     world.js            builds every screen, collision, props, tile hooks, setTile, terrain LAYERS
+    room-view.js        rooms drawn one at a time (stand-in until feat/world's screen visibility)
     grid.js             screen/tile coordinate helpers
   entities/
     registry.js         ENTITY REGISTRY: registerEntity, createEntity
@@ -156,7 +157,7 @@ of screens; global tile (tx, tz) belongs to screen (floor(tx / 16),
 floor(tz / 11)). An area's `origin` places its local screen `'0,0'`. Map rows are
 local. `yaw` 0 faces +z (towards the camera); use `Math.atan2(dx, dz)`. Health
 is counted in half-hearts (`START_HP` 6 = three hearts). Terrain voxels are
-1/8 of a tile, character voxels 1/14.
+1/8 of a tile, character voxels 1/16.
 
 **Randomness and time.** Gameplay code uses `random()` from
 `core/random.js` (seeded; `?seed=N` or the hook's `seed(n)`), visual-only code
@@ -218,7 +219,7 @@ screen entry. A preset holds:
 | `lights.shadow` `{ mapSize, extent, follow: 'hero' \| 'subject', offset, bias, normalBias, radius }` | shadow box; `radius` is the PCF softness in texels |
 | `lights.lamp` `{ color, intensity, distance, decay, out, drop, fill }` | the wall lamps content places with `makeLampLight()` |
 | `env` `{ zenith, horizon, ground, sun, intensity }` | reflection environment; `intensity` scales it for every material |
-| `material`, `charMaterial`, `fineMaterial` | the three voxel kinds: `roughness`, `bevel`, `bevelTilt`, `edgeLight`, `grid: { width, dark }` (seams) |
+| `material`, `charMaterial`, `fineMaterial`, `propMaterial` | the voxel kinds: `roughness`, `bevel`, `bevelTilt`, `edgeLight`, `grid: { width, dark }` (seams); `charMaterial` and `propMaterial` merge over `material` |
 | `water` | colour, opacity, roughness, ripple, glints (`sparkle`, `glintSize`, `glintDensity`, `glintFar`), wave troughs, grazing sheen |
 | `ao`, `bloom`, `glare` | post values (bible section 5) |
 | `tone.exposure`, `grade` | exposure before ACES; `saturation`, `contrast`, `lift`, `gain`, `vignette`, `rim`, `edge` |
@@ -247,7 +248,9 @@ fits them.
 
 - Voxel meshes use `getMaterial('terrain')` (1/8-tile blocks, faint seams),
   `getMaterial('character')` (1/16 voxels: characters, props, pickups, clear
-  seams) or `getMaterial('fine')` (floors built at 1/16). The geometry carries
+  seams), `getMaterial('fine')` (floors built at 1/16) or `getMaterial('prop')`
+  (static stone props at 1/16, statues and braziers: the room's faint seams at
+  roughness 0.7, as the bible's statues). The geometry carries
   `position`, `normal`, linear `color` with the voxel AO baked in, and
   `faceUv` (0..1 across each face); both meshers write all four. No per-face
   shading in colours: the lights do that.
@@ -260,6 +263,13 @@ fits them.
   (0.35 x TV) below the ground surface, `receiveShadow` on, not bobbing: the
   ripples, troughs, glints and sheen are all in the shader.
 - `setSeams(on)` switches seam lines everywhere (an options menu).
+
+**Options.** The look reads `state.settings` every drawn frame and applies a
+changed value: `look` (a quality level, or `'auto'` for the device default the
+watchdog may lower), `seams` (true / false), `brightness` (multiplies the
+exposure) and `saturation` (multiplies the grade's saturation; high and medium
+only). From code: `setSeams(on)` and `look.setDisplay({ brightness,
+saturation })`.
 
 **Lamps.** `makeLampLight(overrides)` returns a group with the active look's
 lamp lights: a short bright pool 0.25 in front of the fixture plus a weak
@@ -725,7 +735,7 @@ tile per block; characters, props, pickups and dungeon floors at 1/16 tile per
 voxel. Every mesh is a `DenseGrid` meshed by `meshVoxels` (`core/vox.js`) and
 drawn with the material kinds of `core/materials.js` (see Look). Content makes
 no materials of its own beyond the contract: `getMaterial('terrain' |
-'character' | 'fine')`, `makeCharacterMaterial()` (an enemy's own hit flash),
+'character' | 'fine' | 'prop')`, `makeCharacterMaterial()` (an enemy's own hit flash),
 `makeGlowMaterial(color, intensity)` (flames, lamp strips, sparks, and black for
 the unlit south wall; pass `0xffffff` and set `vertexColors` for models that
 carry their own colours) and `makeWaterMaterial()`.
@@ -755,7 +765,7 @@ screen:
 |-------|------------|----------|-----|
 | `ctx.T` terrain | blocks of 1/8 tile | `terrain` | ground, cliffs, trees, rocks, walls |
 | `ctx.F` fine | voxels of 1/16 tile | `fine` | dungeon floors |
-| `ctx.D` detail | voxels of 1/16 tile | `character` | small static models: flowers, signs, graves, statues, braziers |
+| `ctx.D` detail | voxels of 1/16 tile | `character` | small static models: flowers, signs, graves |
 
 plus `ctx.water({ drop, y })`, a flat water plane on the tile (by default
 0.35 block below the ground's top, `WATER_Y`), and `ctx.fixture(object3d)`,
@@ -780,9 +790,12 @@ The rest of `ctx`: `x, z` (local) and `tx, tz` (global) tile coordinates,
 the backdrop), `screen` (the screen being built; null for a backdrop chunk),
 `owner` (the screen the tile belongs to), `own` (false while the tile is only
 built as another screen's margin), `world`, `area`, and
-`voxelLayer(name)`: a layer added with `registerLayer(name, { material,
-castShadow, receiveShadow })` (terrain resolution, its own material), written
-like `ctx.T`. M1 builders still work: `ctx.g` and `ctx.layer(name)` write
+`voxelLayer(name)`: a layer added with `registerLayer(name, { material | kind,
+res, castShadow, receiveShadow })` (terrain resolution, or with `res: FPT` one
+at 1/16 sized like the detail layer; its own material or material kind),
+written like `ctx.T` or `ctx.D`. The dungeon's `'stone-props'` layer (statues
+and braziers, kind `prop`) and `'unlit-black'` layer (the south wall) are
+registered this way. M1 builders still work: `ctx.g` and `ctx.layer(name)` write
 terrain blocks counted from the screen's corner (`ctx.bx`, `ctx.bz`).
 
 Rules:
@@ -793,6 +806,12 @@ Rules:
   shows the tile (`marginScreens`). So builders must be deterministic per
   tile: vary colours with `hash3` on global coordinates, and use `ctx.rand`
   only for decisions made before drawing, never per voxel.
+- **The edge of the world.** A margin tile with no screen and no backdrop
+  (south of the overworld, where the far band stops) is meshed by exactly one
+  of the screens around it: the one holding the tile north of it, else south,
+  west, east, then the diagonals. Builders write into it (a canopy overhangs
+  its tile by a block) and those voxels hide the faces beside them, so leaving
+  them unmeshed opened a hole through the tree and the ground under it.
 - **No bottom faces** at or below the ground's top. Faces facing north stay on
   shadow casters (three.js shadow maps render back faces).
 - **Tile fields the kits read**: `level` (raised ground, in tiles), `ground`
@@ -802,8 +821,13 @@ Rules:
   of detail above the ground), `doorway` (a solid tile that still counts as a
   doorway of a room wall, like a locked door).
 
-**Rooms.** Areas with `rooms: true` are drawn one room at a time with black
-around them. `registerRing(tileset, (room, tx, tz) => cell | null, { north,
+**Rooms.** Areas with `rooms: true` or a fixed camera (`camera: 'dungeon'`,
+the crypt) are drawn one room at a time with black around them:
+`world/room-view.js` (`syncRoomView()`, called by `main.js` every frame after
+`world.flush()`) hides every other room, and during a slide shows the room
+being left too; outside room areas every screen stays drawn. It stands in for
+feat/world's `showScreens` / `syncScreenVisibility` (same rule), which replaces
+it when that branch merges. In `rooms: true` areas the rooms also get a ring. `registerRing(tileset, (room, tx, tz) => cell | null, { north,
 south, west, east })` supplies the tiles around a room in place of the
 neighbouring rooms' tiles, reaching the given number of tiles out (default 1).
 The dungeon ring draws a corridor with its own side walls five tiles north
@@ -884,7 +908,9 @@ show); a `W` anywhere else is a full block of wall. So the same maps work in
 locked door is a pair of leaves one tile wide each and the full wall height,
 flush with the wall's inner face (`doorProp`). Floors are fine voxels
 (`fineFloor(ctx)`, `floorColor(X, Z)`): rounded-square tiles with a grout
-line, a lighter ring and a darker centre.
+line, a lighter ring and a darker centre. Statues and braziers are stamped
+into the `'stone-props'` layer (1/16, the `prop` material kind: matte stone
+with the room's faint seams, not the characters' clear ones).
 
 A lamp is a small dark sconce on the wall, a glow strip on it and a warm point
 light, all fixtures of the screen. The light comes from `makeLampLight()` in
@@ -990,8 +1016,9 @@ enemies and their frames, pickups, props, icons). Teleport there with
 | `events` | `{ on, once, off, emit }` |
 | `update(dt = 1/60)` | one simulation tick (what the loop calls) |
 | `step(seconds, dt = 1/60)` | many ticks; returns how many ran |
-| `setManual(on = true)`, `isManual()` | stop / resume the real-time simulation (rendering continues) |
-| `render()` | draw a frame now, HUD included |
+| `setManual(on = true)`, `isManual()` | stop / resume the real-time simulation (in manual mode the loop draws nothing either) |
+| `render()` | draw a frame now, HUD included (shots call it) |
+| `look` | the look: quality levels, lighting presets, `info()`, the material and lamp API ([Look](#look)) |
 | `seed(n)` | reseed gameplay randomness |
 | `start()` | title or game over -> play |
 | `teleport(target, x, z, { yaw })` | `'crypt'`, `'crypt:0,1'`, `'1,0'`, `[1, 0]`, `{ area, screen }` or a screen name; x, z local tiles (default the middle) |

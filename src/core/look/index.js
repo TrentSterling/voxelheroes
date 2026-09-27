@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../constants.js';
 import { state } from '../state.js';
 import { on } from '../events.js';
-import { applyMaterialLook, setFlatMaterials, setWaterTime, materialValues } from '../materials.js';
+import { applyMaterialLook, setFlatMaterials, setWaterTime, materialValues, setSeams } from '../materials.js';
 import { LOOK_DAY, LOOK_CRYPT, DOF_PRESETS, QUALITY_LEVELS, QUALITY_ORDER, dofForCamera, mergeLook, fromLegacy } from './presets.js';
 import { gradientEnvironment } from './environment.js';
 import { LightRig, makeLampLightFrom } from './lights.js';
@@ -39,6 +39,7 @@ export function createLook({ renderer, scene, camera }) {
   let quality = 'high';
   let pinned = false;
   let flash = null; // { start, seconds, boost }
+  const display = { brightness: 1, saturation: 1 }; // player options, on top of the look's own values
   let lastFrame = { dof: null, focusDistance: 0, exposure: 1, path: 'post', ms: 0 };
 
   // ---------------------------------------------------------------- presets
@@ -96,7 +97,6 @@ export function createLook({ renderer, scene, camera }) {
   }
 
   // ?look= wins, then a saved settings choice, then the device default (which the watchdog may lower)
-  let lastSettingsLook = state.settings?.look;
   function initQuality() {
     const url = new URLSearchParams(window.location.search).get('look');
     if (url && QUALITY_LEVELS[url]) return setQuality(url, { pin: true });
@@ -169,16 +169,35 @@ export function createLook({ renderer, scene, camera }) {
     return e;
   }
 
+  // Options menu choices in state.settings apply when they change: `look` (a quality level, or
+  // 'auto' for the device default that the watchdog may lower), `seams` (true / false),
+  // `brightness` (x exposure) and `saturation` (x the grade's saturation). setDisplay() and
+  // setSeams() do the same from code.
+  let lastSettings = { look: state.settings?.look };
+  function applySettings() {
+    const S = state.settings;
+    if (!S) return;
+    if (S.look !== lastSettings.look) {
+      lastSettings.look = S.look;
+      if (QUALITY_LEVELS[S.look]) setQuality(S.look, { pin: true });
+      else if (S.look === 'auto') setQuality(defaultQuality(), { pin: false });
+    }
+    if (S.seams !== lastSettings.seams) {
+      lastSettings.seams = S.seams;
+      if (typeof S.seams === 'boolean') setSeams(S.seams);
+    }
+    for (const k of ['brightness', 'saturation'])
+      if (S[k] !== lastSettings[k]) {
+        lastSettings[k] = S[k];
+        display[k] = Number.isFinite(S[k]) ? S[k] : 1;
+      }
+  }
+
   function render() {
     const t0 = performance.now();
     renderer.info.reset();
     if (!lookName) applyLook('day');
-    // a settings menu choice (state.settings.look) applies when it changes
-    const settingsLook = state.settings?.look;
-    if (settingsLook !== lastSettingsLook) {
-      lastSettingsLook = settingsLook;
-      if (QUALITY_LEVELS[settingsLook]) setQuality(settingsLook, { pin: true });
-    }
+    applySettings();
     const Q = QUALITY_LEVELS[quality];
 
     const pr = Math.min(window.devicePixelRatio || 1, 2);
@@ -208,12 +227,12 @@ export function createLook({ renderer, scene, camera }) {
     const dof = dofForCamera(bound.cameraPresetName(), bound.cameraPreset());
     _hero.set(hero ? hero.x : subject.x, GROUND_Y, hero ? hero.z : subject.z).applyMatrix4(camera.matrixWorldInverse);
     const focusDistance = -_hero.z + (dof.focusOffset ?? 0);
-    const exp = exposure();
+    const exp = exposure() * display.brightness;
 
     if (Q.post) {
       pipeline.setSize(w, h);
       renderer.toneMapping = THREE.NoToneMapping;
-      pipeline.render({ look: L, quality: Q, dof, focusDistance, exposure: exp });
+      pipeline.render({ look: L, quality: Q, dof, focusDistance, exposure: exp, saturation: display.saturation });
     } else {
       renderer.setRenderTarget(null);
       renderer.toneMapping = Q.flat ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
@@ -261,6 +280,14 @@ export function createLook({ renderer, scene, camera }) {
     setMirrorRect(rect) {
       mirror.override = rect ? { ...rect } : null;
     },
+    // player options: brightness multiplies the exposure, saturation the grade's saturation (the
+    // grade only runs at high and medium quality)
+    setDisplay({ brightness, saturation } = {}) {
+      if (brightness !== undefined) display.brightness = Number.isFinite(brightness) ? brightness : 1;
+      if (saturation !== undefined) display.saturation = Number.isFinite(saturation) ? saturation : 1;
+      return { ...display };
+    },
+    display: () => ({ ...display }),
     // a wall lamp (group of point lights) with the active look's lamp values, culled with the others
     makeLampLight(overrides) {
       const lamp = makeLampLightFrom(L.lights?.lamp ?? LOOK_CRYPT.lights.lamp, overrides);

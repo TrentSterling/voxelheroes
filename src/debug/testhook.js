@@ -1,8 +1,8 @@
 // window.__voxelHeroes: the handle play-tests and debugging use to drive the
 // game without real-time input. See docs/ARCHITECTURE.md ("Test hook").
 //
-// URL parameters: ?manual=1 starts in manual mode (the loop renders but does
-// not advance the simulation); ?seed=N seeds gameplay randomness.
+// URL parameters: ?manual=1 starts in manual mode (the loop neither advances
+// the simulation nor draws: call render()); ?seed=N seeds gameplay randomness.
 import { SCREEN_W, SCREEN_H } from '../core/constants.js';
 import { state, serializeState } from '../core/state.js';
 import { input } from '../core/input.js';
@@ -76,8 +76,10 @@ export function installTestHook({ update, render }) {
       // the three.js camera (project points to find pixels in a frame)
       camera: viewCamera,
       setSeams,
+      // player options: { brightness, saturation } (1 = the look's own values)
+      setDisplay: (opts) => look.setDisplay(opts),
       materials: materialValues,
-      // for previews of content the look-kits port has not switched over yet
+      // the material and lamp API, for probes and previews
       getMaterial,
       makeWaterMaterial,
       makeGlowMaterial,

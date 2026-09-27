@@ -1,8 +1,9 @@
 // The real-time loop: one simulation step and one render per animation frame.
 //
-// In manual mode (setManual(true)) the loop keeps rendering but stops
-// advancing the simulation, so a test can step it deterministically with
-// window.__voxelHeroes.update(1 / 60).
+// In manual mode (setManual(true)) the loop stops advancing the simulation, so
+// a test can step it deterministically with window.__voxelHeroes.update(1 / 60),
+// and main.js's draw callback skips the scene (a look frame takes seconds in
+// software GL): tests call window.__voxelHeroes.render() before a screenshot.
 
 export const MAX_DT = 1 / 30;
 
