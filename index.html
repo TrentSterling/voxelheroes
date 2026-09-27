@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- head:start -->
+    <title>Voxel Heroes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+    <!-- head:end -->
+  </head>
+  <body>
+    <!-- body:start -->
+    <div id="app">
+      <div id="game"></div>
+      <header id="hud">
+        <div id="hearts" aria-label="Health"></div>
+        <div id="area">Crossroads</div>
+        <div id="hud-right">
+          <div id="purse" aria-label="Gems">
+            <svg viewBox="0 0 5 9" width="12" height="22" shape-rendering="crispEdges" aria-hidden="true">
+              <path fill="#2fd36b" d="M2 0h1v1h1v2h1v3h-1v2h-1v1h-1v-1h-1v-2h-1v-3h1v-2h1z" />
+              <path fill="#bff5d3" d="M2 1h1v1h-1zM1 3h1v3h-1z" />
+            </svg>
+            <span id="gems">0</span>
+          </div>
+          <div id="keys" aria-label="Small keys" hidden>
+            <svg viewBox="0 0 5 9" width="12" height="22" shape-rendering="crispEdges" aria-hidden="true">
+              <path fill="#f1c232" d="M1 0h3v1h1v3h-1v1h-1v1h1v1h-1v1h1v1h-2v-5h-1v-1h-1v-3h1z" />
+              <path fill="#10201a" d="M2 1h1v2h-1z" />
+            </svg>
+            <span id="key-count">0</span>
+          </div>
+          <button id="mute" type="button" aria-pressed="false">Sound on</button>
+        </div>
+      </header>
+      <div id="banner" hidden></div>
+      <div id="fade"></div>
+      <div id="overlay">
+        <div class="panel">
+          <p class="kicker">An overworld made of cubes</p>
+          <h1 id="overlay-title">Voxel Heroes</h1>
+          <p id="overlay-msg">Six overworld screens and a four-room crypt hidden in the cliffs of Cairn Ridge. Find the small key, open the locked door, and claim what the crypt is guarding.</p>
+          <button id="start" type="button">Start adventure</button>
+          <dl class="controls">
+            <div><dt>Move</dt><dd>WASD or arrows</dd></div>
+            <div><dt>Sword</dt><dd>Space or J</dd></div>
+            <div><dt>Shield</dt><dd>Face the shot</dd></div>
+            <div><dt>Pause</dt><dd>P</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div id="touch" hidden>
+        <div id="stick"><div id="knob"></div></div>
+        <button id="btn-a" type="button" aria-label="Swing sword">A</button>
+      </div>
+    </div>
+    <!-- body:end -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
