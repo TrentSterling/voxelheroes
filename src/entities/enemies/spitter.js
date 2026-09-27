@@ -3,7 +3,7 @@
 import { DEG } from '../../core/constants.js';
 import { sfx } from '../../core/audio.js';
 import { random } from '../../core/random.js';
-import { spitterGeometry } from '../../models/spitter.js';
+import { spitterModel } from '../../models/characters.js';
 import { moveBody } from '../../systems/physics.js';
 import { Enemy } from '../enemy.js';
 import { spawn } from '../manager.js';
@@ -20,7 +20,7 @@ export const ROCK_SPEED = 5.5;
 
 export class Spitter extends Enemy {
   constructor(opts) {
-    super(opts, { hp: 3, r: 0.36, speed: 1.6, colors: [0x8e4fd0, 0xb07ae8, 0x5d2e94], geometry: spitterGeometry() });
+    super(opts, { hp: 3, r: 0.36, speed: 1.6, poses: { idle: spitterModel(0), aim: spitterModel(1) } });
     this.phase = 'walk'; // walk | aim
     this.aimT = 0;
   }
@@ -45,9 +45,9 @@ export class Spitter extends Enemy {
       }
     } else {
       this.aimT -= dt;
-      this.mesh.scale.setScalar(1 + Math.max(0, 0.3 - this.aimT) * 0.4);
+      this.mesh.setPose(this.aimT < 0.3 ? 'aim' : 'idle'); // cheeks puff up just before it spits
       if (this.aimT <= 0) {
-        this.mesh.scale.setScalar(1);
+        this.mesh.setPose('idle');
         if (dist < 9) this.fire();
         this.phase = 'walk';
         this.thinkT = 1.2 + random() * 1.5;

@@ -4,6 +4,7 @@
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { input } from '../core/input.js';
+import { on } from '../core/events.js';
 import { lerpAngle } from '../core/math.js';
 import { makeHero } from '../models/hero.js';
 import { world } from '../world/world.js';
@@ -17,6 +18,14 @@ import { Entity } from './entity.js';
 
 export const PLAYER_SPEED = 4.3;
 
+// The hero's cels (models/hero.js): walking swaps walk1 / walk2 about 8 times a second, standing
+// still he walks in place slowly, swordOut is held through a swing, cheer for item-get moments.
+// The whole model sways side to side with the steps.
+const WALK_FPS = 8;
+const IDLE_FPS = 2.5;
+const SWAY = 0.08; // radians of roll at the middle of a step
+const SWAY_IDLE = 0.04;
+const CHEER = { chest: 1.4, item: 1.2, key: 0.9 }; // seconds of cheer
 export class Player extends Entity {
   constructor() {
     super({ r: 0.3 });
@@ -32,11 +41,22 @@ export class Player extends Entity {
     this.kx = 0;
     this.kz = 0;
     this.knockT = 0;
-    this.walkT = 0;
+    this.walkT = 0; // cels shown so far (the walk cycle)
+    this.cheerT = 0; // > 0 while cheering
     this.tileX = null; // tile under the hero, for onEnter/onLeave
     this.tileZ = null;
     this.hero = makeHero();
     this.object = this.hero.root;
+    on('chest-opened', () => this.cheer(CHEER.chest));
+    on('item-gained', () => this.cheer(CHEER.item));
+    on('pickup', (e) => {
+      if (e?.type === 'key') this.cheer(CHEER.key);
+    });
+  }
+
+  // Hold the cheer pose (both hands up) for a while: item get, victory.
+  cheer(seconds = 1.2) {
+    this.cheerT = Math.max(this.cheerT, seconds);
   }
 
   // Forget the tile under the hero (after teleports) so onEnter fires fresh.
@@ -103,14 +123,18 @@ export class Player extends Entity {
 
   animate(dt, moving) {
     const hero = this.hero;
-    if (moving) this.walkT += dt * 13;
-    else this.walkT = 0;
-    const w = Math.sin(this.walkT);
-    hero.legL.rotation.x = w * 0.7;
-    hero.legR.rotation.x = -w * 0.7;
-    hero.armL.rotation.x = -w * 0.3;
-    hero.body.position.y = Math.abs(Math.sin(this.walkT)) * 0.04;
-    poseSword(hero, this, w);
+    this.walkT += dt * (moving ? WALK_FPS : IDLE_FPS);
+    if (this.cheerT > 0) this.cheerT -= dt;
+    const step = Math.floor(this.walkT) % 2 ? 'walk2' : 'walk1';
+    let pose = step;
+    if (this.attackT > 0) pose = 'swordOut';
+    else if (this.cheerT > 0) pose = 'cheer';
+    else if (state.mode === 'dead') pose = 'stand';
+    hero.setPose(pose);
+    const walking = pose === step;
+    hero.sway.rotation.z = walking ? Math.sin(this.walkT * Math.PI) * (moving ? SWAY : SWAY_IDLE) : 0;
+    poseSword(hero, this, Math.sin(this.walkT * Math.PI));
+    hero.swordPivot.visible = this.attackT > 0; // the blade is out only during a swing
     hero.root.position.set(this.x, GROUND_Y, this.z);
     hero.root.rotation.y = this.yaw;
     hero.root.visible = this.invT <= 0 || state.mode === 'dead' || Math.floor(this.invT * 16) % 2 === 0;
