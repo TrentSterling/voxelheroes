@@ -1,10 +1,17 @@
 // The A button talks before it swings: if something in front of the hero
 // answers onInteract (an NPC, a sign tile, a shop counter), the press is used
 // up and the sword stays sheathed.
+//
+//   findInteraction(player) -> { entity, label } | { tx, tz, def, label } | null
+//       what A would talk to or check now, without doing it (the prompt bar
+//       asks every frame). label: the entity's or tile's `prompt` ('Talk',
+//       'Read', 'Open', 'Buy'), default 'Talk' for entities, 'Check' for tiles.
+//   tryInteract(player) -> true if A was used up
 import { world } from '../world/world.js';
 import { entities } from '../entities/manager.js';
 
-export function tryInteract(p) {
+// The nearest entity with onInteract roughly in front of the hero, in reach.
+function facingEntity(p) {
   const fx = Math.sin(p.yaw);
   const fz = Math.cos(p.yaw);
   let best = null;
@@ -21,8 +28,22 @@ export function tryInteract(p) {
       bestD = d;
     }
   }
+  return best;
+}
+
+const tileAhead = (p) => [Math.floor(p.x + Math.sin(p.yaw) * 0.55), Math.floor(p.z + Math.cos(p.yaw) * 0.55)];
+
+export function findInteraction(p) {
+  const e = facingEntity(p);
+  if (e) return { entity: e, label: e.prompt ?? 'Talk' };
+  const [tx, tz] = tileAhead(p);
+  const def = world.tileDefAt(tx, tz);
+  return def?.onInteract ? { tx, tz, def, label: def.prompt ?? 'Check' } : null;
+}
+
+export function tryInteract(p) {
+  const best = facingEntity(p);
   if (best && best.onInteract(p) !== false) return true;
-  const tx = Math.floor(p.x + fx * 0.55);
-  const tz = Math.floor(p.z + fz * 0.55);
+  const [tx, tz] = tileAhead(p);
   return !!world.trigger(tx, tz, 'onInteract', { player: p });
 }

@@ -21,8 +21,8 @@
 // Orders in use: left: hearts 10; center: area 10; right: item-slot 20,
 // gems 30, keys 40 (the Sound button stays last).
 import { state } from '../core/state.js';
-import { toggleMute } from '../core/audio.js';
 import { keyCount } from '../systems/keys.js';
+import { setSetting, registerSettingApplier } from '../game/settings.js';
 import { $ } from './dom.js';
 
 const REGIONS = { left: 'hud-left', center: 'hud-center', right: 'hud-right' };
@@ -68,15 +68,23 @@ export function refreshHud() {
   }
 }
 
+// Mute is an option (game/settings.js 'muted', kept across visits): the N
+// key and the Sound button flip it, and the button shows it.
 export function toggleMuteUi() {
-  const m = toggleMute();
-  $('mute').textContent = m ? 'Sound off' : 'Sound on';
-  $('mute').setAttribute('aria-pressed', String(m));
+  setSetting('muted', !state.settings.muted);
+}
+
+function drawMute(m) {
+  const b = $('mute');
+  if (!b) return;
+  b.textContent = m ? 'Sound off' : 'Sound on';
+  b.setAttribute('aria-pressed', String(!!m));
 }
 
 export function initHud() {
   mounted = true;
   for (const w of [...widgets].sort(before)) mountWidget(w);
+  registerSettingApplier('muted', drawMute);
   $('mute').addEventListener('click', (e) => {
     toggleMuteUi();
     e.currentTarget.blur();

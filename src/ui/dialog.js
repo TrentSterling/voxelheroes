@@ -16,13 +16,17 @@
 //
 // Code after `await showDialog(...)` runs between two ticks, like any promise
 // continuation; tests step with __voxelHeroes.step()/tick(), which let it run.
+//
+// Options (game/settings.js): text types at the textSpeed setting (opts.speed
+// overrides it, in characters per second); largeText draws a bigger box.
+// "{hero}" in a line becomes the hero's name. ask(text, choices, opts) is
+// showDialog with choices.
 import './dialog.css';
 import { registerMode, pushMode, popMode } from '../core/modes.js';
 import { input } from '../core/input.js';
 import { state } from '../core/state.js';
+import { textSpeed } from '../game/settings.js';
 import { el } from './dom.js';
-
-const TYPE_SPEED = 45; // characters per second
 
 let box = null;
 let active = null;
@@ -44,12 +48,17 @@ function ensureBox() {
   return box;
 }
 
+const heroName = () => state.profile?.name || 'Hero';
+const fill = (text) => String(text).replaceAll('{hero}', heroName());
+
 export function showDialog(lines, opts = {}) {
   return new Promise((resolve) => {
-    queue.push({ pages: Array.isArray(lines) ? lines : [lines], opts, resolve });
+    queue.push({ pages: (Array.isArray(lines) ? lines : [lines]).map(fill), opts, resolve });
     if (!active) openNext();
   });
 }
+
+export const ask = (text, choices, opts = {}) => showDialog(text, { ...opts, choices });
 
 export const dialogOpen = () => active !== null;
 
@@ -60,6 +69,7 @@ function openNext() {
   active = { ...next, page: 0, shown: 0, drawn: -1, choice: 0 };
   b.speaker.textContent = next.opts.speaker ?? '';
   b.speaker.hidden = !next.opts.speaker;
+  b.root.classList.toggle('large', !!state.settings.largeText);
   b.root.hidden = false;
   drawPage();
   if (state.mode !== 'dialog') pushMode('dialog');
@@ -121,7 +131,7 @@ registerMode('dialog', {
       return;
     }
     const text = pageText();
-    active.shown = Math.min(text.length, active.shown + dt * (active.opts.speed ?? TYPE_SPEED));
+    active.shown = Math.min(text.length, active.shown + dt * (active.opts.speed ?? textSpeed()));
     const done = active.shown >= text.length;
     const list = choices();
     if (done && list) {

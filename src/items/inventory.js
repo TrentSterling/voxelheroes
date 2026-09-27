@@ -3,10 +3,13 @@
 //   giveItem('bow')        own it (plus its startAmmo)
 //   addAmmo('arrows', 10)  clamped to the item's maxAmmo
 //   useAmmo('arrows', 1)   -> false if there is not enough
-//   cycleItem(1)           next item on B (E / Q keys)
+//   cycleItem(1)           next item on the quick ring (E / Q keys)
+//   setOnRing('book', false)  take an item off the quick ring (the inventory's
+//                          "E" tags, gameplay spec 9.1); ringItems() lists the ring
 //
-// state.inventory = { owned: ['bow'], ammo: { arrows: 10 }, selected: 'bow' }
-// is saved with the game (defineState). grant(id, n) / the test hook's give()
+// state.inventory = { owned: ['bow'], ammo: { arrows: 10 }, selected: 'bow',
+// off: [] } is saved with the game (defineState); off lists owned items taken
+// off the ring (saves without it read as none). grant(id, n) / the test hook's give()
 // work for every item id and ammo counter: grant('bow') gives the bow (with
 // its startAmmo), grant('arrows', 10) adds ammo. When an item's id is also
 // its ammo counter (bombs), the first grant gives the item and later ones
@@ -18,7 +21,7 @@ import { spawn } from '../entities/manager.js';
 import { setGrantFallback } from '../systems/grants.js';
 import { getItem, allItems, ammoKeys } from './registry.js';
 
-defineState('inventory', () => ({ owned: [], ammo: {}, selected: null }));
+defineState('inventory', () => ({ owned: [], ammo: {}, selected: null, off: [] }));
 
 const inv = () => state.inventory;
 
@@ -29,6 +32,23 @@ export const ownedItems = () => allItems().filter((i) => hasItem(i.id));
 export const selectableItems = () => ownedItems().filter((i) => !i.passive);
 
 export const selectedItem = () => (inv().selected ? getItem(inv().selected) : null);
+
+// The quick ring: selectable items not taken off it.
+const offRing = () => inv().off ?? [];
+export const isOnRing = (id) => hasItem(id) && !getItem(id)?.passive && !offRing().includes(id);
+export const ringItems = () => selectableItems().filter((i) => !offRing().includes(i.id));
+
+export function setOnRing(id, on = true) {
+  if (!hasItem(id) || getItem(id)?.passive) return false;
+  const off = offRing().filter((x) => x !== id);
+  if (!on) off.push(id);
+  inv().off = off;
+  if (!on && inv().selected === id) {
+    inv().selected = ringItems()[0]?.id ?? null;
+    emit('item-selected', { id: inv().selected });
+  }
+  return true;
+}
 
 export function giveItem(id) {
   const item = getItem(id);
@@ -72,7 +92,7 @@ export function selectItem(id) {
 }
 
 export function cycleItem(dir) {
-  const list = selectableItems();
+  const list = ringItems();
   if (list.length < 2) return;
   const i = list.findIndex((x) => x.id === inv().selected);
   selectItem(list[(i + dir + list.length) % list.length].id);

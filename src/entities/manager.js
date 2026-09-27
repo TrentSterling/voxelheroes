@@ -4,8 +4,12 @@
 // everything else 30), so a rock spat this frame moves this frame and a gem
 // dropped this frame can be picked up this frame, as in the prototype.
 // Removal is deferred until the end of the update, so removing an entity in
-// the middle of the loop never skips another.
+// the middle of the loop never skips another. Adding an enemy emits
+// 'enemy-spawned' (the bestiary counts sightings from it). An entity may
+// remove itself in onAdd() (a spawn group once it has placed its enemies, an
+// enemy of a room that is remembered as cleared); it is then not announced.
 import { scene } from '../core/renderer.js';
+import { emit } from '../core/events.js';
 import { createEntity } from './registry.js';
 
 export const entities = []; // live list, sorted by priority
@@ -19,6 +23,7 @@ export function addEntity(e) {
   entities.splice(i, 0, e);
   if (e.object) scene.add(e.object);
   e.onAdd?.();
+  if (e.kind === 'enemy' && !e.removed) emit('enemy-spawned', { entity: e });
   return e;
 }
 

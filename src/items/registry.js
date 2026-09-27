@@ -21,6 +21,16 @@
 // (a lit lantern), passive: true for owned-but-not-selectable items.
 // Nothing is registered in M1: the B button and its HUD slot stay hidden
 // until the inventory holds something.
+//
+// M2 fields (docs/CONTRACTS.md, "Items"):
+//   kind      'tool' (default) | 'spell' (game/spells.js registers these) |
+//             'consumable' | 'passive' (default when passive: true)
+//   fanfare   false: getting it is not an item get (default: the first grant
+//             of an item shows the item get, systems/grants.js)
+//   getText   the item-get line (default "<name>!")
+//   bottle    true for contents of a bottle (potions, the elixir)
+// The quick ring (gameplay spec 9.1) holds every selectable item the
+// inventory has not taken off it (items/inventory.js setOnRing).
 
 const items = new Map();
 
@@ -28,7 +38,7 @@ export function registerItem(def) {
   if (!def?.id) throw new Error('registerItem: an item needs an id');
   if (items.has(def.id)) throw new Error(`Item "${def.id}" is already registered`);
   if (!def.passive && typeof def.use !== 'function') throw new Error(`Item "${def.id}" needs use(ctx) (or passive: true)`);
-  const full = { name: def.id, icon: '', order: 100, ammo: null, maxAmmo: 99, startAmmo: 0, passive: false, ...def };
+  const full = { name: def.id, icon: '', order: 100, ammo: null, maxAmmo: 99, startAmmo: 0, passive: false, kind: def.passive ? 'passive' : 'tool', ...def };
   items.set(def.id, full);
   return full;
 }

@@ -42,7 +42,8 @@
   margin: 10px 0 0;
   padding: 0;
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 4px 18px;
   font-size: 18px;
   color: var(--muted);
 }
@@ -77,4 +78,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dialog-more { animation: none; }
+}
+
+/* The large text option (game/settings.js largeText). */
+.dialog.large .dialog-text {
+  font-size: 25px;
+}
+
+.dialog.large .dialog-choices {
+  font-size: 23px;
 }
