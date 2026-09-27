@@ -1,5 +1,5 @@
 // Game flow: starting, pausing, falling and getting back up, new game, load,
-// and the test hook's teleport. Also registers the 'play' mode.
+// and the test hook's teleport. Also registers the 'play' mode and its hooks.
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../core/constants.js';
 import { state, defineState, registerSaveField, resetState, loadState, serializeState } from '../core/state.js';
 import { writeSlot, readSlot } from '../core/save.js';
@@ -104,16 +104,24 @@ export function saveToSlot(n = slot) {
   return writeSlot(n, serializeState());
 }
 
-// Load a slot and resume play there. false if the slot is empty or unreadable.
+// Load a slot and resume play there. false if the slot is empty, unreadable
+// or rejected (made by a newer version, damaged); the running game is then
+// left as it was.
 export function loadFromSlot(n) {
   const saved = readSlot(n);
   if (!saved?.data) return false;
+  try {
+    loadGame(saved.data);
+  } catch (e) {
+    console.warn(`loadFromSlot(${n}): ${e.message}`);
+    return false;
+  }
   slot = n;
-  loadGame(saved.data);
   return true;
 }
 
-// Apply save data (serializeState() output) and resume play where it was made.
+// Apply save data (serializeState() output) and resume play where it was
+// made. Throws before touching the running game if the data is rejected.
 export function loadGame(data) {
   loadState(data);
   clearScreen();
@@ -180,14 +188,42 @@ export function teleport(target, x = SCREEN_W / 2, z = SCREEN_H / 2, { yaw = pla
 }
 
 // ---------------------------------------------------------------- play mode
+// Features that need a say in every play tick register a hook instead of
+// editing this file or player.js:
+//
+//   registerPlayHook({ id: 'map', phase: 'input', update() { if (input.pressed('map')) pushMode('map'); } });
+//   registerPlayHook({ id: 'carry', phase: 'input', order: 10, update(dt) { if (carrying && input.pressed('sword')) { throwIt(); input.consume('sword'); } } });
+//   registerPlayHook({ id: 'boss-music', phase: 'after', update(dt) { ... } });
+//
+// 'input' hooks run after the Start check and before the hero moves: they may
+// consume presses (input.consume) so the hero never sees them, or change the
+// mode (pushMode), which ends the tick. 'after' hooks run once the hero, the
+// items and the entities have moved. Within a phase, lower `order` (default
+// 50) runs first, then by id, so load order never matters.
+const playHooks = { input: [], after: [] };
+
+export function registerPlayHook({ id, phase = 'after', order = 50, update }) {
+  if (!id) throw new Error('registerPlayHook: a hook needs an id');
+  if (!playHooks[phase]) throw new Error(`Play hook "${id}": phase must be 'input' or 'after', not "${phase}"`);
+  if (typeof update !== 'function') throw new Error(`Play hook "${id}" needs update(dt)`);
+  if ([...playHooks.input, ...playHooks.after].some((h) => h.id === id)) throw new Error(`Play hook "${id}" is already registered`);
+  playHooks[phase].push({ id, order, update });
+  playHooks[phase].sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 registerMode('play', {
   update(dt) {
     if (input.pressed('menu')) {
       pauseGame();
       return;
     }
+    for (const h of playHooks.input) {
+      h.update(dt);
+      if (state.mode !== 'play') return;
+    }
     player.update(dt);
     updateItems(dt, player);
     updateEntities(dt);
+    for (const h of playHooks.after) h.update(dt);
   },
 });

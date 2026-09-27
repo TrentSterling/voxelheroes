@@ -7,6 +7,9 @@
 // distance is fitted so one whole 16 x 11 screen fills the view.
 //
 // Preset fields:
+//   label       name for menus
+//   selectable  offered to the player as a camera choice (A-D). Presets an
+//               area or a boss room registers for itself leave it false.
 //   pitch     degrees down from the horizon
 //   fov       vertical field of view in degrees
 //   padX      extra tiles kept visible left and right of the screen
@@ -21,18 +24,30 @@ import { SCREEN_W, SCREEN_H, DEG } from './constants.js';
 // the research notes (higher, most overhead, closer) and are starting values
 // for M5 to tune. 'dungeon' is the fixed dungeon camera, identical to A for now.
 export const CAMERA_PRESETS = {
-  A: { label: 'Type A', pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
-  B: { label: 'Type B', pitch: 66, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
-  C: { label: 'Type C', pitch: 78, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
-  D: { label: 'Type D', pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 0.8 },
-  dungeon: { label: 'Dungeon', pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
+  A: { label: 'Type A', selectable: true, pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
+  B: { label: 'Type B', selectable: true, pitch: 66, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
+  C: { label: 'Type C', selectable: true, pitch: 78, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
+  D: { label: 'Type D', selectable: true, pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 0.8 },
+  dungeon: { label: 'Dungeon', selectable: false, pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
 };
 
 export const DEFAULT_PRESET = 'A';
 
+// Add or replace a preset. Missing fields come from preset A. A new preset is
+// not a player choice unless it says `selectable: true`; replacing one keeps
+// its selectable flag unless the new definition sets it.
 export function registerCameraPreset(name, preset) {
-  CAMERA_PRESETS[name] = { ...CAMERA_PRESETS[DEFAULT_PRESET], ...preset };
+  const old = CAMERA_PRESETS[name];
+  CAMERA_PRESETS[name] = {
+    ...CAMERA_PRESETS[DEFAULT_PRESET],
+    label: old?.label ?? name,
+    selectable: old?.selectable ?? false,
+    ...preset,
+  };
 }
+
+// The presets an options menu offers (A-D unless more are registered as selectable).
+export const playerCameraPresets = () => Object.keys(CAMERA_PRESETS).filter((n) => CAMERA_PRESETS[n].selectable);
 
 // The point the camera looks at: the centre of the current screen, or a point
 // in between two screens while sliding.

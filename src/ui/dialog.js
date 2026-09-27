@@ -8,6 +8,14 @@
 // paused in the 'dialog' mode. The promise resolves when the box closes, with
 // the chosen index when `choices` were given (on the last page).
 // Calls made while a box is open wait their turn.
+//
+// If the mode is replaced while a box is open (teleport, load, new game, the
+// title's start button), the box closes and every open or waiting dialog
+// resolves with undefined, choice dialogs included, so `if (choice === 0)`
+// code never takes the yes path by accident.
+//
+// Code after `await showDialog(...)` runs between two ticks, like any promise
+// continuation; tests step with __voxelHeroes.step()/tick(), which let it run.
 import './dialog.css';
 import { registerMode, pushMode, popMode } from '../core/modes.js';
 import { input } from '../core/input.js';
@@ -93,7 +101,20 @@ function close() {
   resolve(result);
 }
 
+// Close the box and settle every open and waiting dialog with undefined.
+function cancelAll() {
+  const pending = [active, ...queue.splice(0)].filter(Boolean);
+  active = null;
+  if (box) box.root.hidden = true;
+  for (const d of pending) d.resolve(undefined);
+}
+
 registerMode('dialog', {
+  // close() clears `active` before it pops, so this only runs when something
+  // else replaced the mode (setMode unwinds the whole stack).
+  exit({ suspended }) {
+    if (!suspended && active) cancelAll();
+  },
   update(dt) {
     if (!active) {
       popMode();

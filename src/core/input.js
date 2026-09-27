@@ -9,8 +9,10 @@
 // Presses and releases are latched until the end of the next tick (endFrame),
 // so a tap between two frames is seen exactly once, including when tests step
 // the simulation by hand. Changing mode clears them (clearPresses) so one
-// press never acts in two modes. Held + pressed + released is enough to build
-// charge attacks: start charging on pressed, fire on released.
+// press never acts in two modes; input.carry(action) re-presses an action on
+// the next tick (modes.js uses it to carry A and B through screen slides and
+// warps). Held + pressed + released is enough to build charge attacks: start
+// charging on pressed, fire on released.
 //
 // Actions: sword (A), item (B), menu (Start), confirm, cancel, next-item,
 // prev-item, mute, up/down/left/right. Rebind with input.bind().
@@ -48,6 +50,7 @@ const keysDown = new Set(); // codes currently held
 const virtualHeld = new Map(); // action -> number of virtual sources holding it
 const pressedSet = new Set();
 const releasedSet = new Set();
+const carriedSet = new Set(); // pressed again on the next tick (carry)
 const stick = { x: 0, z: 0 }; // touch stick or a test's virtual stick
 const gestureHandlers = [];
 
@@ -83,10 +86,18 @@ export const input = {
   endFrame() {
     pressedSet.clear();
     releasedSet.clear();
+    for (const a of carriedSet) pressedSet.add(a);
+    carriedSet.clear();
   },
+  // Forget latched presses and releases (and carried presses).
   clearPresses() {
     pressedSet.clear();
     releasedSet.clear();
+    carriedSet.clear();
+  },
+  // Report `action` as pressed again on the next tick.
+  carry(action) {
+    carriedSet.add(action);
   },
   releaseAll() {
     keysDown.clear();

@@ -60,7 +60,7 @@ export default registerArea({
         '..s.e..~~~..o..T',
         '.....B.~~~.....T',
         'T..,...........T',
-        'TT.,...B...,..TT',
+        'TT.,B......,..TT',
         'TTTTTT....TTTTTT',
       ],
     },

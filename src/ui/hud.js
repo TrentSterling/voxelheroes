@@ -7,26 +7,51 @@
 //
 //   registerHudWidget({
 //     id: 'bombs',
-//     mount({ hud, right }) { ...create elements inside #hud or #hud-right... },
+//     region: 'right',        // 'left' | 'center' | 'right' (default 'right')
+//     order: 25,              // position in the region, low first (default 50)
+//     mount({ host }) { host.append(...my elements...); },
 //     key: (state) => String(state.bombs),
 //     render(state) { ...update the elements... },
 //   });
+//
+// Every widget gets its own slot element `host` in its region, placed by
+// order (then id), so the HUD reads the same whatever order the files load
+// in. The host is display: contents, so the widget's elements line up in the
+// region's row.
+// Orders in use: left: hearts 10; center: area 10; right: item-slot 20,
+// gems 30, keys 40 (the Sound button stays last).
 import { state } from '../core/state.js';
 import { toggleMute } from '../core/audio.js';
 import { keyCount } from '../systems/keys.js';
 import { $ } from './dom.js';
 
+const REGIONS = { left: 'hud-left', center: 'hud-center', right: 'hud-right' };
 const widgets = [];
 let mounted = false;
 let areaLabel = '';
 
-export function registerHudWidget(w) {
-  if (widgets.some((x) => x.id === w.id)) throw new Error(`HUD widget "${w.id}" is already registered`);
-  widgets.push({ ...w, last: null });
-  if (mounted) w.mount?.(hudSlots());
+const before = (a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+export function registerHudWidget(def) {
+  if (widgets.some((x) => x.id === def.id)) throw new Error(`HUD widget "${def.id}" is already registered`);
+  const w = { region: 'right', order: 50, ...def, last: null, host: null };
+  if (!REGIONS[w.region]) throw new Error(`HUD widget "${w.id}": region must be left, center or right, not "${w.region}"`);
+  widgets.push(w);
+  if (mounted) mountWidget(w);
 }
 
-const hudSlots = () => ({ hud: $('hud'), right: $('hud-right') });
+// Give the widget a slot in its region, after every mounted widget that sorts
+// before it, and let it fill the slot.
+function mountWidget(w) {
+  const region = $(REGIONS[w.region]);
+  const host = document.createElement('div');
+  host.className = 'hud-widget';
+  host.dataset.widget = w.id;
+  const next = widgets.filter((o) => o.host && o.region === w.region && before(w, o) < 0).sort(before)[0];
+  region.insertBefore(host, next?.host ?? (w.region === 'right' ? $('mute') : null));
+  w.host = host;
+  w.mount?.({ host, region, hud: $('hud') });
+}
 
 // The screen name shown in the middle of the HUD. It changes when a screen is
 // entered, not while the camera is still sliding towards it.
@@ -51,8 +76,7 @@ export function toggleMuteUi() {
 
 export function initHud() {
   mounted = true;
-  const slots = hudSlots();
-  for (const w of widgets) w.mount?.(slots);
+  for (const w of [...widgets].sort(before)) mountWidget(w);
   $('mute').addEventListener('click', (e) => {
     toggleMuteUi();
     e.currentTarget.blur();
@@ -78,6 +102,9 @@ export function heartSVG(fill) {
 
 registerHudWidget({
   id: 'hearts',
+  region: 'left',
+  order: 10,
+  mount: ({ host }) => host.append($('hearts')),
   key: (s) => `${s.hp}/${s.maxHp}`,
   render(s) {
     let html = '';
@@ -92,6 +119,9 @@ registerHudWidget({
 
 registerHudWidget({
   id: 'area',
+  region: 'center',
+  order: 10,
+  mount: ({ host }) => host.append($('area')),
   key: () => areaLabel,
   render() {
     $('area').textContent = areaLabel;
@@ -100,6 +130,9 @@ registerHudWidget({
 
 registerHudWidget({
   id: 'gems',
+  region: 'right',
+  order: 30,
+  mount: ({ host }) => host.append($('purse')),
   key: (s) => String(s.gems),
   render(s) {
     $('gems').textContent = String(s.gems);
@@ -108,6 +141,9 @@ registerHudWidget({
 
 registerHudWidget({
   id: 'keys',
+  region: 'right',
+  order: 40,
+  mount: ({ host }) => host.append($('keys')),
   key: () => String(keyCount()),
   render() {
     const n = keyCount();

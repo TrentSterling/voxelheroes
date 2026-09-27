@@ -1,10 +1,12 @@
 // In-page play-test helpers, injected by scripts/playtest.mjs as
 // window.__vhBot. They drive the game only through window.__voxelHeroes
-// (virtual stick, button taps, hook.update), so a whole walk or fight runs
+// (virtual stick, button taps, hook.tick), so a whole walk or fight runs
 // inside one page.evaluate: fast, and deterministic for a given seed.
 //
 // All coordinates are local tile coordinates of the current screen
-// (0..16 x 0..11). Every helper returns { ok, reason?, t, ... }.
+// (0..16 x 0..11). Every helper is async (hook.tick lets promise
+// continuations such as dialog follow-ups run between ticks) and resolves to
+// { ok, reason?, t, ... }.
 (() => {
   const DT = 1 / 60;
   const W = 16;
@@ -24,13 +26,21 @@
   };
   const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
 
+  // Is a solid entity (an NPC, a push block) standing on local tile (x, z)?
+  function occupied(x, z) {
+    const o = origin();
+    return hook().entities.some((e) => e.solid && Math.floor(e.x - o.x) === x && Math.floor(e.z - o.z) === z);
+  }
+
   // Can the hero stand on local tile (x, z)? Tiles with an onEnter hook
-  // (warps, pits) are avoided unless allowed.
+  // (warps, pits) are avoided unless allowed; tiles holding a solid entity
+  // always are.
   function walkable(x, z, allowHooks) {
     if (x < 0 || z < 0 || x >= W || z >= H) return false;
     const o = origin();
     const w = hook().world;
     if (w.isSolid(o.x + x, o.z + z, hook().player)) return false;
+    if (occupied(x, z)) return false;
     const def = w.tileDefAt(o.x + x, o.z + z);
     return allowHooks || !def?.onEnter;
   }
@@ -82,11 +92,13 @@
     if (cur[0] === goalTile[0] && cur[1] === goalTile[1]) return [];
     const tiles = bfs(cur, (x, z) => x === goalTile[0] && z === goalTile[1], opts);
     if (!tiles) return null;
-    // Go through the middle of the current tile first so corners are not clipped.
-    return [[cur[0] + 0.5, cur[1] + 0.5], ...tiles.map(([x, z]) => [x + 0.5, z + 0.5])];
+    const path = tiles.map(([x, z]) => [x + 0.5, z + 0.5]);
+    // Go through the middle of the current tile first so corners are not
+    // clipped, unless something solid stands there (the hero is beside it).
+    return walkable(cur[0], cur[1], true) ? [[cur[0] + 0.5, cur[1] + 0.5], ...path] : path;
   }
 
-  function walkTo(x, z, { timeout = 20, tolerance = 0.05, allowHooks = false } = {}) {
+  async function walkTo(x, z, { timeout = 20, tolerance = 0.05, allowHooks = false } = {}) {
     const g = hook();
     const from = screenKey();
     const goal = [Math.floor(x), Math.floor(z)];
@@ -108,7 +120,7 @@
         const wp = path.length ? path[0] : [x, z];
         const d = steer(wp[0], wp[1], path.length === 0);
         if (path.length && d < 0.12) path.shift();
-        g.update(DT);
+        await g.tick(DT);
         t += DT;
         const now = local(g.player);
         if (last && Math.hypot(now.x - last.x, now.z - last.z) < 0.002 && g.player.attackT <= 0) stuckT += DT;
@@ -128,7 +140,7 @@
 
   // Walk to the nearest open tile on one edge and keep going until the
   // camera has slid to the next screen.
-  function exit(dir, { timeout = 20 } = {}) {
+  async function exit(dir, { timeout = 20 } = {}) {
     const g = hook();
     const [ex, ez] = DIRS[dir];
     const from = screenKey();
@@ -141,7 +153,7 @@
       if (!tiles) return { ok: false, reason: `no open ${dir} edge`, t: 0 };
       target = tiles[tiles.length - 1];
     }
-    const w = walkTo(target[0] + 0.5, target[1] + 0.5, { timeout, tolerance: 0.15 });
+    const w = await walkTo(target[0] + 0.5, target[1] + 0.5, { timeout, tolerance: 0.15 });
     if (!w.ok) return { ...w, reason: `walking to the ${dir} edge: ${w.reason}` };
     let t = w.t;
     try {
@@ -149,7 +161,7 @@
         if (g.state.mode === 'play' && screenKey() !== from) return { ok: true, t, screen: screenKey() };
         if (g.state.mode === 'play') g.input.setStick(ex, ez);
         else g.input.setStick(0, 0);
-        g.update(DT);
+        await g.tick(DT);
         t += DT;
       }
       return { ok: false, reason: 'did not scroll', t };
@@ -162,7 +174,7 @@
   // The hero walks up to the nearest one, turns to face it and swings. If
   // health drops to `heal` half-hearts or less it is topped up (counted in
   // `heals`), so a long fight cannot end the test by accident.
-  function fight({ seconds = 60, heal = 2, reach = 1.15, maxKills = Infinity } = {}) {
+  async function fight({ seconds = 60, heal = 2, reach = 1.15, maxKills = Infinity } = {}) {
     const g = hook();
     const from = screenKey();
     let t = 0;
@@ -180,7 +192,7 @@
         if (screenKey() !== from) return result(false, 'left the screen');
         if (mode !== 'play') {
           g.input.setStick(0, 0);
-          g.update(DT);
+          await g.tick(DT);
           t += DT;
           continue;
         }
@@ -232,7 +244,7 @@
             }
           }
         }
-        g.update(DT);
+        await g.tick(DT);
         t += DT;
       }
       return result(false, 'timeout');
@@ -243,17 +255,17 @@
   }
 
   // Step until predicate(snapshot) is true.
-  function waitFor(predicateSource, { seconds = 10 } = {}) {
+  async function waitFor(predicateSource, { seconds = 10 } = {}) {
     const g = hook();
     const pred = new Function('s', `return (${predicateSource})(s);`);
     let t = 0;
     while (t < seconds) {
       if (pred(g.snapshot())) return { ok: true, t };
-      g.update(DT);
+      await g.tick(DT);
       t += DT;
     }
     return { ok: false, reason: 'timeout', t };
   }
 
-  window.__vhBot = { walkTo, exit, fight, waitFor, bfs, walkable };
+  window.__vhBot = { walkTo, exit, fight, waitFor, bfs, walkable, occupied };
 })();

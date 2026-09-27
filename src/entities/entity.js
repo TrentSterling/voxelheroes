@@ -8,10 +8,18 @@
 //   priority       update order, lower first
 //   object         THREE.Object3D the manager adds to / removes from the scene
 //   screenScoped   removed when the hero leaves the screen (default true)
+//   solid          blocks the hero and every body moved with moveBody, like a
+//                  wall (NPCs, push blocks). Default false: enemies, pickups
+//                  and shots overlap freely. A solid body that moves is also
+//                  stopped by the hero.
+//   flying         passes over low tiles (tiles with blocksShots: false:
+//                  water, pits, lava) when moved with moveBody. Default false.
 //   swordable      the sword tests this entity (then canBeHit/onSword apply)
 //   update(dt)     called every frame in play mode
 //   hurt(hit)      take a hit: { damage, fromX, fromZ, knockback, stun, source, swingId }
 //   onSword(hit)   the blade touched it; default: hurt(hit)
+//   onBomb(explosion)   optional: an 'explosion' covers it (systems/blast.js);
+//                  Enemy's default takes a bomb hit
 //   onInteract(player)  optional: A pressed while facing it (NPCs, signs)
 //   remove()       take it out of the world (safe at any time)
 //   markDone()     never spawn this map marker again (keys, one-off enemies)
@@ -29,6 +37,8 @@ export class Entity {
     this.yaw = opts.yaw ?? 0;
     this.object = null;
     this.screenScoped = true;
+    this.solid = false;
+    this.flying = false;
     this.swordable = false;
     this.removed = false;
     this.spawnFlag = opts.spawnFlag ?? null;

@@ -44,6 +44,15 @@ export function registerLayer(name, def) {
   LAYERS[name] = def;
 }
 
+// 'x,z' -> [x, z] for a tile inside one screen, else null.
+function parsePos(key) {
+  const m = /^(\d+),(\d+)$/.exec(key);
+  if (!m) return null;
+  const x = +m[1];
+  const z = +m[2];
+  return x < SCREEN_W && z < SCREEN_H ? [x, z] : null;
+}
+
 export class World {
   constructor() {
     this.scene = null;
@@ -51,6 +60,7 @@ export class World {
     this.areas = new Map(); // id -> area def
     this.ticking = new Set(); // props with userData.tick(t, dt)
     this.dirty = new Set(); // screens waiting to be re-meshed
+    this.warned = new Set();
   }
 
   // ---------------------------------------------------------------- setup
@@ -87,17 +97,33 @@ export class World {
       const markers = { ...area.spawns, ...def.spawns };
       const floor = def.floor ?? area.floor ?? tilesetFloor(tileset);
       const spawns = [];
+      // Record a spawn at local (x, z); returns the tile it asks for, if any.
+      const addSpawn = (m, x, z) => {
+        const { type, tile, once, ...opts } = typeof m === 'string' ? { type: m } : m;
+        const tx = sx * SCREEN_W + x;
+        const tz = sy * SCREEN_H + z;
+        spawns.push({ type, x, z, opts, flag: once ? `taken:${tx},${tz}` : null });
+        return tile;
+      };
+      const where = `Area "${area.id}" screen ${key}`;
       const tiles = def.rows.map((row, z) =>
         row.split('').map((ch, x) => {
           const m = markers[ch];
           if (!m) return ch;
-          const { type, tile, once, ...opts } = typeof m === 'string' ? { type: m } : m;
-          const tx = sx * SCREEN_W + x;
-          const tz = sy * SCREEN_H + z;
-          spawns.push({ type, x, z, opts, flag: once ? `taken:${tx},${tz}` : null });
-          return tile ?? floor;
+          // A marker char that is also a tile would make that tile impossible to place here.
+          const hidden = getTile(tileset, ch);
+          if (hidden)
+            throw new Error(`${where}: spawn marker "${ch}" hides the "${hidden.name}" tile of tileset "${tileset}"; pick another marker char or use spawnsAt`);
+          return addSpawn(m, x, z) ?? floor;
         })
       );
+      // Spawns by position: spawnsAt: { 'x,z': type | spec }. The map tile stays (unless `tile` is given).
+      for (const [pos, m] of Object.entries(def.spawnsAt ?? {})) {
+        const p = parsePos(pos);
+        if (!p) throw new Error(`${where}: spawnsAt key "${pos}" must be "x,z" inside the 16 x 11 screen`);
+        const tile = addSpawn(m, p[0], p[1]);
+        if (tile) tiles[p[1]][p[0]] = tile;
+      }
       this.screens.set(gkey, {
         key: gkey,
         sx,
@@ -122,6 +148,8 @@ export class World {
   }
 
   // Catch map typos and bad warp targets at startup, with a readable message.
+  // A warp into an area that is not registered (another branch adds it) only
+  // warns; the warp does nothing until the area exists.
   validate() {
     for (const s of this.screens.values()) {
       s.tiles.forEach((row, z) =>
@@ -130,9 +158,23 @@ export class World {
             throw new Error(`Unknown tile "${ch}" in area "${s.area.id}" screen ${s.lx},${s.ly} ("${s.name}") at ${x},${z} (tileset "${s.tileset}")`);
         })
       );
-      for (const spec of Object.values(s.def.warps ?? {})) this.resolveWarp(s.area, spec);
+      for (const [k, spec] of Object.entries(s.def.warps ?? {})) {
+        if (k.length > 1 && !parsePos(k))
+          throw new Error(`Area "${s.area.id}" screen ${s.lx},${s.ly}: warp key "${k}" must be a tile char or "x,z" inside the screen`);
+        this.checkWarp(s.area, spec);
+      }
     }
-    for (const area of this.areas.values()) for (const spec of Object.values(area.warps ?? {})) this.resolveWarp(area, spec);
+    for (const area of this.areas.values()) for (const spec of Object.values(area.warps ?? {})) this.checkWarp(area, spec);
+  }
+
+  checkWarp(fromArea, spec) {
+    if (spec.area && !this.areas.has(spec.area)) {
+      const msg = `Warp from "${fromArea.id}" points at area "${spec.area}", which is not registered; it does nothing until that area exists`;
+      if (!this.warned.has(msg)) console.warn(msg);
+      this.warned.add(msg);
+      return;
+    }
+    this.resolveWarp(fromArea, spec);
   }
 
   // ---------------------------------------------------------------- queries
@@ -193,13 +235,17 @@ export class World {
     return out;
   }
 
-  // Warp destination for the tile at (tx, tz), or null.
+  // Warp destination for the tile at (tx, tz), or null. Looked up by the
+  // tile's position in the screen's warps ('8,1'), then by its char in the
+  // screen's warps, then in the area's. null for an area not registered.
   warpAt(tx, tz) {
     const at = this.locate(tx, tz);
     if (!at) return null;
     const ch = at.screen.tiles[at.lz][at.lx];
-    const spec = at.screen.def.warps?.[ch] ?? at.screen.area.warps?.[ch];
-    return spec ? this.resolveWarp(at.screen.area, spec) : null;
+    const w = at.screen.def.warps;
+    const spec = w?.[`${at.lx},${at.lz}`] ?? w?.[ch] ?? at.screen.area.warps?.[ch];
+    if (!spec || (spec.area && !this.areas.has(spec.area))) return null;
+    return this.resolveWarp(at.screen.area, spec);
   }
 
   // { area?, screen: [x, y] (area-local), x, z, yaw } -> global { sx, sy, x, z, yaw }

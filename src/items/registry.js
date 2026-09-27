@@ -7,7 +7,7 @@
 //     icon: '<svg viewBox="0 0 8 8">...</svg>',  // pixel icon for HUD and menus
 //     order: 20,                                 // position in the item list
 //     ammo: 'bombs',                             // counter in state.inventory.ammo
-//     maxAmmo: 10,
+//     maxAmmo: 10,                               // or (state) => number (bag upgrades)
 //     startAmmo: 5,                              // given with the item
 //     use(ctx) {                                 // B pressed; return true if used
 //       if (!ctx.useAmmo(1)) return false;

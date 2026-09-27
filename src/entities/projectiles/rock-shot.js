@@ -1,5 +1,6 @@
 // The rock a spitter spits. Breaks on walls (but flies over water), is
-// blocked by the shield from the front, and the sword knocks it apart.
+// blocked by the shield from the front, and the sword knocks it apart. Like
+// every projectile, it calls the onShot hook of the tile it breaks on.
 import * as THREE from 'three';
 import { voxelMaterial } from '../../core/voxel.js';
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../../core/constants.js';
@@ -42,7 +43,15 @@ export class RockShot extends Entity {
     this.mesh.rotation.set(this.spin, this.spin * 0.5, 0);
     const b = screenOrigin(state.sx, state.sy);
     const out = this.x < b.x || this.x > b.x + SCREEN_W || this.z < b.z || this.z > b.z + SCREEN_H;
-    if (out || world.blocksShot(Math.floor(this.x), Math.floor(this.z))) {
+    if (out) {
+      this.shatter();
+      return;
+    }
+    const tx = Math.floor(this.x);
+    const tz = Math.floor(this.z);
+    if (world.blocksShot(tx, tz)) {
+      const hit = { damage: 1, fromX: this.x - this.vx * dt, fromZ: this.z - this.vz * dt, source: 'rock-shot' };
+      world.trigger(tx, tz, 'onShot', { projectile: this, hit });
       this.shatter();
       return;
     }

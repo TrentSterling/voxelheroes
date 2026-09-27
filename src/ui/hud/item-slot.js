@@ -9,14 +9,16 @@ let slot = null;
 
 registerHudWidget({
   id: 'item-slot',
-  mount({ right }) {
+  region: 'right',
+  order: 20,
+  mount({ host }) {
     slot = {
       root: el('div', { id: 'item-slot', class: 'item-slot', 'aria-label': 'Item on B', hidden: true }),
       icon: el('span', { class: 'item-slot-icon', 'aria-hidden': 'true' }),
       ammo: el('span', { class: 'item-slot-ammo' }),
     };
     slot.root.append(el('span', { class: 'item-slot-button', 'aria-hidden': 'true' }, 'B'), slot.icon, slot.ammo);
-    right.prepend(slot.root);
+    host.append(slot.root);
   },
   key: () => {
     const item = selectedItem();

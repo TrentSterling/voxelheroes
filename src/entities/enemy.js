@@ -14,7 +14,10 @@
 //
 // Stats: hp, r, speed, colors (death burst), geometry, contactDamage (1),
 // drops (drop table name, 'enemy'). Set countsForClear = false for enemies a
-// room can be cleared without killing.
+// room can be cleared without killing. Set flying = true for enemies that
+// cross water and pits. Bombs hurt every enemy through onBomb (2 damage
+// unless the explosion says otherwise); override it for bomb-proof ones.
+// Knockback decays at the same rate per second at any frame rate.
 import * as THREE from 'three';
 import { voxelMaterial } from '../core/voxel.js';
 import { GROUND_Y } from '../core/constants.js';
@@ -30,6 +33,8 @@ import { hurtPlayer, checkRoomCleared } from '../systems/combat.js';
 import { screenOrigin } from '../world/grid.js';
 import { Entity } from './entity.js';
 import { player } from './player.js';
+
+const KNOCKBACK_DECAY = 0.85; // knockback speed kept per 1/60 s
 
 export class Enemy extends Entity {
   constructor(opts, def) {
@@ -91,8 +96,9 @@ export class Enemy extends Entity {
     if (this.stunT > 0) {
       this.stunT -= dt;
       moveBody(this, this.kx * dt, this.kz * dt, bounds);
-      this.kx *= 0.85;
-      this.kz *= 0.85;
+      const decay = Math.pow(KNOCKBACK_DECAY, dt * 60); // 0.85 per 1/60 s tick
+      this.kx *= decay;
+      this.kz *= decay;
     } else {
       this.think(dt, { toP, dist, bounds });
     }
@@ -127,6 +133,13 @@ export class Enemy extends Entity {
     if (this.hp <= 0) this.die(hit);
     else sfx.hit();
     return true;
+  }
+
+  // An 'explosion' covers it (systems/blast.js).
+  onBomb(explosion) {
+    const hit = { damage: explosion.damage ?? 2, fromX: explosion.x, fromZ: explosion.z, source: 'bomb', explosion };
+    if (!this.canBeHit(hit)) return false;
+    return this.hurt(hit);
   }
 
   die(hit = null) {

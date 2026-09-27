@@ -57,6 +57,24 @@ body {
   pointer-events: none;
 }
 
+/* Three regions (hud.js); each widget sits in a display: contents slot.
+   The left and centre regions may shrink on narrow screens (the area name
+   ellipsizes); the right one keeps its width. */
+.hud-region {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#hud-left,
+#hud-center {
+  min-width: 0;
+}
+
+.hud-widget {
+  display: contents;
+}
+
 #hearts {
   display: flex;
   gap: 4px;
@@ -155,7 +173,8 @@ body {
 }
 
 .panel {
-  width: min(440px, 100%);
+  box-sizing: border-box; /* padding and border inside the width, so it fits a phone */
+  width: min(492px, 100%);
   display: grid;
   gap: 14px;
   justify-items: start;

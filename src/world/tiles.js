@@ -21,7 +21,9 @@
 // Definition fields (all optional):
 //   name         readable id
 //   solid        blocks walking; boolean or (body) => boolean. Default false.
-//   blocksShots  stops projectiles. Default: same as solid (water: false).
+//   blocksShots  stops projectiles. Default: same as solid. Set it false on
+//                low tiles (water, pits, lava): shots and flying bodies
+//                (entity.flying) pass over them.
 //   build(ctx)   emit voxels. ctx: { g, layer(name), rand, pick, x, z, bx, bz,
 //                tx, tz, ch, def, screen, area, world, tileAt(dx, dz) }.
 //                g is the terrain grid in terrain voxels (8 per tile); bx/bz
@@ -38,6 +40,8 @@
 //   onSword      a sword hit point lands on the tile (extra: hit, player)
 //   onBomb       an 'explosion' event covers the tile (extra: explosion)
 //   onLight      a 'light' event covers the tile (extra: light)
+//   onShot       a projectile stopped on the tile (extra: projectile, hit);
+//                arrows, thrown blades and enemy rocks all call it
 //   onInteract   A pressed while facing the tile (extra: player); return true
 //                to use up the press so the sword does not swing
 
@@ -86,8 +90,10 @@ export function listTilesets() {
   return [...tilesets.values()].map((ts) => ({ name: ts.name, parent: ts.parent, chars: [...ts.tiles.keys()].join('') }));
 }
 
-// Resolve a def's solid flag for a moving body (or no body).
+// Resolve a def's solid flag for a moving body (or no body). Flying bodies
+// pass over low tiles (blocksShots: false).
 export function isSolidDef(def, body) {
+  if (body?.flying && def.blocksShots === false) return false;
   const s = def.solid;
   return typeof s === 'function' ? !!s(body) : !!s;
 }

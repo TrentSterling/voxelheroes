@@ -26,11 +26,17 @@
 // spawns: marker char -> entity type. A marker is replaced by the floor tile
 // (or `tile`) and spawns the entity at the tile's centre every time the screen
 // is entered. Extra fields are passed to the entity factory; `once: true`
-// means it never comes back after it is collected or killed.
+// means it never comes back after it is collected or killed. A marker char
+// must not be a tile of the screen's tileset (startup throws).
+// A screen can also place spawns by position, keeping the map tile:
+// spawnsAt: { '5,4': { type: 'npc', name: 'Old Wren', lines: [...] } }.
 //
-// warps: tile char -> destination. Warp tiles (onEnter: warp) send the hero to
-// { area, screen: [local x, y], x, z (tile coords in that screen), yaw }.
-// A screen-level `warps` table overrides the area's.
+// warps: tile char -> destination. Warp tiles (onEnter: enterWarp) send the
+// hero to { area, screen: [local x, y], x, z (tile coords in that screen), yaw }.
+// A screen-level `warps` table overrides the area's, and may key a warp by
+// position ('8,1': {...}) so one screen can hold several doors of the same
+// tile. A warp into an area that is not registered warns at startup and does
+// nothing (another branch may add the area).
 import { SCREEN_W, SCREEN_H } from '../core/constants.js';
 
 // Where a new game starts, and where the hero gets back up after falling.

@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- head:start -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Voxel Heroes</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,9 +15,13 @@
     <div id="app">
       <div id="game"></div>
       <header id="hud">
-        <div id="hearts" aria-label="Health"></div>
-        <div id="area">Crossroads</div>
-        <div id="hud-right">
+        <div id="hud-left" class="hud-region">
+          <div id="hearts" aria-label="Health"></div>
+        </div>
+        <div id="hud-center" class="hud-region">
+          <div id="area">Crossroads</div>
+        </div>
+        <div id="hud-right" class="hud-region">
           <div id="purse" aria-label="Gems">
             <svg viewBox="0 0 5 9" width="12" height="22" shape-rendering="crispEdges" aria-hidden="true">
               <path fill="#2fd36b" d="M2 0h1v1h1v2h1v3h-1v2h-1v1h-1v-1h-1v-2h-1v-3h1v-2h1z" />
@@ -45,9 +49,9 @@
           <button id="start" type="button">Start adventure</button>
           <dl class="controls">
             <div><dt>Move</dt><dd>WASD or arrows</dd></div>
-            <div><dt>Sword</dt><dd>Space or J</dd></div>
+            <div><dt>Sword</dt><dd>Space, J or Z</dd></div>
             <div><dt>Shield</dt><dd>Face the shot</dd></div>
-            <div><dt>Pause</dt><dd>P</dd></div>
+            <div><dt>Pause</dt><dd>Enter, Esc or P</dd></div>
           </dl>
         </div>
       </div>

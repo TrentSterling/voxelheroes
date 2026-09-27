@@ -1,6 +1,7 @@
 // A gallery: one screenshot of every screen of every area, then the
-// Crossroads under each camera preset. Handy when editing maps, tiles,
-// lighting or the camera.
+// Crossroads under each camera preset (the player's choices A-D through
+// camera.choose, area presets such as 'dungeon' through camera.set). Handy
+// when editing maps, tiles, lighting or the camera.
 export const description = 'Screenshot of every screen in every area, then the Crossroads under each camera preset.';
 
 // The walkable tile nearest the middle of the current screen.
@@ -34,12 +35,16 @@ export default async function screens(t) {
     await t.shot(`${s.area}-${s.lx}-${s.ly}`);
   }
 
-  const presets = await t.eval(() => Object.keys(window.__voxelHeroes.camera.presets));
+  const presets = await t.eval(() => {
+    const cam = window.__voxelHeroes.camera;
+    const mine = cam.playerPresets();
+    return Object.keys(cam.presets).map((name) => ({ name, choice: mine.includes(name) }));
+  });
   await t.teleport('overworld:1,1');
-  for (const name of presets) {
-    await t.eval((n) => window.__voxelHeroes.camera.choose(n), name);
+  for (const { name, choice } of presets) {
+    await t.eval(([n, c]) => (c ? window.__voxelHeroes.camera.choose(n) : window.__voxelHeroes.camera.set(n)), [name, choice]);
     await t.step(0.1);
-    t.expect((await t.eval(() => window.__voxelHeroes.camera.get())) === name, `camera preset ${name}`);
+    t.expect((await t.eval(() => window.__voxelHeroes.camera.get())) === name, `camera preset ${name}${choice ? '' : ' (area preset)'}`);
     await t.shot(`camera-${name}`);
   }
   await t.eval(() => window.__voxelHeroes.camera.choose('A'));
