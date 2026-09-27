@@ -12,6 +12,7 @@
 //     origin: [200, 0],                // global screen of the local '0,0' screen (see below)
 //                                      // (or at: [tx, tz], its north-west tile)
 //     start: [0, 1],                   // local screen used by teleport('crypt')
+//     entrance: { screen: [0, 1], x: 8, z: 10.4, yaw: Math.PI }, // get up here after falling in here
 //     keyGroup: 'crypt',               // small keys are counted per group (default: id)
 //     spawns: { e: 'slime', K: { type: 'key', once: true } },
 //     warps: { X: { area: 'overworld', screen: [1, 0], x: 8, z: 1.7, yaw: 0 } },
@@ -60,6 +61,11 @@
 // warps: tile char -> destination. Warp tiles (onEnter: warp) send the hero to
 // { area, screen: [local x, y], x, z (tile coords in that screen), yaw }.
 // A screen-level `warps` table overrides the area's.
+//
+// entrance: a spot like a warp's (area defaults to this one). A hero who
+// falls anywhere in the area gets back up there instead of at the respawn
+// point: a dungeon's entrance room (gameplay spec 6.7 and 11). A boss arena
+// in an area of its own names its dungeon's entrance.
 
 export const DEFAULT_SCREEN = [16, 11]; // overworld screens, towns
 export const ROOM_SCREEN = [16, 12]; // dungeon rooms (art bible section 9)

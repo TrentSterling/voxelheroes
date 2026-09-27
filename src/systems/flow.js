@@ -65,8 +65,18 @@ export function resolvePlace(p) {
 
 export const respawnPoint = () => (resolvePlace(state.respawn) ? state.respawn : startPoint());
 
+// Where the hero gets back up after falling: the entrance of the area he fell
+// in, if the area names one (a dungeon, gameplay spec 6.7 and 11), else the
+// respawn point.
+export function continuePoint() {
+  const area = currentScreen()?.area;
+  const entrance = area?.entrance ? { area: area.id, ...area.entrance } : null;
+  return entrance && resolvePlace(entrance) ? entrance : respawnPoint();
+}
+
 // The screen the hero gets back up on.
-export const respawnScreen = () => resolvePlace(respawnPoint())?.screen ?? null;
+export const continueScreen = () => resolvePlace(continuePoint())?.screen ?? null;
+export const respawnScreen = continueScreen; // (the M1 name)
 
 function placeAtPoint(p) {
   const dest = resolvePlace(p) ?? world.resolveSpot(startPoint());
@@ -78,18 +88,22 @@ export function placeAtStart() {
   placeAtPoint(startPoint());
 }
 
+// Back on his feet, still: no knockback left over from the hit that felled
+// him (M1 let it carry over, so he slid after "Try again").
 function standUp() {
   player.hero.root.rotation.set(0, 0, 0);
   player.hero.root.position.y = GROUND_Y;
+  player.knockT = 0;
 }
 
-// Title -> play, or game over -> play at the respawn point with full health.
+// Title -> play, or game over -> play with full health at the entrance of
+// the dungeon the hero fell in, or else at the respawn point.
 export function startGame() {
   initAudio();
   if (state.mode === 'dead') {
     state.hp = state.maxHp;
     clearScreen();
-    placeAtPoint(respawnPoint());
+    placeAtPoint(continuePoint());
     world.regrow(currentScreen());
     applyScreenAmbience(currentScreen());
     standUp();

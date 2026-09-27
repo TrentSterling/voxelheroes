@@ -24,6 +24,9 @@ export default registerArea({
   rooms: true,
   origin: [200, 0],
   start: [0, 1],
+  // Falling anywhere in here, the hero gets back up where the doorway on
+  // Cairn Ridge brings him in.
+  entrance: { screen: [0, 1], x: 8, z: 10.4, yaw: Math.PI },
   keyGroup: 'crypt',
   spawns: {
     e: { type: 'slime', variant: 'blue' },

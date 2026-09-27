@@ -819,8 +819,6 @@ them.
 
 ## Known quirks kept from the prototype
 
-- Knockback that was active at the moment of death carries over, so the hero
-  slides a little after "Try again".
 - `player.yaw` is not wrapped to 0..2π; compare angles with `lerpAngle` or
   an angle difference, not with `===`.
 - The screen-name banner times out in real time (a CSS animation and a

@@ -3,8 +3,10 @@
 // arrow keys), and out by the stairs. At every arrival it checks the slide,
 // the 'room-enter' event, where the hero stands (inside the room, clear of
 // the doorway), the dungeon camera on the room's floor centre, the hero in
-// frame, and that only the current room is drawn.
-export const description = "Every door of Cairn Crypt both ways: slides, 'room-enter', landing spots, the dungeon camera on each room centre; in by the doorway and out by the stairs ('area-enter').";
+// frame, and that only the current room is drawn. On the way: Escape during
+// a slide, a save and load in a room, and falling in the crypt, which puts
+// the hero back on his feet at its entrance.
+export const description = "Every door of Cairn Crypt both ways: slides, 'room-enter', landing spots, the dungeon camera on each room centre; in by the doorway and out by the stairs ('area-enter'); pause during a slide, save and load in a room, falling and getting up at the entrance.";
 
 const near = (a, b, eps = 0.01) => Math.abs(a - b) <= eps;
 const TICK = 1 / 60;
@@ -33,6 +35,7 @@ async function pushUntilMoving(t, key) {
 }
 
 // Everything about the hero having arrived in a room, as one object.
+// shown: the crypt rooms drawn; drawn: every screen drawn, of any area.
 const arrival = (t) =>
   t.eval((rooms) => {
     const g = window.__voxelHeroes;
@@ -45,6 +48,7 @@ const arrival = (t) =>
       r: p.r,
       inFrame: [feet, head].every(([x, y]) => Math.abs(x) < 0.95 && Math.abs(y) < 0.95),
       shown: rooms.filter((k) => g.transitions.shown(k)),
+      drawn: [...g.world.screens.keys()].filter((k) => g.transitions.shown(k)),
       w: s.w,
       h: s.h,
     };
@@ -93,6 +97,7 @@ export default async function rooms(t) {
   SLIDE_TIME = tr.SLIDE_TIME;
   const wall = { ns: 1 + tr.ROOM_STEP, ew: 1.5 + tr.ROOM_STEP }; // landing distance from the edge
   let s;
+  let a;
 
   await t.press('Enter');
   await t.step(1.1);
@@ -117,7 +122,7 @@ export default async function rooms(t) {
     `  the loading card has ${(enter.time - inArea.time - tr.FADE_IN).toFixed(3)} s of black (AREA_HOLD ${tr.AREA_HOLD}), then the fade in`
   );
   t.expect(enter.screen === 'Sunken Gate' && enter.via === 'warp', "  'room-enter' { Sunken Gate, via warp } once the fade is done");
-  let a = await arrival(t);
+  a = await arrival(t);
   t.expect(s.cam.preset === 'dungeon' && near(s.cam.x, 8) && near(s.cam.z, 6) && a.inFrame && !a.blocked, '  dungeon camera on the room centre, the hero in frame');
   t.expect(a.shown.length === 1 && a.shown[0] === 'crypt:0,1', '  only the Sunken Gate is drawn');
   await t.step(0.3);
@@ -125,7 +130,20 @@ export default async function rooms(t) {
 
   // ---------------------------------------------------------------- every door both ways
   await throughDoor(t, 'north', 'Key Vault', [8, 12 - wall.ns], { shot: '02-key-vault-from-the-south' });
-  await throughDoor(t, 'south', 'Sunken Gate', [8, wall.ns], { shot: '03-sunken-gate-from-the-north' });
+  await throughDoor(t, 'south', 'Sunken Gate', [8, wall.ns], {
+    shot: '03-sunken-gate-from-the-north',
+    // Input is ignored during a slide (gameplay spec 4.3), Start included.
+    midway: async () => {
+      await t.press('Escape');
+      const m = await t.state();
+      t.expect(m.mode === 'scroll' && !m.overlay, '  Escape during the slide is ignored: the slide goes on');
+    },
+  });
+  await t.press('Escape');
+  s = await t.state();
+  t.expect(s.mode === 'paused' && s.overlay, 'in the room, Escape pauses');
+  await t.press('Escape');
+  t.expect((await t.state()).mode === 'play', '  and Escape resumes');
   await throughDoor(t, 'east', 'Pillar Hall', [wall.ew, 6], {
     shot: '05-pillar-hall-from-the-west',
     midway: async () => {
@@ -138,6 +156,27 @@ export default async function rooms(t) {
       await t.shot('04-mid-slide');
     },
   });
+
+  // ---------------------------------------------------------------- save and load in a room
+  // (the M1 rule: a load resumes where the save was made; the gameplay spec's
+  // section 11 moves a load made in a dungeon to its entrance)
+  const here = await t.state();
+  const saved = JSON.parse(JSON.stringify(await t.save()));
+  await t.teleport('Mirror Lake');
+  await t.load(saved);
+  await t.step(0.1);
+  s = await t.state();
+  a = await arrival(t);
+  const loaded = (await t.events('room-enter')).at(-1);
+  t.expect(
+    s.screenName === 'Pillar Hall' && near(s.lx, here.lx) && near(s.lz, here.lz) && loaded.via === 'load',
+    `a save made in the Pillar Hall loads back at ${s.lx}, ${s.lz} ('room-enter' via load)`
+  );
+  t.expect(
+    s.cam.preset === 'dungeon' && near(s.cam.x, 8) && near(s.cam.z, 6) && a.inFrame && a.drawn.join() === 'crypt:1,1',
+    `  the dungeon camera on the room centre, the hero in frame, only the Pillar Hall drawn (${a.drawn.join(', ')})`
+  );
+
   await t.give('key');
   s = await t.state();
   t.expect(s.keysByGroup.crypt >= 1, 'a crypt key for the locked door');
@@ -164,6 +203,32 @@ export default async function rooms(t) {
   t.expect(a.inFrame && a.shown.length === 0, '  the hero is in frame and no crypt room is drawn');
   await t.step(0.3);
   await t.shot('09-back-on-cairn-ridge');
+
+  // ---------------------------------------------------------------- falling in the crypt
+  // Falling in a dungeon puts the hero back on his feet at its entrance
+  // (the crypt's `entrance`, gameplay spec 6.7), not at the respawn point.
+  await t.teleport('crypt:1,1', 8, 6);
+  const areasBefore = (await t.events('area-enter')).length;
+  await t.setHp(0);
+  await t.step(1.5);
+  s = await t.state();
+  const msg = await t.eval(() => document.getElementById('overlay-msg').textContent);
+  t.expect(s.mode === 'dead' && s.overlay && msg.includes('Sunken Gate'), `falling in the Pillar Hall: the game-over panel says "${msg}"`);
+  await t.press('Enter');
+  await t.step(0.2);
+  s = await t.state();
+  a = await arrival(t);
+  const up = (await t.events('room-enter')).at(-1);
+  t.expect(
+    s.mode === 'play' && s.screenName === 'Sunken Gate' && near(s.lx, 8) && near(s.lz, 10.4) && s.hp === s.maxHp && up.via === 'respawn',
+    `Try again: up at the crypt's entrance in the Sunken Gate (${s.lx}, ${s.lz}) with full health, 'room-enter' via respawn`
+  );
+  t.expect(
+    s.cam.preset === 'dungeon' && near(s.cam.x, 8) && near(s.cam.z, 6) && a.inFrame && a.drawn.join() === 'crypt:0,1' && (await t.events('area-enter')).length === areasBefore,
+    `  the dungeon camera on the room centre, only the Sunken Gate drawn (${a.drawn.join(', ')}), no 'area-enter'`
+  );
+  await t.step(1.1); // past the hero's blink after getting up
+  await t.shot('10-up-again-at-the-entrance');
 
   const route = (await t.events('room-enter')).map((e) => e.screen);
   t.note(`rooms entered: ${route.join(' > ')}`);

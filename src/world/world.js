@@ -183,8 +183,10 @@ export class World {
       );
       for (const [ch, spec] of Object.entries(s.def.warps ?? {})) this.checkSpot(`Warp "${ch}" of ${s.key}`, this.resolveWarp(s.area, spec));
     }
-    for (const area of this.areas.values())
+    for (const area of this.areas.values()) {
       for (const [ch, spec] of Object.entries(area.warps ?? {})) this.checkSpot(`Warp "${ch}" of area "${area.id}"`, this.resolveWarp(area, spec));
+      if (area.entrance) this.checkSpot(`The entrance of area "${area.id}"`, this.resolveSpot(area.entrance, area));
+    }
   }
 
   // A destination must be inside its screen and on a tile the hero can stand on.
