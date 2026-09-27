@@ -12,6 +12,7 @@ import { state, serializeState, loadState } from './core/state.js';
 import { world, currentScreen } from './world/world.js';
 import { screenRect } from './world/grid.js';
 import { allAreas } from './world/areas.js';
+import { syncRoomView } from './world/room-view.js';
 import { player } from './entities/player.js';
 import { initParticles, updateParticles } from './systems/particles.js';
 import { placeAtStart, loadGame } from './systems/flow.js';
@@ -45,6 +46,7 @@ function update(dt) {
   updateMode(dt);
   updateParticles(dt);
   world.flush();
+  syncRoomView();
   followSubject(player, screenRect(state.sx, state.sy));
   placeCamera();
   input.endFrame();

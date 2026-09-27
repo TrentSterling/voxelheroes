@@ -7,7 +7,8 @@
 //   ctx.D  detail   1/16 tile voxels     getMaterial('character')  small static things (flowers)
 // plus flat water planes (ctx.water(), makeWaterMaterial) and fixtures (ctx.fixture(obj): lamp
 // lights, glow strips), which the screen owns like its meshes. Layers added with registerLayer
-// (a terrain-resolution grid with its own material) are written through ctx.voxelLayer(name).
+// (a terrain-resolution grid, or with `res: FPT` one at character resolution sized like the detail
+// layer, with its own `material` or material `kind`) are written through ctx.voxelLayer(name).
 //
 // Coordinates are global, so a tile looks the same whichever screen builds it:
 //   terrain block X = tx * 8 + i (i = 0..7, east), Z = tz * 8 + k (k = 0..7, south); Y = 0 is the
@@ -34,6 +35,7 @@
 // Backdrops (registerBackdrop): tiles outside every screen of an area can be filled by a generator,
 // so the camera sees the world continue (art bible section 8, "The far distance").
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DenseGrid, meshVoxels, FACE_ALL, FACE_NZ } from '../core/vox.js';
 import { rng } from '../core/voxel.js';
 import { getMaterial, makeWaterMaterial } from '../core/materials.js';
@@ -56,7 +58,8 @@ const FINE_ABOVE = 3;
 
 // ---------------------------------------------------------------- layers
 // Built-in layers and any registered with registerLayer (old builders reach them through
-// ctx.layer(name); a registered layer is a terrain-resolution grid with its own material).
+// ctx.layer(name); a registered layer is a terrain-resolution grid, or a character-resolution one
+// with res: FPT, with its own material or kind).
 export const LAYERS = {
   terrain: { res: BPT, kind: 'terrain', castShadow: true, receiveShadow: true },
   fine: { res: FPT, kind: 'fine', castShadow: false, receiveShadow: true },
@@ -268,6 +271,30 @@ export const terrainStats = { rects: 0, lost: 0 };
 
 const hashTile = (tx, tz) => (Math.imul(tx | 0, 73856093) ^ Math.imul(tz | 0, 19349663) ^ 0x5bd1e995) >>> 0;
 
+// A margin tile outside the world (no screen, no backdrop) is meshed by exactly one screen: the one
+// holding the tile north of it, else south, west, east, then the diagonals. Builders write into it
+// (a canopy overhangs its tile by a block), and those voxels hide the faces next to them, so if
+// nobody meshed them the view would look into the tree and out through the bottom of the ground.
+const AROUND = [[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]];
+function voidOwner(world, tx, tz) {
+  for (const [dx, dz] of AROUND) {
+    const at = world.locate(tx + dx, tz + dz);
+    if (at) return at.screen;
+  }
+  return null;
+}
+
+// One geometry from the pieces meshed for a layer (null when there are none).
+function joinGeometries(parts) {
+  const list = parts.filter(Boolean);
+  if (list.length < 2) return list[0] ?? null;
+  const geo = mergeGeometries(list);
+  for (const g of list) g.dispose();
+  geo.computeBoundingSphere();
+  geo.computeBoundingBox();
+  return geo;
+}
+
 // Build one rectangle of tiles (a screen or a backdrop chunk). Returns the meshes and fixtures.
 // env: { x0, z0, w, h, screen, cells(tx, tz) -> cell | null for the rectangle's own tiles,
 // ring(tx, tz) -> cell | null for the margin (rooms: drawn with the rectangle, meshed apart),
@@ -313,7 +340,10 @@ function buildRect(world, env) {
     let l = custom.get(name);
     if (!l) {
       if (!LAYERS[name]) throw new Error(`Unknown terrain layer "${name}"`);
-      l = new VoxelLayer(BPT, T.x0, T.z0, T.sx, T.sz, -TERRAIN_BELOW, top);
+      l =
+        LAYERS[name].res === FPT
+          ? new VoxelLayer(FPT, D.x0, D.z0, D.sx, D.sz, D.yMin, D.yMin + D.sy)
+          : new VoxelLayer(BPT, T.x0, T.z0, T.sx, T.sz, -TERRAIN_BELOW, top);
       custom.set(name, l);
     }
     return l;
@@ -409,13 +439,16 @@ function buildRect(world, env) {
     meshes.push({ name, mesh, layer: L });
   };
   const faces = env.faces ?? FACE_ALL;
-  // the rectangle's own tiles
+  // the rectangle's own tiles, plus the margin tiles outside the world that this screen meshes
   const [mx0, mz0, mx1, mz1] = [x0, z0, x0 + w, z0 + h];
-  const terrainGeo = env.coarse ? coarseMesh(T, x0, z0, w, h, faces) : T.mesh(mx0, mz0, mx1, mz1, x0, z0, { faces });
+  const edge = env.screen && !env.ring && !env.solidVoid ? voids.filter(([tx, tz]) => voidOwner(world, tx, tz) === env.screen) : [];
+  const own = (V, opts) =>
+    joinGeometries([V.mesh(mx0, mz0, mx1, mz1, x0, z0, opts), ...edge.map(([tx, tz]) => V.mesh(tx, tz, tx + 1, tz + 1, x0, z0, opts))]);
+  const terrainGeo = env.coarse ? coarseMesh(T, x0, z0, w, h, faces) : own(T, { faces });
   add('terrain', terrainGeo, { ...LAYERS.terrain, ...(env.terrainLayer ?? {}) });
-  add('fine', F.mesh(mx0, mz0, mx1, mz1, x0, z0, { faces }), LAYERS.fine);
-  add('detail', D.mesh(mx0, mz0, mx1, mz1, x0, z0, { faces }), LAYERS.detail);
-  for (const [name, l] of custom) add(name, l.mesh(mx0, mz0, mx1, mz1, x0, z0), LAYERS[name]);
+  add('fine', own(F, { faces }), LAYERS.fine);
+  add('detail', own(D, { faces }), LAYERS.detail);
+  for (const [name, l] of custom) add(name, own(l, {}), LAYERS[name]);
   // the ring around a room: the rest of the window, meshed in strips into a group of its own
   if (env.ring) {
     const group = ringGroup();
