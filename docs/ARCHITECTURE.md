@@ -121,11 +121,11 @@ of a stack.
 |------|---------------|--------------|
 | `title` | ui/screens/title.js | hero idles behind the title panel; confirm starts |
 | `play` | systems/flow.js | Start pauses; hero, items and entities update |
-| `scroll` | systems/transitions.js | the 0.5 s slide to the next screen or room of the same area |
-| `warp` | systems/transitions.js | fade out, move, fade in: warps (doors, stairs) and walking into another area |
+| `scroll` | systems/transitions.js | the 0.8 s slide to the next screen or room of the same area |
+| `warp` | systems/transitions.js | fade out, move, fade in: warps (doors, stairs) and walking into another area (a load: the loading card's hold) |
 | `paused` | ui/screens/pause.js | pushed over play; Start or the button resumes |
 | `dialog` | ui/dialog.js | pushed while a dialog box is open |
-| `dead` | ui/screens/gameover.js | hero tips over; then the game-over panel |
+| `dead` | ui/screens/gameover.js | hero tips over; then the game-over panel (Try again: at the dungeon's `entrance` inside one, else the respawn point) |
 
 `setMode(name)` replaces the whole stack, `pushMode(name)` suspends the current
 mode, `popMode()` resumes it. Every switch calls `exit` on the old mode and
@@ -151,7 +151,7 @@ adds or rebinds an action from a feature's own file.
 **Coordinates.** One world unit is one tile. x grows east, z grows south, y is
 up. A screen is 16 x 11 tiles outdoors and 16 x 12 in dungeon rooms: each area
 sets its size. Every area sits on one global grid of tiles, its screens on a
-lattice of its own screen size placed by its `origin` (see
+lattice of its own screen size placed by its `origin` or `at` (see
 [Areas](#areas-srcworldareasjs)); `world.locate(tx, tz)` and
 `world.screenAt(x, z)` find the screen under a tile or point, so never divide
 by 16 or 11. Map rows and spots are local to their screen. `yaw` 0 faces +z
@@ -202,10 +202,9 @@ ground layer), `layer('water')` another mesh layer (`registerLayer` in
 `world.js` adds more), `x, z` local and `tx, tz` global tile coordinates.
 Screens differ in size, so tell an edge row or column from `ctx.screen.w` and
 `ctx.screen.h` (and a room from `ctx.screen.area.rooms`), not from
-`SCREEN_W` / `SCREEN_H`. Draw
-only from `ctx.rand` so screens look the same on every load; the world replays
-each tile's random stream when a screen is re-meshed, so changing one tile
-never recolours its neighbours.
+`SCREEN_W` / `SCREEN_H`. Draw only from `ctx.rand` so screens look the same
+on every load; the world replays each tile's random stream when a screen is
+re-meshed, so changing one tile never recolours its neighbours.
 
 Hooks get `{ world, screen, area, tx, tz, x, z, ch, def, ...extra }`. To change
 a tile at run time use `world.setTile(tx, tz, ch, opts)`:
@@ -228,7 +227,9 @@ registerArea({
   screen: [16, 12],              // tiles per screen [w, h]; default [16, 11], rooms [16, 12]
   rooms: true,                   // dungeon rooms (art bible section 9), see below
   origin: [200, 0],              // where local screen '0,0' sits, in screens of this size
+                                 //   (or at: [tx, tz], its north-west corner in tiles)
   start: [0, 1],                 // local screen used by teleport('crypt') and spots without one
+  entrance: { screen: [0, 1], x: 8, z: 10.4, yaw: Math.PI },  // get up here after falling in here
   keyGroup: 'crypt',             // small keys count per group (default: id)
   spawns: { e: { type: 'slime', variant: 'blue' }, K: { type: 'key', once: true } },
   warps: { X: { area: 'overworld', screen: [1, 0], x: 8, z: 1.7, yaw: 0 } },
@@ -252,54 +253,70 @@ The world validates every tile character, row length and warp at startup
 
 **Addressing.** Local screen `'i,j'` of an area with screens of w x h tiles
 covers global tiles x `(origin[0] + i) * w` to `(origin[0] + i + 1) * w - 1`
-and z `(origin[1] + j) * h` to `(origin[1] + j + 1) * h - 1`. Every screen is
-16 tiles wide, so a screen column means the same strip of the world for every
-area, and the [global regions](#global-regions) are columns. Rows count in
-the area's own screen height, so areas of different heights keep to different
-columns. The world indexes screens by position and throws at startup if two
-screens overlap. Screens are keyed `'area:i,j'` (`world.screen('crypt:0,1')`
-or `world.screen('crypt', 0, 1)`); a screen object carries `key`, `area`,
-`def`, `name`, `lx`, `ly` (local screen), `w`, `h`, `x0`, `z0` (north-west
-corner, world units) and `x1`, `z1` (one past the south-east corner), so it
-works as a rect.
+and z `(origin[1] + j) * h` to `(origin[1] + j + 1) * h - 1`. Screens are 16
+tiles wide unless an area says otherwise, so a screen column means the same
+strip of the world for all of them, and the [global regions](#global-regions)
+are columns. Rows count in the area's own screen height, so areas of
+different heights keep to different columns. An area whose screens are not 16
+wide (a 12 x 9 house) is placed by tile instead: `at: [tx, tz]` is the global
+tile of local screen `'0,0'`'s north-west corner, and screen `'i,j'` starts at
+`tx + i * w`, `tz + j * h` (`at: [300 * 16, 0]` is the corner of screen
+column 300; `areaCorner(area)` gives either form in tiles). The world indexes
+screens by position and throws at startup if two screens overlap. Screens are
+keyed `'area:i,j'` (`world.screen('crypt:0,1')` or
+`world.screen('crypt', 0, 1)`); a screen object carries `key`, `area`, `def`,
+`name`, `lx`, `ly` (local screen), `w`, `h`, `x0`, `z0` (north-west corner,
+world units) and `x1`, `z1` (one past the south-east corner), so it works as
+a rect.
 
 **Spots** name a place independently of where an area sits:
 `{ area, screen: [i, j], x, z, yaw }`, with x and z local tiles of that screen
 (default: its middle; `screen` defaults to the area's `start`). Warps, the
-start point, `state.respawn`, the saved position and teleports are spots;
-`world.resolveSpot(spot)` turns one into `{ screen, x, z, yaw }`.
+start point, `state.respawn`, an area's `entrance`, the saved position and
+teleports are spots; `world.resolveSpot(spot)` turns one into
+`{ screen, x, z, yaw }`. A hero who falls in an area with an `entrance` (a
+dungeon: gameplay spec 6.7) gets back up there with full health; elsewhere
+at `state.respawn` (an inn) or the start. A boss arena in an area of its own
+names its dungeon's entrance (`entrance: { area: 'mire-keep', screen: [2, 9] }`).
 
 **Neighbours.** Screens of one area that touch are joined: walking off an
 edge slides to the next one. Screens of different areas that touch are joined
-too, but walking across changes area: fade to black, `'area-enter'`, a hold
-for the loading card, fade in. `world/links.js` works both out:
-`areaGroups(world)` (the areas joined into one outdoors, drawn together) and
-`edgeReport(world)` (`{ links, mismatches }`: where areas touch, and edge
-tiles open on one side but a wall on the other). The `screens` scenario fails
-on a mismatch. To keep two areas apart, leave an empty screen between them.
+too, whatever their sizes, but walking across changes area: fade to black,
+`'area-enter'`, a hold for the loading card, fade in. `world/links.js` works
+both out: `areaGroups(world)` (the areas joined into one outdoors, drawn
+together) and `edgeReport(world)` (`{ links, mismatches }`: where areas touch,
+and edge tiles open on one side but a wall on the other). The `screens`
+scenario fails on a mismatch. To keep two areas apart, leave an empty screen
+between them.
 
-**Rooms** (`rooms: true`, art bible section 9). Each screen is one 16 x 12
-room: row 0 is the north wall, rows 1-10 the floor, row 11 the south wall
-(`southWall: false` on a screen asks the tiles to leave out its black band;
-collision stays), columns 0 and 15 the side walls. Doors are two tiles wide:
-columns 7-8 of rows 0 and 11, rows 5-6 of columns 0 and 15. Side walls are
-drawn half a tile inward (`WALL_INSET`), and their collision reaches as far,
-so bodies stop at x = 1.5 and 14.5; the north and south faces are at z = 1 and
-11. Rooms of a dungeon adjoin so door gaps line up; walking through one slides
-to the next room. Only the current room is drawn (both during a slide), so
-everything outside it is black, and the camera is the area's fixed preset,
-aimed at the floor centre (local 8, 6).
+**Rooms** (`rooms: true`, art bible section 9). Each screen is one room, in
+a dungeon 16 x 12: row 0 is the north wall, rows 1-10 the floor, row 11 the
+south wall (`southWall: false` on a screen asks the tiles to leave out its
+black band; collision stays), columns 0 and 15 the side walls. Doors are two
+tiles wide: columns 7-8 of rows 0 and 11, rows 5-6 of columns 0 and 15. Side
+walls are drawn half a tile inward (`WALL_INSET`), and their collision
+reaches as far, so bodies stop at x = 1.5 and 14.5; the north and south faces
+are at z = 1 and 11. Rooms of a dungeon adjoin so door gaps line up; walking
+through one slides to the next room. Only the current room is drawn (both
+during a slide), so everything outside it is black, and the camera is the
+area's fixed preset, aimed at the floor centre (local 8, 6). Rooms of other
+sizes (house interiors, 10 x 8 to 16 x 12 in the gameplay spec; a boss arena,
+22 x 16) work the same way: the outer ring of tiles is the wall, the side
+walls stand half a tile in, and the camera centres on the room.
 
-**Moving between screens** (`systems/transitions.js`). Walking off an edge
-into a screen of the same area slides (`SLIDE_TIME` 0.5 s, ease in-out): the
-hero walks in `SLIDE_STEP` (1.1) tiles from the edge, or in a room `ROOM_STEP`
-(1) tile past the inside face of the wall the doorway is in, and the camera
-keeps him in frame on the way. Walking into another area fades
-(`FADE_OUT` 0.35 s, `AREA_HOLD` 0.6 s of black, `FADE_IN` 0.35 s) and lands
-him at the matching spot on the other side, the same distance in. Warps fade
-the same way, holding the black `WARP_HOLD` 0.15 s inside one area or
-`AREA_HOLD` into another. Gameplay pauses during both; only the hero's walk
-animates. Events: see [Events](#events).
+**Moving between screens** (`systems/transitions.js`; the times are the
+gameplay spec's, sections 4.3 and 4.4). Walking off an edge into a screen of
+the same area slides (`SLIDE_TIME` 0.8 s, 48 ticks, ease in-out): the hero is
+carried `SLIDE_STEP` (1) tile in from the edge, or in a room `ROOM_STEP` (1)
+tile into the floor past the wall the doorway is in, and the camera keeps him
+in frame on the way. Walking into another area, or through a warp into one
+(a door, stairs out), is a load: `FADE_OUT` 0.25 s, `AREA_HOLD` 1 s of black
+for the loading card, `FADE_IN` 0.25 s (90 ticks in all), landing him at the
+matching spot on the other side, the same distance in. A warp inside one area
+(stairs between the floors of a dungeon, warp tiles) fades out and in over
+`WARP_FADE` 0.3 s each with no card (`WARP_HOLD` 0) and no `'area-enter'`.
+Input is ignored during both, Start included; only the hero's walk animates.
+Events: see [Events](#events).
 
 **Drawing.** In a room area only the current room is drawn. Elsewhere the
 screens of the hero's group of joined areas are drawn, so the low cameras see
@@ -317,8 +334,28 @@ tile it takes to keep all of the hero in frame at an east or west edge. The
 north is never clamped. Presets with `fixed: true` (the dungeon camera) aim at
 the rect's centre and move only to keep the hero's feet in frame; where the
 frame is less than half as wide as the rect (a phone held upright) they follow
-the hero across instead. An area or screen can fix a preset (`camera`); other
-screens use the player's choice, `chooseCameraPreset(name)`, which is saved.
+the hero across instead. In a room nothing past the walls is drawn, so there
+the bottom edge may show past the south wall: a room shorter than the frame
+stays centred. An area or screen can fix a preset (`camera`); other screens
+use the player's choice, `chooseCameraPreset(name)`, which is saved.
+
+**Not built yet** (gameplay spec v1.0 sections 4 and 11, which landed after
+this framework):
+- Presets A and D following the hero across screen lines inside an area, with
+  no slide and no input lock (a "follow change" 0.5 tile past the line); today
+  every preset clamps to the screen and slides, which is the spec's rule for B,
+  C and dungeon rooms.
+- 16 x 16 overworld screens in areas of 4 x 4 (data: `screen: [16, 16]`;
+  today's M1 maps are 16 x 11).
+- Building only the current area and unloading it on each load; today every
+  screen is meshed at startup and hidden when out of view.
+- The loading-art option (card 1.0 s or 0.3 s), the boss arena camera and
+  interior cameras scaled to the room's width.
+- Section 11's load rule (a load resumes at the respawn point, or at a
+  dungeon's `entrance` for a save made inside); today a load resumes where the
+  save was made.
+- Doorway rules (4.5): no attacks or items in a doorway, movement along the
+  door's axis.
 
 ### Entities: `src/entities/registry.js`
 
@@ -435,7 +472,7 @@ Handlers run synchronously in subscription order.
 | Event | Payload | Emitted by |
 |-------|---------|------------|
 | `room-enter` | `{ area, screen, via }` | transitions.js: every screen or room entered, once its spawns are in and play resumes; `via` is `'slide'`, `'edge'` (walked in from another area), `'warp'`, `'start'`, `'respawn'`, `'load'` or `'teleport'` |
-| `area-enter` | `{ area, from, via }` | transitions.js: another area is reached (`via` `'edge'` or `'warp'`), when the screen has gone black; show the loading card for `AREA_HOLD` seconds. Not emitted by start, respawn, load or teleport |
+| `area-enter` | `{ area, from, via }` | transitions.js: another area is reached (`via` `'edge'` or `'warp'`), when the screen has gone black; show the loading card for `AREA_HOLD` seconds. Not emitted by warps inside one area (no card), start, respawn, load or teleport |
 | `screen-enter` | `{ screen }` | transitions.js, just before `room-enter` (the M1 name) |
 | `screen-leave` | `{ screen }` | transitions.js, before its entities are cleared (the start of a slide, or at black in a fade) |
 | `warp` | `{ dest }` | a warp starts; `dest` is `{ screen, x, z, yaw }` |
@@ -586,8 +623,9 @@ More ammo: `grant('bombs', 5)` or an ammo pickup plus `addDrop(...)`.
 ### (d) An area
 
 `src/world/areas/<id>.js` with `registerArea({...})` (see
-[Areas](#areas-srcworldareasjs)), an `origin` in the right
-[global region](#global-regions), and a way in: a warp tile in another area
+[Areas](#areas-srcworldareasjs)), an `origin` (or, for screens that are not
+16 wide, an `at`) in the right [global region](#global-regions), and a way
+in: a warp tile in another area
 (`warps: { D: { area: 'your-id', screen: [0, 0], x: 8, z: 9, yaw: Math.PI } }`),
 or screens that touch another area's screens (walking across fades into it).
 New tiles go in `src/world/tiles/`. If the area needs its own tileset,
@@ -595,25 +633,42 @@ New tiles go in `src/world/tiles/`. If the area needs its own tileset,
 register presets and name them in the area.
 
 Today's overworld is 3 x 2 screens at `[0, 0]`. A 2 x 2-screen area east of
-it, and a dungeon of rooms reached by stairs from it:
+it, a dungeon of rooms reached by stairs from it, and a one-room hut of
+another size:
 
 ```js
 registerArea({ id: 'fens', name: 'The Fens', tileset: 'overworld', lighting: 'day',
   origin: [3, 0],                          // columns 3-4, rows 0-1: touches the overworld's east edge
-  screens: { '0,0': {...}, '1,0': {...}, '0,1': {...}, '1,1': {...} } });   // rows: 11 strings of 16
+  warps: { D: { area: 'mire-keep', screen: [2, 3], x: 8, z: 10, yaw: Math.PI } },  // a cave door
+  screens: {
+    '0,0': {...}, '1,0': {...}, '1,1': {...},                          // rows: 11 strings of 16
+    '0,1': { name: 'Reed Bank', rows: [...],                           // a second door, to the hut:
+      warps: { D: { area: 'reed-hut', screen: [0, 0], x: 6, z: 7.4, yaw: Math.PI } } },
+  } });
 
 registerArea({ id: 'mire-keep', name: 'Mire Keep', tileset: 'dungeon', lighting: 'crypt',
   camera: 'dungeon', rooms: true,          // 16 x 12 rooms, fixed dungeon camera
   origin: [210, 0],                        // dungeon 1 (see Global regions)
-  start: [2, 3], keyGroup: 'mire-keep',
+  start: [2, 3],
+  entrance: { screen: [2, 3], x: 8, z: 10, yaw: Math.PI },               // get up here after falling
   warps: { X: { area: 'fens', screen: [1, 1], x: 8, z: 3, yaw: 0 } },     // stairs out
   screens: { '2,3': { name: 'Entry', rows: [/* 12 strings of 16 */] }, '2,2': {...}, '3,2': {...} } });
-// and in the fens: warps: { D: { area: 'mire-keep', screen: [2, 3], x: 8, z: 10, yaw: Math.PI } }
+
+registerArea({ id: 'reed-hut', name: 'Reed Hut', tileset: 'dungeon', lighting: 'crypt',
+  camera: 'dungeon', rooms: true, screen: [12, 9],                      // one 12 x 9 room
+  at: [(300 + 2 * 3) * 16, 0],            // interior building 3, placed by tile (12 wide)
+  warps: { X: { area: 'fens', screen: [0, 1], x: 8.5, z: 2.7, yaw: 0 } }, // back out the door
+  screens: { '0,0': { name: 'Reed Hut', rows: [/* 9 strings of 12 */] } } });
 ```
 
-Walking east off Mirror Lake then fades into the fens with a loading card.
-The open tiles along a shared edge must line up (the `screens` scenario
-checks), and the rooms' door gaps must line up with their neighbours'. Check an area with
+Walking east off Mirror Lake then fades into the fens with a loading card, and
+so does each door. The open tiles along a shared edge must line up (the
+`screens` scenario checks), and the rooms' door gaps must line up with their
+neighbours'. A dungeon's second floor goes in the same area, 11 rows further
+south (see [Global regions](#global-regions)), so its stairs are warps inside
+one area: they blink without a card. Hedge Burrow and the tunnel in
+`areas/test-borders.js` are working examples of a house placed by tile and a
+warp inside one area. Check an area with
 `node scripts/playtest.mjs --scenario screens`, which photographs every screen
 and room.
 
@@ -693,7 +748,7 @@ ones. Bump `SAVE_VERSION` only for a change `loadState` cannot absorb.
 | `showDialog(lines, opts)`, `dialogOpen()`, `overlayVisible()` | UI |
 | `camera.presets`, `camera.choose(name)`, `camera.set(name)`, `camera.get()`, `camera.target`, `camera.object` | camera presets (`choose` is the player's setting, saved; `set` lasts until the next screen), the subject point, the three.js camera |
 | `camera.expected()`, `camera.project(x, y, z)`, `camera.groundAt(nx, ny)`, `camera.rules` | where the framing rule wants the subject now; world point to normalised device coordinates `[x, y, depth]`; a device point to the ground it shows (or null); the framing constants |
-| `transitions` | `SLIDE_TIME`, `SLIDE_STEP`, `ROOM_STEP`, `FADE_OUT`, `FADE_IN`, `WARP_HOLD`, `AREA_HOLD`, and `shown(key)`: is that screen drawn |
+| `transitions` | `SLIDE_TIME`, `SLIDE_STEP`, `ROOM_STEP`, `FADE_OUT`, `FADE_IN`, `AREA_HOLD`, `WARP_FADE`, `WARP_HOLD`, and `shown(key)`: is that screen drawn |
 | `links()` | `edgeReport(world)`: `{ links, mismatches }` between areas |
 | `registries.tilesets()`, `.areas()`, `.entities()`, `.items()`, `.grants()` | what is registered |
 | `snapshot()` | JSON summary: mode, area, screen (`[i, j]`), key, size (`[w, h]`), screenName, hp, maxHp, gems, keys, keysByGroup, x, z (world), lx, lz (local), cam (`{ preset, x, z }`, local), yaw, invT, attacking, enemies, entities, flags, inventory, overlay, dialog, particles, time |
@@ -792,19 +847,21 @@ Rules that keep merges clean:
 ### Global regions
 
 Areas share one global grid and must not overlap (startup throws, naming both
-screens and the tiles). Every screen is 16 tiles wide, so regions are ranges
-of screen columns; rows count in the area's own screen height, which is why
-each region has one height. Areas that touch are joined (walking across
-changes area), so areas that must stay apart need an empty screen between
-them.
+screens and the tiles). Screens are 16 tiles wide, so regions are ranges of
+screen columns (column c is tiles x `16 c` to `16 c + 15`); rows count in the
+area's own screen height, which is why each region has one height. An area
+whose screens are not 16 wide is placed by tile with `at`: take the region's
+column times 16 and its row times the region's height. Areas that touch are
+joined (walking across changes area), so areas that must stay apart need an
+empty screen between them.
 
 | Columns | Rows | Screens | For |
 |---------|------|---------|-----|
 | 0-99 | 0-99 | 16 x 11 | The overworld: the 7 x 5 map of areas, laid edge to edge from `[0, 0]`. If every area is W x H screens, area (c, r) of the map sits at `[c * W, r * H]`; areas of other sizes are fine as long as neighbours touch along their shared edge. Today's `overworld` (3 x 2) is at `[0, 0]` (feature 6) |
 | 100-199 | 0-99 | 16 x 11 | Towns and other outdoor areas reached by warps: town t at `[100 + 10 t, 0]`, up to 10 x 10 screens (feature 6) |
-| 200-299 | 0-99 | 16 x 12 | Dungeons, 10 columns each: dungeon d at `[200 + 10 d, 0]`; floor f of it at `[200 + 10 d, 10 f]` (up to 10 x 10 rooms a floor; floors are joined by stairs, which are warps; give a dungeon's floors one `keyGroup`). Cairn Crypt is dungeon 0 at `[200, 0]` (feature 5 grows it) |
-| 300-399 | 0-99 | 16 x 12 | Interiors: houses, shops, the inn, caves. Building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`, one empty screen from the next; a building of several rooms uses neighbouring screens of one area |
-| 400-479 | 0-99 | any, one height per block | Test areas, 10 columns per feature: 400 sword yard (1), 410 overworld enemy field (2), 420 dungeon enemy and boss rooms (3), 430 sub-item range (4), 440 dungeon mechanics (5), 450 overworld and town (6), 460 UI (7), 470 world and camera (`test-borders.js` uses 470-472) |
+| 200-299 | 0-99 | 16 x 12 | Dungeons, 10 columns each, one area per dungeon: dungeon d at `[200 + 10 d, 0]`. Floor f's rooms are local rows `11 f` to `11 f + 9` of that area (the gameplay spec's 8 x 10 canvas, rows A-J, fits; the empty row keeps floors apart), so stairs between floors are warps inside the area, without a card. Rooms of another size (a boss arena, 22 x 16) are areas of their own placed by tile in the dungeon's free columns, with the dungeon's `keyGroup` and `entrance`. Cairn Crypt is dungeon 0 at `[200, 0]` (feature 5 grows it) |
+| 300-399 | 0-99 | 16 x 12 | Interiors: houses, shops, the inn, caves. Building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`, one empty screen from the next; a building of several rooms uses neighbouring screens of one area. A building of smaller rooms (10 x 8 to 16 x 12) goes in the same place by tile: `at: [(300 + 2 (k % 50)) * 16, 24 floor(k / 50)]` |
+| 400-479 | 0-99 | any, one height per block | Test areas, 10 columns per feature: 400 sword yard (1), 410 overworld enemy field (2), 420 dungeon enemy and boss rooms (3), 430 sub-item range (4), 440 dungeon mechanics (5), 450 overworld and town (6), 460 UI (7), 470 world and camera (`test-borders.js` uses 470-472, and Hedge Burrow, 12 x 9, sits at column 474 by tile) |
 
 ## Build rules
 
