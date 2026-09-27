@@ -19,7 +19,16 @@ export const LOOK_DAY = {
     sun: { color: 0xfff4e6, intensity: 3.0, dir: [0.47, 0.76, 0.45], castShadow: true },
     // 44-tile box centred 8 tiles north of the hero, soft PCF (radius in shadow-map texels)
     shadow: { mapSize: 4096, extent: 44, follow: 'hero', offset: [0, 0, -8], bias: -0.0003, normalBias: 0.01, radius: 2 },
-    lamp: { color: 0xffb060, intensity: 4.5, distance: 8, decay: 1.5 },
+    // wall lamps content places (makeLampLight): the dungeon sconce values
+    lamp: {
+      color: 0xffcc4c,
+      intensity: 2.5,
+      distance: 3.5,
+      decay: 2,
+      out: 0.25,
+      drop: 0,
+      fill: { intensity: 0.8, distance: 8, decay: 1, out: 1.6, drop: 1.1 },
+    },
   },
   // gradient "orb" reflected by glossy surfaces (specular only at this strength)
   env: { zenith: 0x78aef5, horizon: 0xeaf4ff, ground: 0x6f8a4a, sun: 0xfff4e0, sunSize: 0.12, intensity: 0.08 },
@@ -29,7 +38,25 @@ export const LOOK_DAY = {
   charMaterial: { grid: { width: 0.06, dark: 0.62 } },
   // fine kind (dungeon floors at 1/16): the golden-dungeon material values in every look
   fineMaterial: { roughness: 0.42, bevel: 0.16, bevelTilt: 0.75, edgeLight: 0.05, grid: { width: 0.06, dark: 0.85 } },
-  water: { color: 0x1f4fb0, opacity: 0.95, roughness: 0.15, ripple: 0.16, sparkle: 2.2 },
+  // water (ref 28): grey-blue with darker diagonal wave troughs, round soft glints 1.5 to 2 blocks across
+  // riding the crests, far water paler (sky sheen at grazing angles) with glints that stay bright
+  // through the depth-of-field blur
+  water: {
+    color: 0x1a4690,
+    opacity: 0.95,
+    roughness: 0.3,
+    ripple: 0.06,
+    sparkle: 2.6,
+    glintSize: 1.6,
+    glintDensity: 0.55,
+    glintFar: 0.12,
+    glintGrow: 0,
+    trough: 0.5,
+    troughDir: [0.8, 0.6],
+    troughFreq: 1.6,
+    sheen: 0.35,
+    sheenColor: 0xc8d0e8,
+  },
   ao: { intensity: 0.85, radius: 0.35, distanceExponent: 1.4, thickness: 0.8, scale: 1.0, samples: 16 },
   bloom: { strength: 0.32, radius: 0.55, threshold: 0.88 },
   glare: { threshold: 3.2, knee: 0.5, strength: 0.3, attenuation: 0.9, angle: 45 },
@@ -47,6 +74,8 @@ export const LOOK_DAY = {
     edgeWidth: 0.2,
   },
   reflect: 0, // polished floor off
+  reflectBlur: 0,
+  reflectTint: [1, 1, 1],
   // brief over-bright exposure on arriving from one of these looks (research note, not measured)
   arrivalFlash: { from: ['crypt'], boost: 0.45, seconds: 1.0 },
 };
@@ -60,16 +89,44 @@ export const LOOK_CRYPT = {
     // warm key from above and behind the camera; soft, faint shadows
     sun: { color: 0xffd4a0, intensity: 1.8, dir: [0.15, 1.0, 0.55], castShadow: true },
     shadow: { mapSize: 2048, extent: 24, follow: 'subject', offset: [0, 0, 0], bias: -0.0004, normalBias: 0.01, radius: 3 },
-    // wall sconces (content places them; makeLampLight() reads these)
-    lamp: { color: 0xffb060, intensity: 4.5, distance: 8, decay: 1.5 },
+    // wall sconces (content places them with makeLampLight()): a short yellow pool on the wall around
+    // each lamp (light 0.25 out from the fixture, inverse square, 3.5 range) plus a weak wide fill low
+    // in front of it for the warm band along the wall base
+    lamp: {
+      color: 0xffcc4c,
+      intensity: 2.5,
+      distance: 3.5,
+      decay: 2,
+      out: 0.25,
+      drop: 0,
+      fill: { intensity: 0.8, distance: 8, decay: 1, out: 1.6, drop: 1.1 },
+    },
   },
   env: { zenith: 0x604a38, horizon: 0x9a7a5a, ground: 0x3a2a1e, sun: 0x000000, sunSize: 0.12, intensity: 0.4 },
   material: { roughness: 0.42, bevel: 0.16, bevelTilt: 0.75, edgeLight: 0.05, grid: { width: 0.06, dark: 0.85 } },
   charMaterial: { grid: { width: 0.06, dark: 0.62 } },
   fineMaterial: { roughness: 0.42, bevel: 0.16, bevelTilt: 0.75, edgeLight: 0.05, grid: { width: 0.06, dark: 0.85 } },
-  water: { color: 0x1f78d8, opacity: 0.9, roughness: 0.12, ripple: 0.16, sparkle: 2.5 },
+  // the lab's golden room inherits its first-pass water: bright blue, stronger ripples, dense small
+  // glints, no troughs or sheen
+  water: {
+    color: 0x1f78d8,
+    opacity: 0.9,
+    roughness: 0.12,
+    ripple: 0.16,
+    sparkle: 2.5,
+    glintSize: 1.0,
+    glintDensity: 1.0,
+    glintFar: 0,
+    glintGrow: 0,
+    trough: 0,
+    troughDir: [0.8, 0.6],
+    troughFreq: 1.6,
+    sheen: 0,
+    sheenColor: 0xc8d0e8,
+  },
   ao: { intensity: 0.85, radius: 0.35, distanceExponent: 1.4, thickness: 0.8, scale: 1.0, samples: 16 },
-  bloom: { strength: 0.5, radius: 0.6, threshold: 0.8 },
+  // soft halo on the lamps and their floor glints
+  bloom: { strength: 0.6, radius: 0.7, threshold: 0.7 },
   glare: { threshold: 3.2, knee: 0.5, strength: 0.3, attenuation: 0.9, angle: 45 },
   tone: { exposure: 1.1 },
   grade: {
@@ -84,7 +141,11 @@ export const LOOK_CRYPT = {
     edge: 0.2,
     edgeWidth: 0.2,
   },
-  reflect: 0.5, // additive planar reflection strength (polished floor)
+  // polished floor: additive planar reflection, glossy (blur in reflection-texture uv, twice as tall
+  // as wide) and tinted by the gold-brown polish; it draws the bright warm band along every wall base
+  reflect: 1.05,
+  reflectBlur: 0.015,
+  reflectTint: [1, 1, 0.5],
   arrivalFlash: null,
 };
 

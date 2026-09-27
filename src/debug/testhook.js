@@ -13,7 +13,7 @@ import { setManual, isManual } from '../core/loop.js';
 import { seedRandom } from '../core/random.js';
 import { setMode } from '../core/modes.js';
 import { CAMERA_PRESETS, setCameraPreset, cameraPreset, camTarget } from '../core/camera.js';
-import { look, LIGHTING, applyLighting, lightingName } from '../core/renderer.js';
+import { look, LIGHTING, applyLighting, registerLighting, lightingName, camera as viewCamera } from '../core/renderer.js';
 import { QUALITY_ORDER, DOF_PRESETS } from '../core/look/index.js';
 import { getMaterial, makeWaterMaterial, makeGlowMaterial, setSeams, materialValues } from '../core/materials.js';
 import { world, currentScreen } from '../world/world.js';
@@ -113,13 +113,16 @@ export function installTestHook({ update, render }) {
     // The look (docs/ARCHITECTURE.md, "Look"): quality level, lighting preset, frame info.
     look: {
       levels: QUALITY_ORDER,
-      set: (level) => look.setQuality(level),
+      set: (level, opts) => look.setQuality(level, opts), // opts: { pin: false } keeps the watchdog on
       get: () => look.quality(),
       lighting: () => lightingName(),
       presets: () => Object.keys(LIGHTING),
       applyLighting,
+      registerLighting,
       dof: DOF_PRESETS,
       info: () => look.info(),
+      // the three.js camera (project points to find pixels in a frame)
+      camera: viewCamera,
       setSeams,
       materials: materialValues,
       // for previews of content the look-kits port has not switched over yet

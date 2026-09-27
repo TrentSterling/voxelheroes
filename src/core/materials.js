@@ -9,7 +9,7 @@
 //   makeGlowMaterial(color, intensity)  emissive-only (unlit, HDR) so bloom and glare catch it;
 //                             vertex colours multiply the colour, so pass 0xffffff for a voxel model
 //                             that carries its own colours
-//   makeWaterMaterial()       the lab water: voxel-quantised ripple normals and twinkling glints
+//   makeWaterMaterial()       the lab water: blocky ripples, wave troughs, round glints, grazing sheen
 //   setSeams(on)              seam lines on or off everywhere (one uniform, for an options menu)
 //
 // Voxel materials read the per-face 'faceUv' attribute written by both meshers (src/core/vox.js
@@ -154,37 +154,96 @@ export function makeGlowMaterial(color = 0xffffff, intensity = 3) {
 }
 
 // ---------------------------------------------------------------- water
-// Section 6: colour #1f4fb0 at opacity 0.95, glossy, blocky ripple normals quantised to 1/16 tile,
-// and glints: soft white blobs about one block across (wider than deep) in two offset jittered cell
-// layers (4.4 x 6.0 and 3.3 x 4.6 cells per tile), each twinkling on its own clock, emissive 2.2 so
-// bloom halos them. The time uniform is shared and driven by the render loop (setWaterTime).
+// Section 6 (lab water v10): a flat, glossy, translucent plane per water tile with blocky ripple
+// normals quantised to 1/16 tile, long diagonal wave troughs that darken the albedo, soft round
+// glints on the crests (two offset jittered cell layers, each blob twinkling on its own clock,
+// emissive so bloom halos them; they brighten with distance so they survive the depth of field) and
+// a pale sky sheen on grazing views. Every value comes from the active look (`water`); a key a look
+// leaves out takes the lab default below. The time uniform is shared and driven by the render loop.
+export const WATER_DEFAULTS = {
+  color: 0x2f8fd8,
+  opacity: 0.82,
+  roughness: 0.12,
+  ripple: 0.18,
+  sparkle: 2.5,
+  glintSize: 1.0,
+  glintDensity: 1.0,
+  glintFar: 0.0,
+  glintGrow: 0.0,
+  trough: 0.0,
+  troughDir: [0.8, 0.6],
+  troughFreq: 1.6,
+  sheen: 0.0,
+  sheenColor: 0xc8d0e8,
+};
+
 const waterUniforms = {
   waterTime: { value: 0 },
-  ripple: { value: 0.16 },
-  sparkle: { value: 2.2 },
+  ripple: { value: WATER_DEFAULTS.ripple },
+  sparkle: { value: WATER_DEFAULTS.sparkle },
+  glintSize: { value: WATER_DEFAULTS.glintSize },
+  glintDensity: { value: WATER_DEFAULTS.glintDensity },
+  glintFar: { value: WATER_DEFAULTS.glintFar },
+  glintGrow: { value: WATER_DEFAULTS.glintGrow },
+  trough: { value: WATER_DEFAULTS.trough },
+  troughDir: { value: new THREE.Vector2(...WATER_DEFAULTS.troughDir).normalize() },
+  troughFreq: { value: WATER_DEFAULTS.troughFreq },
+  sheenColor: { value: new THREE.Color(WATER_DEFAULTS.sheenColor) },
+  sheenAmt: { value: WATER_DEFAULTS.sheen },
 };
-const waterValues = { color: 0x1f4fb0, opacity: 0.95, roughness: 0.15 };
+const waterValues = { color: WATER_DEFAULTS.color, opacity: WATER_DEFAULTS.opacity, roughness: WATER_DEFAULTS.roughness };
 const waterMaterials = new Set();
+
+const WATER_PARS = /* glsl */ `
+varying vec3 vWPos;
+uniform float waterTime, ripple, sparkle, glintSize, glintFar, glintGrow, glintDensity, trough, troughFreq, sheenAmt;
+uniform vec2 troughDir;
+uniform vec3 sheenColor;
+float wHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float wNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y);
+}
+// 1 in a wave trough, 0 on a crest: long diagonal bands bent by low-frequency noise
+float waterTrough(vec2 xz) {
+  float s = dot(xz, troughDir) * troughFreq + 1.4 * wNoise(xz * 0.35) + 0.6 * wNoise(xz * 1.3 + 7.0) + waterTime * 0.15;
+  return smoothstep(0.55, 0.95, 0.5 + 0.5 * sin(s * 6.2831853));
+}`;
+
+const WATER_COLOR = /* glsl */ `
+diffuseColor.rgb *= 1.0 - trough * waterTrough(vWPos.xz);`;
 
 const WATER_GLINTS = /* glsl */ `
 {
+  float tr = waterTrough(vWPos.xz);
+  float dist = length(cameraPosition.xz - vWPos.xz);
+  float far = max(dist - 10.0, 0.0);
+  float grow = glintSize * (1.0 + glintGrow * far);
   float glint = 0.0;
   for (int k = 0; k < 2; k++) {
-    vec2 gp = vWPos.xz * (k == 0 ? vec2(4.4, 6.0) : vec2(3.3, 4.6)) + (k == 0 ? vec2(0.0) : vec2(0.37, 0.61));
+    vec2 gp = vWPos.xz * (k == 0 ? vec2(4.4, 3.4) : vec2(3.3, 2.6)) / grow + (k == 0 ? vec2(0.0) : vec2(0.37, 0.61));
     vec2 cell = floor(gp);
     float h = fract(sin(dot(cell + float(k) * 17.0, vec2(12.9898, 78.233))) * 43758.5453);
     float h2 = fract(h * 91.7), h3 = fract(h * 13.3);
     vec2 c = vec2(0.25 + 0.5 * h2, 0.25 + 0.5 * h3);
     float r = (0.16 + 0.22 * fract(h * 5.1)) * (k == 0 ? 1.0 : 1.15);
-    float blob = smoothstep(r, r * 0.4, length((fract(gp) - c) * vec2(0.8 + 0.4 * h3, 1.35)));
+    // deeper than wide in world space, so the blob reads round after foreshortening
+    float blob = smoothstep(r, r * 0.7, length((fract(gp) - c) * vec2(0.8 + 0.4 * h3, 0.9)));
     float ph = fract(h * 7.0 + waterTime * (0.3 + 0.6 * h));
-    glint = max(glint, blob * smoothstep(0.0, 0.2, ph) * smoothstep(0.75, 0.5, ph));
+    float on = step(fract(h * 37.9), glintDensity);
+    glint = max(glint, on * blob * smoothstep(0.0, 0.2, ph) * smoothstep(0.75, 0.5, ph));
   }
-  totalEmissiveRadiance += vec3(0.92, 0.96, 1.0) * glint * sparkle;
+  glint *= 1.0 - 0.85 * tr; // glints ride the crests
+  totalEmissiveRadiance += vec3(0.92, 0.96, 1.0) * glint * sparkle * (1.0 + glintFar * far);
+  vec3 V = normalize(cameraPosition - vWPos);
+  float fr = smoothstep(0.45, 0.15, V.y); // 0 at the hero's row, 1 on grazing views
+  totalEmissiveRadiance += sheenColor * sheenAmt * fr * (1.0 - 0.5 * tr);
 }`;
 
 const WATER_RIPPLE = /* glsl */ `
 {
+  // blocky ripples, quantised to the voxel grid so the water still reads as dots
   vec2 p = floor(vWPos.xz * 16.0) / 16.0;
   float a = sin(p.x * 5.1 + waterTime * 1.3) + sin(p.y * 6.3 - waterTime * 1.1) + sin((p.x + p.y) * 3.7 + waterTime * 0.7);
   float b = cos(p.x * 4.3 - waterTime * 0.9) + cos(p.y * 5.7 + waterTime * 1.2);
@@ -212,12 +271,13 @@ export class WaterMaterial extends THREE.MeshStandardMaterial {
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nuniform float waterTime, ripple, sparkle;')
+      .replace('#include <common>', `#include <common>\n${WATER_PARS}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${WATER_COLOR}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${WATER_GLINTS}`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\n${WATER_RIPPLE}`);
   }
   customProgramCacheKey() {
-    return 'water-v5';
+    return 'water-v10';
   }
   copy(source) {
     super.copy(source);
@@ -269,20 +329,20 @@ export function applyMaterialLook(look) {
   applyBag(BAGS.character, merge(look.charMaterial));
   applyBag(BAGS.fine, look.fineMaterial ?? base);
   for (const kind of MATERIAL_KINDS) SHARED[kind].roughness = BAGS[kind].voxRoughness.value;
-  const W = look.water;
-  if (W) {
-    if (W.ripple !== undefined) waterUniforms.ripple.value = W.ripple;
-    if (W.sparkle !== undefined) waterUniforms.sparkle.value = W.sparkle;
-    Object.assign(waterValues, {
-      color: W.color ?? waterValues.color,
-      opacity: W.opacity ?? waterValues.opacity,
-      roughness: W.roughness ?? waterValues.roughness,
-    });
-    for (const m of waterMaterials) {
-      m.color.setHex(waterValues.color);
-      m.opacity = waterValues.opacity;
-      m.roughness = waterValues.roughness;
-    }
+  applyWater({ ...WATER_DEFAULTS, ...(look.water ?? {}) });
+}
+
+function applyWater(W) {
+  const U = waterUniforms;
+  for (const k of ['ripple', 'sparkle', 'glintSize', 'glintDensity', 'glintFar', 'glintGrow', 'trough', 'troughFreq']) U[k].value = W[k];
+  U.troughDir.value.set(...W.troughDir).normalize();
+  U.sheenColor.value.setHex(W.sheenColor);
+  U.sheenAmt.value = W.sheen;
+  Object.assign(waterValues, { color: W.color, opacity: W.opacity, roughness: W.roughness });
+  for (const m of waterMaterials) {
+    m.color.setHex(waterValues.color);
+    m.opacity = waterValues.opacity;
+    m.roughness = waterValues.roughness;
   }
 }
 
@@ -301,6 +361,16 @@ export function materialValues() {
   }
   out.seams = seamOn.value === 1;
   out.flat = flatMode.value === 1;
-  out.water = { ...waterValues, ripple: waterUniforms.ripple.value, sparkle: waterUniforms.sparkle.value };
+  const U = waterUniforms;
+  out.water = {
+    ...waterValues,
+    ripple: U.ripple.value,
+    sparkle: U.sparkle.value,
+    glintSize: U.glintSize.value,
+    glintDensity: U.glintDensity.value,
+    glintFar: U.glintFar.value,
+    trough: U.trough.value,
+    sheen: U.sheenAmt.value,
+  };
   return out;
 }

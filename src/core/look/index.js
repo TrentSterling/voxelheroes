@@ -21,7 +21,6 @@ export { DOF_PRESETS, QUALITY_LEVELS, QUALITY_ORDER };
 // SLOW_FRAME_MS for SLOW_SECONDS (real-time loop only; never below 'low').
 const SLOW_FRAME_MS = 24;
 const SLOW_SECONDS = 3;
-const WINDOW = 45;
 
 const _size = new THREE.Vector2();
 const _hero = new THREE.Vector3();
@@ -96,6 +95,8 @@ export function createLook({ renderer, scene, camera }) {
     return coarse || small ? 'medium' : 'high';
   }
 
+  // ?look= wins, then a saved settings choice, then the device default (which the watchdog may lower)
+  let lastSettingsLook = state.settings?.look;
   function initQuality() {
     const url = new URLSearchParams(window.location.search).get('look');
     if (url && QUALITY_LEVELS[url]) return setQuality(url, { pin: true });
@@ -104,43 +105,48 @@ export function createLook({ renderer, scene, camera }) {
     return setQuality(defaultQuality(), { pin: false });
   }
 
+  // Frames are timed between loop draws; a hidden tab restarts the timing (rAF pauses there), so
+  // slow devices whose frames take seconds still count.
   const watchdog = {
-    times: [],
+    samples: [], // [end time, frame ms]
     last: 0,
-    slow: 0,
     hold: 0,
+    frames: 0,
+    lastDt: 0,
     drops: [],
     reset() {
-      this.times.length = 0;
-      this.slow = 0;
+      this.samples.length = 0;
       this.hold = 2000; // ignore the first 2 s after a change (shader compiles)
       this.last = 0;
     },
     sample(now) {
       const dt = this.last ? now - this.last : 0;
       this.last = now;
-      if (!dt || dt > 500) return; // first frame, or the tab was hidden
+      this.frames++;
+      this.lastDt = dt;
+      if (!dt) return;
       if (this.hold > 0) {
         this.hold -= dt;
         return;
       }
-      this.times.push(dt);
-      if (this.times.length > WINDOW) this.times.shift();
-      if (this.times.length < 15) return;
-      const sorted = [...this.times].sort((a, b) => a - b);
+      const span = SLOW_SECONDS * 1000;
+      const S = this.samples;
+      S.push([now, dt]);
+      // drop the oldest frames while the rest still cover the span; judge once they cover it
+      while (S.length > 3 && S[1][0] - S[1][1] <= now - span) S.shift();
+      if (S.length < 3 || S[0][0] - S[0][1] > now - span) return;
+      const sorted = S.map((x) => x[1]).sort((a, b) => a - b);
       const median = sorted[sorted.length >> 1];
-      this.slow = median > SLOW_FRAME_MS ? this.slow + dt : 0;
-      if (this.slow >= SLOW_SECONDS * 1000 && !pinned) {
-        const i = QUALITY_ORDER.indexOf(quality);
-        if (i >= 0 && i < QUALITY_ORDER.indexOf('low')) {
-          const to = QUALITY_ORDER[i + 1];
-          this.drops.push({ from: quality, to, median: +median.toFixed(1), time: +(now / 1000).toFixed(1) });
-          console.info(`[look] median frame ${median.toFixed(1)} ms for ${SLOW_SECONDS} s: quality ${quality} -> ${to}`);
-          setQuality(to, { pin: false });
-        } else this.slow = 0;
-      }
+      if (median <= SLOW_FRAME_MS || pinned) return;
+      const i = QUALITY_ORDER.indexOf(quality);
+      if (i < 0 || i >= QUALITY_ORDER.indexOf('low')) return;
+      const to = QUALITY_ORDER[i + 1];
+      this.drops.push({ from: quality, to, median: +median.toFixed(1), time: +(now / 1000).toFixed(1) });
+      console.info(`[look] median frame ${median.toFixed(1)} ms over ${SLOW_SECONDS} s: quality ${quality} -> ${to}`);
+      setQuality(to, { pin: false });
     },
   };
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => (watchdog.last = 0));
 
   // ---------------------------------------------------------------- per frame
   // The screens around the camera subject: the current room, or two rooms during a slide.
@@ -166,8 +172,12 @@ export function createLook({ renderer, scene, camera }) {
     const t0 = performance.now();
     renderer.info.reset();
     if (!lookName) applyLook('day');
+    // a settings menu choice (state.settings.look) applies when it changes
     const settingsLook = state.settings?.look;
-    if (settingsLook && settingsLook !== quality && QUALITY_LEVELS[settingsLook]) setQuality(settingsLook, { pin: true });
+    if (settingsLook !== lastSettingsLook) {
+      lastSettingsLook = settingsLook;
+      if (QUALITY_LEVELS[settingsLook]) setQuality(settingsLook, { pin: true });
+    }
     const Q = QUALITY_LEVELS[quality];
 
     const pr = Math.min(window.devicePixelRatio || 1, 2);
@@ -181,7 +191,16 @@ export function createLook({ renderer, scene, camera }) {
     rig.place(hero ? { x: hero.x, z: hero.z } : subject, subject);
     const rect = roomRect();
     rig.cullLamps(rect);
-    mirror.update({ enabled: (L.reflect ?? 0) > 0 && Q.reflect, strength: L.reflect ?? 0, rect, floorY: GROUND_Y, width: w, height: h });
+    mirror.update({
+      enabled: (L.reflect ?? 0) > 0 && Q.reflect,
+      strength: L.reflect ?? 0,
+      blur: L.reflectBlur ?? 0,
+      tint: L.reflectTint ?? [1, 1, 1],
+      rect,
+      floorY: GROUND_Y,
+      width: w,
+      height: h,
+    });
     setWaterTime(state.time);
 
     // depth of field: the hero's feet (view depth) plus the camera preset's offset
@@ -233,12 +252,18 @@ export function createLook({ renderer, scene, camera }) {
     },
     render,
     sampleFrame: (now) => watchdog.sample(now),
-    setQuality: (level) => setQuality(level, { pin: true }),
+    // pin: false lets the frame-time watchdog lower it again (the default pins it, like ?look=)
+    setQuality: (level, { pin = true } = {}) => setQuality(level, { pin }),
     quality: () => quality,
     setMirrorRect(rect) {
       mirror.override = rect ? { ...rect } : null;
     },
-    makeLampLight: (overrides) => makeLampLightFrom(L.lights?.lamp ?? LOOK_CRYPT.lights.lamp, overrides),
+    // a wall lamp (group of point lights) with the active look's lamp values, culled with the others
+    makeLampLight(overrides) {
+      const lamp = makeLampLightFrom(L.lights?.lamp ?? LOOK_CRYPT.lights.lamp, overrides);
+      rig.lamps.push(...lamp.userData.lights);
+      return lamp;
+    },
     info() {
       const Q = QUALITY_LEVELS[quality];
       return {
@@ -255,9 +280,10 @@ export function createLook({ renderer, scene, camera }) {
         exposure: +lastFrame.exposure.toFixed(3),
         mirror: !!mirror.mesh?.parent,
         shadowMap: rig.sun.shadow.mapSize.x,
-        lamps: rig.lamps.filter((l) => l.layers.isEnabled(0)).length,
+        lamps: rig.lamps.filter((l) => l.parent && l.layers.isEnabled(0)).length,
         passes: Q.post ? pipeline.stats.passes : 1,
         drops: [...watchdog.drops],
+        watchdog: { frames: watchdog.frames, lastFrameMs: +watchdog.lastDt.toFixed(1), samples: watchdog.samples.length, hold: Math.max(0, Math.round(watchdog.hold)) },
         materials: materialValues(),
         calls: renderer.info.render.calls,
         triangles: renderer.info.render.triangles,

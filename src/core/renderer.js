@@ -49,7 +49,8 @@ export function followSun(target) {
   look.followSun(target);
 }
 
-// Point light for a wall lamp with the active look's lamp values; never casts shadows.
+// A wall lamp with the active look's lamp values: a group of point lights (the pool on the wall and
+// a wide fill) to place at the fixture with +z into the room. Lamps never cast shadows.
 export const makeLampLight = (overrides) => look.makeLampLight(overrides);
 
 export function mountRenderer(container) {

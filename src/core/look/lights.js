@@ -98,11 +98,28 @@ export class LightRig {
   }
 }
 
-// A wall-lamp light with the active look's lamp values (bible: warm #ffb060, 4.5, range 8, decay 1.5).
+// A wall lamp (lab DGN_GOLD sconce): a short bright pool on the wall around the fixture (a point
+// light `out` tiles in front of it and `drop` below, inverse square over `distance`) plus an
+// optional weak wide `fill` light lower and further out for the warm band along the wall base.
+// Returned as a group: place it at the fixture and turn it so its +z points into the room
+// (rotation.y = 0 for a sconce on a north wall). Lamps never cast shadows.
 export function makeLampLightFrom(lamp, overrides = {}) {
-  const L = { color: 0xffb060, intensity: 4.5, distance: 8, decay: 1.5, ...(lamp ?? {}), ...overrides };
+  const L = { color: 0xffcc4c, intensity: 2.5, distance: 3.5, decay: 2, out: 0.25, drop: 0, fill: null, ...(lamp ?? {}), ...overrides };
+  const group = new THREE.Group();
+  group.name = 'lamp';
   const light = new THREE.PointLight(L.color, L.intensity, L.distance, L.decay);
+  light.position.set(0, -(L.drop ?? 0), L.out ?? 0);
   light.castShadow = false;
-  light.name = 'lamp';
-  return light;
+  light.name = 'lamp-light';
+  group.add(light);
+  if (L.fill) {
+    const F = L.fill;
+    const fill = new THREE.PointLight(F.color ?? L.color, F.intensity, F.distance, F.decay);
+    fill.position.set(0, -(F.drop ?? 0), F.out ?? 0);
+    fill.castShadow = false;
+    fill.name = 'lamp-fill';
+    group.add(fill);
+  }
+  group.userData.lights = group.children.slice();
+  return group;
 }
