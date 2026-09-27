@@ -9,7 +9,10 @@
 //   playAreaMusic(area)      the area's track: area.music, else its dungeon's music, else none
 //
 // The hero entering another area plays that area's track (bosses call
-// playMusic('boss') and playAreaMusic() after). play(out) gets the music bus
+// playMusic('boss') and playAreaMusic() after). An area or dungeon that
+// names a track nobody registered is silent, with one warning per id: each
+// stream registers its own tracks (a dungeon its 'dungeon-<n>' placeholder
+// in dungeons/<id>.js, the overworld its area tracks in music/*). play(out) gets the music bus
 // from core/audio.js (null until the first key press or tap) and returns a
 // stop function; a track without play() is silent. The fade between tracks
 // is TUNING.load.musicFade (for M6).
@@ -70,10 +73,17 @@ export function stopMusic() {
   return null;
 }
 
+const warned = new Set();
+
 export function areaMusic(area) {
   if (!area) return null;
   const id = area.music ?? dungeonOfArea(area.id)?.music ?? null;
-  return id && tracks.has(id) ? id : null;
+  if (id && !tracks.has(id)) {
+    if (!warned.has(id)) console.warn(`music: area "${area.id}" names track "${id}", which nobody registered; silent`);
+    warned.add(id);
+    return null;
+  }
+  return id;
 }
 
 export function playAreaMusic(area = currentScreen()?.area) {

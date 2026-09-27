@@ -26,6 +26,16 @@ export function hideOverlay() {
 
 export const overlayVisible = () => !$('overlay').hidden;
 
+// What the panel says, for tests (the ui may restyle it but keeps these
+// answers): { visible, title, message, button }. The game-over message names
+// where the hero will get up.
+export const overlayView = () => ({
+  visible: overlayVisible(),
+  title: $('overlay-title')?.textContent ?? '',
+  message: $('overlay-msg')?.textContent ?? '',
+  button: $('start')?.textContent ?? '',
+});
+
 export function setFade(opacity) {
   $('fade').style.opacity = String(opacity);
 }

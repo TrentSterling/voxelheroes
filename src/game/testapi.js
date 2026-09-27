@@ -6,6 +6,11 @@
 //   g.hero.hero.receiveHit({ damage: 2, from: { x, z }, kind: 'contact' });
 //   g.swords.buyLevel('blade-2', 'length');
 //
+// Members: the modules docs/CONTRACTS.md section 8.22 lists, plus the entity
+// base and registry (entity, registry: tests register probe- types), the ui
+// views (dialog.dialogView, hud.muteLabel, overlay.overlayView: tests read
+// these, never the DOM), clears, drops and tileActions.
+//
 // The test hook (debug/testhook.js) is installed after the content modules
 // load, so this attaches on the next microtask; window.__voxelHeroesGame
 // holds the same object in case the hook is missing.
@@ -23,6 +28,13 @@ import * as keys from '../systems/keys.js';
 import * as inventory from '../items/inventory.js';
 import * as itemRegistry from '../items/registry.js';
 import * as projectile from '../entities/projectile.js';
+import * as entity from '../entities/entity.js';
+import * as registry from '../entities/registry.js';
+import * as tileActions from '../systems/tile-actions.js';
+import * as drops from '../systems/drops.js';
+import * as dialog from '../ui/dialog.js';
+import * as hud from '../ui/hud.js';
+import * as overlay from '../ui/overlay.js';
 import * as vitals from './vitals.js';
 import * as progress from './progress.js';
 import * as places from './places.js';
@@ -42,6 +54,7 @@ import * as cards from './cards.js';
 import * as prompts from './prompts.js';
 import * as pickups from './pickups.js';
 import * as menus from './menus.js';
+import * as clears from './clears.js';
 
 export const gameApi = {
   version: 1,
@@ -78,6 +91,14 @@ export const gameApi = {
   prompts,
   pickups,
   menus,
+  clears,
+  entity,
+  registry,
+  tileActions,
+  drops,
+  dialog,
+  hud,
+  overlay,
 };
 
 if (typeof window !== 'undefined') {

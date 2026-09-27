@@ -21,6 +21,13 @@
 // overrides it, in characters per second); largeText draws a bigger box.
 // "{hero}" in a line becomes the hero's name. ask(text, choices, opts) is
 // showDialog with choices.
+//
+// dialogView() describes the open box for tests and other code, so they
+// never read the DOM (the ui may restyle the box, and put yes/no in a box of
+// its own): null when closed, else { speaker, text (the whole page), shown
+// (the part typed so far), choices (the list once the page is typed, else
+// null), choice (the index selected), large, page, pages }. Keys: A, Space
+// or Enter turns the page and picks; up/left and down/right move the choice.
 import './dialog.css';
 import { registerMode, pushMode, popMode } from '../core/modes.js';
 import { input } from '../core/input.js';
@@ -61,6 +68,23 @@ export function showDialog(lines, opts = {}) {
 export const ask = (text, choices, opts = {}) => showDialog(text, { ...opts, choices });
 
 export const dialogOpen = () => active !== null;
+
+export function dialogView() {
+  if (!active) return null;
+  const text = pageText();
+  const done = active.shown >= text.length;
+  const list = choices();
+  return {
+    speaker: active.opts.speaker ?? null,
+    text,
+    shown: text.slice(0, Math.floor(active.shown)),
+    choices: done && list ? [...list] : null,
+    choice: active.choice,
+    large: !!box?.root.classList.contains('large'),
+    page: active.page,
+    pages: active.pages.length,
+  };
+}
 
 function openNext() {
   const next = queue.shift();

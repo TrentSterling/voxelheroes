@@ -35,6 +35,7 @@ export const TUNING = {
   readability: U.readability,
   enemy: E.enemy,
   boss: B.boss,
+  traps: B.traps,
   dungeon: D.dungeon,
   pickups: I.pickups,
   items: I.items,
@@ -44,6 +45,8 @@ export const TUNING = {
   drops: E.drops,
   options: U.options,
   profile: U.profile,
+  menu: U.menu,
+  toasts: U.toasts,
 };
 
 export const TICK = 1 / TUNING.sim.hz; // seconds per simulation tick

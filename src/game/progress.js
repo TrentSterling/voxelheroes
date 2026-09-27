@@ -1,20 +1,27 @@
 // Who the hero is: class, trait, name, difficulty (state.profile), and the
 // new-game flow the title screens (ui) finish with.
 //
-//   startNewGame({ name: 'Ada', class: 'balanced', trait: 'focus', difficulty: 'normal' })
-//     -> a fresh game with the class's life and magic, in play; 'new-game' { profile }
+//   startNewGame({ name: 'Ada', class: 'balanced', trait: 'focus', difficulty: 'normal', model: 'hero' })
+//     -> a fresh game with the class's life and magic, in play; 'new-game' { profile, prologue }
+//   startNewGame({ ..., prologue: true })   the spec's prologue (P2.6): no sword, no
+//     shield, at the spot the overworld registered with registerPrologue
+//   registerPrologue({ spot, respawn })     overworld: where a new game starts (the
+//     castle) and its first respawn point (default: the spot)
 //
 // Classes (gameplay spec 7.12, TUNING.progression.classes): life 5 hearts and
 // 3 magic, balanced 4 hearts and 4 magic, magic 3 hearts and 5 magic. Traits:
 // might (+1 strength on every sword), focus (spells cost 1 less, never below
 // 1). Difficulty: normal, hard (double damage to the hero, 50% more enemies,
-// rare spawns twice as likely), one-hit (any hit kills). A game started
-// without a profile (the M1 title's Enter) keeps 3 hearts and no magic.
+// rare spawns twice as likely), one-hit (any hit kills). `model` names the
+// hero's look (state.profile.model, 'hero' for now). A game started without
+// a profile (the M1 title's Enter) keeps 3 hearts and no magic, starts at
+// START with the starter sword and shield 1, and does not play the prologue.
 import { state } from '../core/state.js';
 import { emit } from '../core/events.js';
 import { TUNING } from '../core/tuning.js';
 import { newGame, startGame } from '../systems/flow.js';
 import { UNITS_PER_HEART, syncVitals } from './vitals.js';
+import { goToSpot, setRespawn } from './places.js';
 import './fields.js';
 
 export const CLASSES = Object.keys(TUNING.progression.classes); // ['life', 'balanced', 'magic']
@@ -61,11 +68,38 @@ export function applyProfile({ name, class: cls = null, trait = null, difficulty
   return { ...state.profile };
 }
 
-// Title flow's last step: reset everything, apply the profile, start playing.
-export function startNewGame(profile = {}) {
+// ---------------------------------------------------------------- the prologue
+let prologue = null;
+
+export function registerPrologue({ spot, respawn = spot } = {}) {
+  if (prologue) throw new Error('A prologue is already registered');
+  if (!spot?.area) throw new Error('registerPrologue: a spot with an area is needed');
+  prologue = { spot, respawn };
+}
+
+export const prologueSpot = () => (prologue ? { ...prologue.spot } : null);
+let warnedPrologue = false;
+
+// Title flow's last step: reset everything, apply the profile, start
+// playing. With prologue: true the hero starts unarmed (swords.owned [],
+// equipped null, gear.shield 0) at the registered prologue spot, with his
+// respawn point there; the king's grants arm him (blade-start, shield-1).
+export function startNewGame({ prologue: withPrologue = false, ...profile } = {}) {
   newGame();
   const p = applyProfile(profile);
+  if (withPrologue) {
+    state.swords.owned = [];
+    state.swords.equipped = null;
+    state.gear.shield = 0;
+  }
   startGame();
-  emit('new-game', { profile: p });
+  if (withPrologue) {
+    if (prologue && goToSpot(prologue.spot, { fade: false })) setRespawn(prologue.respawn);
+    else if (!warnedPrologue) {
+      warnedPrologue = true;
+      console.warn('startNewGame: no prologue registered (overworld: registerPrologue); starting at START');
+    }
+  }
+  emit('new-game', { profile: p, prologue: !!withPrologue });
   return p;
 }

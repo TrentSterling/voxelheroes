@@ -32,7 +32,8 @@
 //   geometry (+ material) or object: how it looks
 //   hitOpts      extra dealDamage options (stun for the boomerang, freeze, ...)
 //
-// Each tick: move; past its range or out of the current screen: fizzle();
+// Each tick: move (dt scaled by effects.worldScale: half speed under the slow
+// spell, unless the hero owns the shot); past its range or out of the current screen: fizzle();
 // in a tile that blocks shots: that tile's onShot hook, then onHitWall();
 // enemy shots touching the hero: hero.receiveHit({ kind: 'projectile', tier }),
 // then 'blocked' -> reflect or break, 'hit' -> break, 'ignored' -> fly on;
@@ -49,7 +50,7 @@ import { world } from '../world/world.js';
 import { burst } from '../systems/particles.js';
 import { hero } from '../game/hero.js';
 import { dealDamage } from '../game/damage.js';
-import { effectActive } from '../game/effects.js';
+import { effectActive, worldScale } from '../game/effects.js';
 import { currentRect } from '../game/places.js';
 import { Entity } from './entity.js';
 import { entities } from './manager.js';
@@ -126,7 +127,8 @@ export class Projectile extends Entity {
     return !r || this.x < r.x0 || this.x > r.x1 || this.z < r.z0 || this.z > r.z1;
   }
 
-  update(dt) {
+  update(rawDt) {
+    const dt = rawDt * worldScale(this);
     const dx = this.vx * dt;
     const dz = this.vz * dt;
     this.x += dx;

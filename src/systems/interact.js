@@ -7,6 +7,12 @@
 //       asks every frame). label: the entity's or tile's `prompt` ('Talk',
 //       'Read', 'Open', 'Buy'), default 'Talk' for entities, 'Check' for tiles.
 //   tryInteract(player) -> true if A was used up
+//
+// Reach (gameplay spec 5.6: "facing it within 1.0 tile"): TUNING.hero.interactRange
+// from the hero's centre to the entity's edge (an entity may set its own
+// interactRange, a counter reached across a table); roughly in front means
+// within 60 degrees of the facing.
+import { TUNING } from '../core/tuning.js';
 import { world } from '../world/world.js';
 import { entities } from '../entities/manager.js';
 
@@ -21,7 +27,7 @@ function facingEntity(p) {
     const dx = e.x - p.x;
     const dz = e.z - p.z;
     const d = Math.hypot(dx, dz);
-    if (d > (e.interactRange ?? 0.9) + e.r) continue;
+    if (d > (e.interactRange ?? TUNING.hero.interactRange) + e.r) continue;
     if ((dx * fx + dz * fz) / (d || 1) < 0.5) continue; // roughly in front
     if (d < bestD) {
       best = e;

@@ -3,46 +3,61 @@
 // (systems/combat.js); the hero stream re-implements the insides in M2 and
 // keeps every name and return value here.
 //
-//   hero.facing()            'north' | 'east' | 'south' | 'west' (the 4-way attack facing)
+//   hero.facing()            'north' | 'east' | 'south' | 'west': the 4-way attack facing
 //   hero.facingVector()      { x, z } unit vector of it
+//   hero.setFacing(dir)      turn the attack facing (and the body) to a cardinal
+//   hero.faceToward(x, z)    face a world point (the cardinal nearest its direction)
 //   hero.position()          { x, z } world, plus lx, lz local to the current screen
 //   hero.isGuarding()        the guard is up (the guard button held, or the hero stream's rule)
 //   hero.isFullLife()        life equals max life (the sword's full-life rule)
-//   hero.receiveHit({ damage, from, kind, tier, source }) -> 'blocked' | 'hit' | 'ignored'
+//   hero.receiveHit({ damage, from, kind, tier, source, knockback, iframes, lock })
+//                            -> 'blocked' | 'hit' | 'ignored'
 //   hero.heal(units)         -> units restored
-//   hero.cheer(seconds)      the cheer pose (item get, a drop from a height)
+//   hero.setPose(pose, s)    one of POSES for s seconds (null: back to walking)
+//   hero.cheer(seconds)      the cheer pose (item get, a ledge hop)
 //   hero.lockInput(seconds)  no sword, item or dash presses for a while
+//   hero.pull({ toX, toZ, speed })  the grapple drags him there -> Promise<'arrived' | 'blocked' | 'cancelled'>
 //   hero.respawn({ spot })   stand up somewhere with full life and magic
-//   hero.fall()              a pit: 2 units of damage, back to where he entered the room
+//   hero.fall({ damage, to }) a pit or a dark puddle: damage, then back to 'entry',
+//                            the last 'safe' tile, or a spot
 //   hero.canAct()            may attack or use an item now (not in a doorway, not locked)
 //
 // receiveHit is the one way foes, shots and hazards hurt the hero:
-//   damage   base damage in life units (half hearts)
-//   from     { x, z } or an entity: where the hit comes from (direction for the
-//            shield and the knockback); null for hazards underfoot
-//   kind     'contact' (bodies, swords), 'projectile' (shots) or 'hazard' (spikes,
-//            lava, pits, swamp): hazards are never blocked
-//   tier     for projectiles, the shield tier that blocks it: 2 arrows and basic
-//            shots, 3 magic bolts, 4 fire, 5 lightning, 6 everything blockable;
-//            Infinity (or unblockable: true) for shots nothing blocks
-//   source   what hit (an entity or an id), passed on in events
-//   knockback false: no push (a hazard's own handling moves the hero)
+//   damage    base damage in life units (half hearts)
+//   from      { x, z } or an entity: where the hit comes from (direction for the
+//             shield and the knockback); null for hazards underfoot
+//   kind      'contact' (bodies, swords), 'projectile' (shots) or 'hazard' (spikes,
+//             lava, pits, swamp, blasts): hazards are never blocked
+//   tier      the shield tier that blocks it: projectiles default to 2 (arrows and
+//             basic shots; 3 magic bolts, 4 fire, 5 lightning, 6 everything
+//             blockable), contact to 1 (any shield); Infinity (or unblockable:
+//             true) for shots nothing blocks
+//   source    what hit (an entity or an id), passed on in events
+//   knockback tiles pushed away from `from` over TUNING.damage.knockTime
+//             (true: TUNING.damage.knock; false or 0: no push)
+//   iframes   seconds of blinking after the hit (default TUNING.damage.iframes;
+//             false: none, for damage over time such as a swamp)
+//   lock      seconds of locked input after the hit (default
+//             TUNING.damage.knockLock; false: none)
+//   ignoreIframes  lands even while he blinks (hazards that tick)
 // Returns 'ignored' when the hero cannot be hurt now (not in play, already
 // down, blinking after a hit, invulnerable), 'blocked' when the guard stopped
-// it (the attacker should recoil: TUNING.guard.attackerKnock / attackerStun),
-// 'hit' when it landed. Damage taken is max(1, floor(damage x difficulty x
-// (1 - ring cut))), or all remaining life in one-hit mode.
+// it (the caller recoils: TUNING.guard.attackerKnock / attackerStun; the hero
+// only takes the guard's push), 'hit' when it landed. Damage taken is
+// max(1, floor(damage x difficulty x (1 - ring cut))), or all remaining life
+// in one-hit mode.
 import { state } from '../core/state.js';
 import { input } from '../core/input.js';
 import { on, emit } from '../core/events.js';
 import { sfx } from '../core/audio.js';
 import { TUNING } from '../core/tuning.js';
-import { currentScreen } from '../world/world.js';
+import { world, currentScreen } from '../world/world.js';
 import { player } from '../entities/player.js';
 import { hurtPlayer } from '../systems/combat.js';
 import { moveBody } from '../systems/physics.js';
 import { registerPlayHook } from '../systems/flow.js';
 import { registerGrant } from '../systems/grants.js';
+import { tryInteract } from '../systems/interact.js';
 import * as vitals from './vitals.js';
 import { damageMultiplier, isOneHit } from './progress.js';
 import { spotHere, goToSpot, respawnSpot, roomEntry, currentRect } from './places.js';
@@ -62,11 +77,24 @@ export function facingFromYaw(yaw) {
   return z > 0 ? 'south' : 'north';
 }
 
+// The cardinal nearest the direction (dx, dz).
+export function facingToward(dx, dz) {
+  if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? 'east' : 'west';
+  return dz > 0 ? 'south' : 'north';
+}
+
 export const HIT_KINDS = ['contact', 'projectile', 'hazard'];
+// Poses the hero shows (hero-pose): stand and cheer are look's, swordOut the
+// thrust, item a B item or spell in use, guard the raised shield. The hero
+// stream adds the item and guard models (models/hero/*; until then they
+// fall back to swordOut and stand).
+export const POSES = ['stand', 'cheer', 'swordOut', 'item', 'guard'];
 
 const status = new Map(); // name -> seconds left
 let lockLeft = 0;
 let posed = null; // { pose, left }
+let pulling = null; // { x, z, speed, fromX, fromZ, resolve }
+let lastSafe = null; // { x, z } local: the last tile he stood on that was not a hazard
 
 const pointOf = (from) => (from && Number.isFinite(from.x) && Number.isFinite(from.z) ? { x: from.x, z: from.z } : null);
 
@@ -97,6 +125,58 @@ const ringCut = () => {
   return state.gear.ring === 'ring-half' ? half : state.gear.ring === 'ring-quarter' ? quarter : 0;
 };
 
+// Is spot s (area, screen) the screen the hero is on?
+function sameScreen(s) {
+  const here = spotHere();
+  if (!here || !s) return false;
+  if (!s.area) return true;
+  return s.area === here.area && (!s.screen || (s.screen[0] === here.screen[0] && s.screen[1] === here.screen[1]));
+}
+
+// Does something high (a wall, a tree: anything that stops shots) stand at world point (x, z)?
+const highAt = (x, z) => (world.shotBlockedAt ? world.shotBlockedAt(x, z) : world.blocksShot(Math.floor(x), Math.floor(z)));
+
+function endPull(result) {
+  if (!pulling) return;
+  const p = pulling;
+  pulling = null;
+  player.knockT = 0;
+  player.kx = player.kz = 0;
+  player.resetTileTracking?.(); // the tile he lands on answers onEnter
+  p.resolve(result);
+}
+
+// One tick of the pull, in the 'after' phase: move toward the target; stop
+// at anything high; land where he can stand.
+function stepPull(dt) {
+  const p = pulling;
+  const dx = p.x - player.x;
+  const dz = p.z - player.z;
+  const d = Math.hypot(dx, dz);
+  const step = p.speed * dt;
+  const k = d <= step ? 1 : step / d;
+  const nx = player.x + dx * k;
+  const nz = player.z + dz * k;
+  let result = k >= 1 ? 'arrived' : null;
+  if (highAt(nx, nz) || (!p.overLow && world.blocked(nx, nz, player.r, player))) result = 'blocked';
+  else {
+    player.x = nx;
+    player.z = nz;
+    player.tileX = Math.floor(nx); // no onEnter for what he flies over
+    player.tileZ = Math.floor(nz);
+  }
+  if (!result) return;
+  // Land: back along the way until he can stand.
+  const bx = p.fromX - player.x;
+  const bz = p.fromZ - player.z;
+  const back = Math.hypot(bx, bz);
+  for (let t = 0; t <= back && world.blocked(player.x, player.z, player.r, player); t += 1 / 16) {
+    player.x += (bx / (back || 1)) / 16;
+    player.z += (bz / (back || 1)) / 16;
+  }
+  endPull(result);
+}
+
 // Damage the hero takes from a hit of `base` units (difficulty, rings, one-hit mode).
 export function damageTaken(base) {
   if (isOneHit()) return Math.max(1, state.hp);
@@ -114,10 +194,27 @@ export const hero = {
     return { x: player.x, z: player.z, lx: r ? player.x - r.x0 : null, lz: r ? player.z - r.z0 : null };
   },
   spot: () => spotHere(),
-  // The hero stream keeps player.facing up to date (the 4-way rule of the
-  // gameplay spec 7.3); until then it is the cardinal nearest the body's yaw.
+  // The attack facing (gameplay spec 7.3): the hero stream keeps it in
+  // player.facing, apart from the 8-way body yaw (player.yaw). Until then it
+  // is the cardinal nearest the body's yaw.
   facing: () => (FACINGS.includes(player.facing) ? player.facing : facingFromYaw(player.yaw)),
   facingVector: () => ({ ...FACING_VECTORS[hero.facing()] }),
+  // Turn the attack facing to `dir` and the body with it. (Stand-in: the
+  // body's yaw, which the facing is read from.)
+  setFacing(dir) {
+    if (!FACINGS.includes(dir)) throw new Error(`setFacing: ${FACINGS.join(', ')}, not "${dir}"`);
+    player.yaw = FACING_YAW[dir];
+    return dir;
+  },
+  // Face the world point (x, z): the attack facing becomes the cardinal
+  // nearest its direction. (Stand-in: the body turns straight at it.)
+  faceToward(x, z) {
+    const dx = x - player.x;
+    const dz = z - player.z;
+    if (Math.hypot(dx, dz) < 1e-6) return hero.facing();
+    player.yaw = Math.atan2(dx, dz);
+    return facingToward(dx, dz);
+  },
 
   // ---- condition
   isGuarding: () => !!player.guarding,
@@ -127,33 +224,51 @@ export const hero = {
   isInvulnerable: () => player.invT > 0 || hero.hasStatus('invulnerable') || effectActive('star'),
 
   // ---- damage and healing
-  receiveHit({ damage = 1, from = null, kind = 'contact', tier = 1, source = null, knockback = true, unblockable = false, ignoreIframes = false } = {}) {
+  receiveHit({
+    damage = 1,
+    from = null,
+    kind = 'contact',
+    tier = kind === 'projectile' ? 2 : 1,
+    source = null,
+    knockback = true,
+    iframes = TUNING.damage.iframes,
+    lock = TUNING.damage.knockLock,
+    unblockable = false,
+    ignoreIframes = false,
+  } = {}) {
     if (!HIT_KINDS.includes(kind)) throw new Error(`receiveHit: kind must be ${HIT_KINDS.join(', ')}, not "${kind}"`);
     if (state.mode !== 'play' || state.hp <= 0) return 'ignored';
     if (!ignoreIframes && hero.isInvulnerable()) return 'ignored';
     const p = pointOf(from);
     const shield = state.gear.shield ?? 0;
     const blockable = !unblockable && kind !== 'hazard' && tier !== Infinity;
-    const tierOk = kind === 'contact' ? shield >= 1 : shield >= tier;
-    if (blockable && tierOk && hero.isGuarding() && inGuardArc(p)) {
+    if (blockable && shield >= Math.max(1, tier) && hero.isGuarding() && inGuardArc(p)) {
       pushAway(p, TUNING.guard.pushBack, TUNING.guard.pushTime);
       sfx.block();
-      emit('hero-hit', { result: 'blocked', damage: 0, kind, source });
+      emit('hero-hit', { result: 'blocked', damage: 0, kind, source, from: p });
       return 'blocked';
     }
     const amount = damageTaken(damage);
     const f = FACING_VECTORS[hero.facing()];
     const fx = p ? p.x : player.x + f.x;
     const fz = p ? p.z : player.z + f.z;
-    hurtPlayer(amount, fx, fz, { kind, source, knockback: knockback !== false && !!p });
-    if (state.hp > 0) hero.lockInput(TUNING.damage.knockLock);
-    emit('hero-hit', { result: 'hit', damage: amount, kind, source });
+    const blink = player.invT;
+    hurtPlayer(amount, fx, fz, { kind, source, knockback: false });
+    // TUNING.damage over M1's fixed blink and push (combat.js)
+    player.invT = iframes ? Math.max(blink, iframes) : blink;
+    const tiles = knockback === true ? TUNING.damage.knock : Number(knockback) || 0;
+    if (tiles > 0 && p && state.hp > 0) pushAway(p, tiles, TUNING.damage.knockTime);
+    if (state.hp > 0 && lock) hero.lockInput(lock);
+    emit('hero-hit', { result: 'hit', damage: amount, kind, source, from: p });
     return 'hit';
   },
   heal: (units, reason = 'heal') => vitals.heal(units, reason),
 
-  // ---- poses (the hero stream draws them; look builds the models)
+  // ---- poses: hero.js is the one pose authority. The hero's model shows
+  // pose() while it is set, else walking or the thrust (the hero stream
+  // wires player.animate to it; look builds the models).
   setPose(pose, seconds = 1) {
+    if (pose && !POSES.includes(pose)) throw new Error(`setPose: ${POSES.join(', ')}, not "${pose}"`);
     posed = pose ? { pose, left: seconds } : null;
     emit('hero-pose', { pose: pose ?? null, seconds });
   },
@@ -198,6 +313,20 @@ export const hero = {
     player.knockT = 0;
     player.resetTileTracking?.();
   },
+  // The grapple's pull (gameplay spec 9.2): drag him to the world point (toX,
+  // toZ) at `speed` t/s over water, pits and every tile hazard (overLow),
+  // with walking and the sword, item and dash buttons held off. Walls and
+  // other tiles that stop shots end it early ('blocked'). He lands on the
+  // target, or on the nearest spot back along the way that he can stand on.
+  // A new pull, a death or a warp cancels one in flight ('cancelled').
+  pull({ toX, toZ, speed = TUNING.items.grapple.pull, overLow = true } = {}) {
+    if (!Number.isFinite(toX) || !Number.isFinite(toZ)) throw new Error('pull: toX and toZ (world tiles) are needed');
+    endPull('cancelled');
+    return new Promise((resolve) => {
+      pulling = { x: toX, z: toZ, speed, overLow, fromX: player.x, fromZ: player.z, resolve };
+    });
+  },
+  isPulled: () => pulling !== null,
   warp: (spot, opts) => goToSpot(spot, opts),
   // Stand up at `spot` (default: where he respawns) with full life and magic.
   respawn({ spot = respawnSpot('death'), refill = true } = {}) {
@@ -206,15 +335,26 @@ export const hero = {
     player.invT = 1;
     emit('hero-respawn', { spot, via: 'respawn' });
   },
-  // A bottomless pit: damage, then back to where he came into this room.
-  fall({ damage = TUNING.damage.pit } = {}) {
+  // A bottomless pit (to 'entry': where he came into this room), lava (to
+  // 'safe': the last tile he stood on that was no hazard), a dark puddle
+  // (to: a spot, such as the floor's start; another screen is a warp), or
+  // nothing (to: null). The damage is a hazard that ignores the blink.
+  fall({ damage = TUNING.damage.pit, to = 'entry' } = {}) {
+    endPull('cancelled');
     const result = hero.receiveHit({ damage, kind: 'hazard', knockback: false, ignoreIframes: true });
-    if (state.hp > 0 && state.mode === 'play') {
-      const e = roomEntry();
-      if (e) hero.place(e.x, e.z, e.yaw);
-    }
+    if (state.hp <= 0 || state.mode !== 'play' || !to) return result;
+    if (to === 'entry' || to === 'safe') {
+      const e = to === 'safe' ? hero.safeSpot() : roomEntry();
+      if (e) hero.place(e.x, e.z, e.yaw ?? player.yaw);
+    } else if (sameScreen(to)) {
+      const r = currentRect();
+      hero.place(to.x ?? player.x - r.x0, to.z ?? player.z - r.z0, to.yaw ?? player.yaw);
+    } else goToSpot(to, { fade: true });
     return result;
   },
+  // Where lava puts him back: the last tile he stood on that was no hazard
+  // (in this screen), else where he came in.
+  safeSpot: () => (lastSafe ? { ...spotHere(), ...lastSafe } : roomEntry()),
 
   // ---- the blade now (swords.js): stats and size at the current life
   blade: () => ({ ...bladeStats(), ...bladeSize(bladeStats()) }),
@@ -269,16 +409,27 @@ on('item-get', () => {
 });
 
 // ---------------------------------------------------------------- per tick
-// Stand-in until the hero stream lands: the guard is up while the guard
-// button is held in play and the hero is not thrusting. Locked input eats
-// sword, item and dash presses.
+// Stand-ins until the hero stream lands: the guard is up while the guard
+// button is held in play, a shield is carried and the hero is not
+// thrusting. Locked input and a pull eat sword, item and dash presses; with
+// no sword equipped, A only talks and checks.
 registerPlayHook({
   id: 'hero-api-input',
   phase: 'input',
   order: 1,
   update() {
-    if (lockLeft > 0) for (const a of ['sword', 'item', 'dash']) input.consume(a);
-    player.guarding = input.held('guard') && !(player.attackT > 0);
+    if (lockLeft > 0 || pulling) for (const a of ['sword', 'item', 'dash']) input.consume(a);
+    if (!state.swords.equipped && input.pressed('sword')) {
+      tryInteract(player);
+      input.consume('sword');
+    }
+    player.guarding = input.held('guard') && (state.gear.shield ?? 0) > 0 && !(player.attackT > 0) && !pulling;
+    if (pulling) {
+      // hold his own walking off while the grapple drags him (M1 player: a
+      // knockback with no speed)
+      player.knockT = Math.max(player.knockT, 2 / 60);
+      player.kx = player.kz = 0;
+    }
   },
 });
 
@@ -296,5 +447,18 @@ registerPlayHook({
       posed.left -= dt;
       if (posed.left <= 0) posed = null;
     }
+    if (pulling) stepPull(dt);
+    // the last safe tile, for lava (fall({ to: 'safe' }))
+    const r = currentRect();
+    const def = world.tileDefAt(Math.floor(player.x), Math.floor(player.z));
+    if (r && def && !def.hazard && !pulling && !(player.knockT > 0) && !world.blocked(player.x, player.z, player.r, player))
+      lastSafe = { x: player.x - r.x0, z: player.z - r.z0 };
   },
+});
+
+on('screen-enter', () => {
+  lastSafe = null;
+});
+on('mode-change', ({ to }) => {
+  if (to !== 'play' && to !== 'dialog') endPull('cancelled');
 });

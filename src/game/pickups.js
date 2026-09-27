@@ -11,17 +11,32 @@
 // coins) stay until the drop tables move to coins. A pickup the hero walks
 // over emits 'pickup' { entity, type } from entities/pickup.js (no `by`:
 // read it as 'hero').
+//
+// 'pickup' carries wasFull for heart and magic pickups: whether life (a
+// heart) or magic (a magic jar) was already full before it was collected
+// (the star special: a heart at full life). collectPickup fills it in; the
+// items stream adds it to Pickup's walked-over emit in M2 (until then it is
+// missing there: read undefined as not known).
 import { emit } from '../core/events.js';
 import { random } from '../core/random.js';
 import { TUNING } from '../core/tuning.js';
+import { state } from '../core/state.js';
 import { spawn } from '../entities/manager.js';
 
 export const COIN_TYPES = { 100: 'coin-100', 10: 'coin-10', 1: 'coin-1' };
 
+// Was the thing this pickup refills already full? (heart: life, magic: magic; else undefined)
+export function pickupWasFull(type) {
+  if (type === 'heart') return state.hp >= state.maxHp;
+  if (type === 'magic') return state.magic >= state.maxMagic;
+  return undefined;
+}
+
 export function collectPickup(e, { by = 'blade' } = {}) {
   if (!e || e.removed || e.kind !== 'pickup') return false;
+  const wasFull = pickupWasFull(e.type);
   e.collect();
-  emit('pickup', { entity: e, type: e.type, by });
+  emit('pickup', { entity: e, type: e.type, by, wasFull });
   e.remove();
   return true;
 }

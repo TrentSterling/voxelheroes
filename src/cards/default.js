@@ -1,8 +1,11 @@
-// Placeholder loading cards for the M1 areas. The overworld and dungeon
-// streams replace them with their own (one file each in this folder); look
-// paints the art named by `art`.
+// Loading cards for the M1 overworld and the fallback card. Owner: overworld
+// (docs/CONTRACTS.md, "Ownership"). Card ids are never replaced (cards.js
+// throws on a duplicate), so a stream adds its own cards in its own file in
+// this folder (the dungeon's crypt card is in cards/crypt.js) and never adds
+// a '*' card in M2: card-road, order 999, stays the one fallback. `art` is
+// null until the card's owner makes one (the ui then draws a card with the
+// title and text only).
 import { registerLoadingCard } from '../game/cards.js';
 
-registerLoadingCard({ id: 'card-overworld', title: 'The Open Country', art: 'overworld', areas: ['overworld'], order: 10 });
-registerLoadingCard({ id: 'card-crypt', title: 'Cairn Crypt', art: 'crypt', areas: ['crypt'], order: 20, text: 'Small keys found here open only doors down here.' });
-registerLoadingCard({ id: 'card-road', title: 'On the Road', art: 'road', areas: '*', order: 999 });
+registerLoadingCard({ id: 'card-overworld', title: 'The Open Country', areas: ['overworld'], order: 10 });
+registerLoadingCard({ id: 'card-road', title: 'On the Road', areas: '*', order: 999 });

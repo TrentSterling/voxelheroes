@@ -7,6 +7,8 @@
 //   input.released('sword') -> went up since the last simulation tick
 //   input.consume('sword')  -> mark a press as handled so later code ignores it
 //   input.lastDevice()      -> 'keyboard' | 'gamepad' | 'touch' (for button prompts)
+//   input.menuDir()         -> 'up' | 'down' | 'left' | 'right' | null: where a menu cursor
+//                              moves this tick (keys, d-pad, sticks; repeats while held)
 //
 // Presses and releases are latched until the end of the next tick (endFrame),
 // so a tap between two frames is seen exactly once, including when tests step
@@ -29,7 +31,7 @@
 // are polled once per tick, the first time anything reads input. The left
 // stick and the touch stick have a radial dead zone (TUNING.hero.deadzone).
 
-import { TUNING } from './tuning.js';
+import { TUNING, TICK } from './tuning.js';
 
 // Actions and where they are read. docs/CONTRACTS.md ("Input") explains each.
 export const ACTIONS = {
@@ -187,7 +189,50 @@ function rawMove() {
   return { x, z };
 }
 
+// Menu cursor: the strongest of keys, d-pad and sticks as one of four
+// directions, past half-way on the stick (no polling: what this tick read).
+function menuHeldDir() {
+  let x = stick.x + padStick.x;
+  let z = stick.z + padStick.z;
+  if (actionHeld('left')) x -= 1;
+  if (actionHeld('right')) x += 1;
+  if (actionHeld('up')) z -= 1;
+  if (actionHeld('down')) z += 1;
+  const ax = Math.abs(x);
+  const az = Math.abs(z);
+  if (Math.max(ax, az) < 0.5) return null;
+  return ax > az ? (x > 0 ? 'right' : 'left') : z > 0 ? 'down' : 'up';
+}
+const menuRep = { dir: null, t: 0, next: 0 }; // the direction held, for how long, next repeat
+const menuTick = { done: false, value: null };
+
 export const input = {
+  // Where a menu cursor moves this tick: a new direction at once (a key, the
+  // d-pad or a stick pushed past half-way; a tap in tests), then again every
+  // TUNING.menu.repeatEvery s once it has been held TUNING.menu.repeatDelay s.
+  // Every call in one tick gives the same answer.
+  menuDir() {
+    pollPads();
+    if (menuTick.done) return menuTick.value;
+    menuTick.done = true;
+    const R = TUNING.menu;
+    let value = ['up', 'down', 'left', 'right'].find((a) => pressedSet.has(a)) ?? null;
+    const d = menuHeldDir();
+    if (d !== menuRep.dir) {
+      menuRep.dir = d;
+      menuRep.t = 0;
+      menuRep.next = R.repeatDelay;
+      value = value ?? d;
+    } else if (d) {
+      menuRep.t += TICK;
+      if (menuRep.t >= menuRep.next - 1e-9) {
+        menuRep.next += R.repeatEvery;
+        value = value ?? d;
+      }
+    }
+    menuTick.value = value;
+    return value;
+  },
   move() {
     let { x, z } = rawMove();
     const len = Math.hypot(x, z);
@@ -231,12 +276,16 @@ export const input = {
     for (const a of carriedSet) pressedSet.add(a);
     carriedSet.clear();
     polled = false;
+    menuTick.done = false;
   },
   // Forget latched presses and releases (and carried presses).
   clearPresses() {
     pressedSet.clear();
     releasedSet.clear();
     carriedSet.clear();
+    // a direction still held from before (walking into a menu) waits for release
+    menuRep.dir = menuHeldDir();
+    menuRep.next = Infinity;
   },
   // Report `action` as pressed again on the next tick.
   carry(action) {

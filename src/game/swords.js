@@ -11,6 +11,9 @@
 //     budget: 2200,                       // most coins a smith takes for it in all
 //     special: null,                      // or a SPECIALS kind; its level is the special stat
 //     order: 20,                          // menu order
+//     icon: '<svg ...>',                  // the HUD weapon slot and menus (optional)
+//     model: () => new THREE.Group(),     // the blade held overhead at the item get and
+//                                         // shown in menus (models/hero/*; optional)
 //   });
 //
 // Stats (gameplay spec 10.5): length 0-20, width 0-20, strength 1-20, spin
@@ -71,11 +74,13 @@ export function registerSword(def) {
   }
   if (def.special != null && !SPECIALS.includes(def.special)) throw new Error(`Sword "${def.id}": special must be one of ${SPECIALS.join(', ')}`);
   if ((max.special > 0 || base.special > 0) && !def.special) throw new Error(`Sword "${def.id}": a special stat needs a special kind`);
+  // A sword with no cap (spec 10.5's one late sword) takes budget: Infinity.
   const budget = def.budget ?? 0;
-  if (!(Number.isFinite(budget) && budget >= 0)) throw new Error(`Sword "${def.id}": budget must be 0 or more coins`);
-  const full = { name: def.id, description: '', order: 100, model: def.id, source: '', ...def, base, max, price, budget, special: def.special ?? null };
+  if (!(budget === Infinity || (Number.isFinite(budget) && budget >= 0))) throw new Error(`Sword "${def.id}": budget must be 0 or more coins (Infinity: no cap)`);
+  if (def.model != null && typeof def.model !== 'function') throw new Error(`Sword "${def.id}": model must be a function returning a THREE.Object3D`);
+  const full = { name: def.id, description: '', order: 100, icon: '', model: null, source: '', ...def, base, max, price, budget, special: def.special ?? null };
   swords.set(def.id, full);
-  registerGrant(def.id, () => giveSword(def.id), { name: full.name, fanfare: true, kind: 'sword' });
+  registerGrant(def.id, () => giveSword(def.id), { name: full.name, fanfare: true, kind: 'sword', model: full.model });
   return full;
 }
 
@@ -175,7 +180,10 @@ const might = () => (state.profile.trait === 'might' ? TUNING.progression.mightS
 
 // What the equipped blade does at the current life (or `full`, to ask).
 // { id, full, small, length, width, strength, spin, beam, pierce, special, specialKind }
+// With no sword equipped (a new game's prologue, before the king hands one
+// over) it is { id: null, none: true, ... } with nothing to hit with.
 export function bladeStats({ id = equippedId(), full = isFullLife() } = {}) {
+  if (id == null) return { id: null, none: true, full, small: !full, length: 0, width: 0, strength: 0, spin: 0, beam: 0, pierce: 0, special: 0, specialKind: null };
   const s = getSword(id) ?? getSword(STARTER);
   if (!s) return { id, full, small: !full, length: 0, width: 0, strength: 1 + might(), spin: 0, beam: 0, pierce: 0, special: 0, specialKind: null };
   const lv = swordLevels(s.id);
@@ -199,6 +207,7 @@ export function bladeStats({ id = equippedId(), full = isFullLife() } = {}) {
 // The blade's size in tiles. reach = hand offset + length (from the hero's centre).
 export function bladeSize(stats = bladeStats()) {
   const t = TUNING.sword;
+  if (stats.none) return { small: true, none: true, length: 0, width: 0, hitWidth: 0, reach: 0 };
   if (stats.small) return { small: true, length: t.smallLength, width: t.smallHitWidth, hitWidth: t.smallHitWidth, reach: t.handOffset + t.smallLength };
   const length = t.length(stats.length);
   const width = t.width(stats.width);

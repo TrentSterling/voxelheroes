@@ -17,12 +17,18 @@
 //                                 grant('spell-reflect') does the same with the item get
 //   spellCost('spell-quake')      for this hero: the focus trait's column, the thrift special
 //   castSpell('spell-quake')      checks canAct (not in a doorway) and the magic, casts, then
-//                                 spends and emits 'spell-cast' -> 'cast' | 'no-magic' |
+//                                 spends and emits 'spell-cast' { id, cost, x, z } -> 'cast' | 'no-magic' |
 //                                 'blocked' | 'failed' (cast returned false: nothing spent) | 'unknown'
 //
 // Cost: [might, focus] from TUNING.spells, the first number for heroes
 // without the focus trait. The thrift special takes 1 off per 2 levels.
 // Never below 1.
+//
+// A spell does its own work in cast(): freeze calls damage.freezeAt (which
+// also turns flame tiles to ice through onFreeze), slow starts the 'slow'
+// effect (movers read effects.worldScale), quake calls damageAt, reveal and
+// truesight start their effects. 'spell-cast' is for the ui, audio and the
+// dungeon's reveal tablets, not for applying the spell.
 import { state } from '../core/state.js';
 import { emit } from '../core/events.js';
 import { registerItem, getItem } from '../items/registry.js';
@@ -91,6 +97,7 @@ export function castSpell(id, { force = false } = {}) {
   if (state.magic < cost) return 'no-magic';
   if (s.cast({ spell: s, cost, hero }) === false) return 'failed'; // nothing spent
   spendMagic(cost, 'spell');
-  emit('spell-cast', { id, cost });
+  const at = hero.position();
+  emit('spell-cast', { id, cost, x: at.x, z: at.z });
   return 'cast';
 }

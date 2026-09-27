@@ -17,11 +17,11 @@ export const enemy = {
   roomMax: 8,
   crownedChance: 0.08,
   crownedSpeed: 1.5,
-  rare: { slimeChance: 0.08, wyrmChance: 0.04 },
+  rare: { 'treasure-slime': 0.08, wyrm: 0.04 }, // per entry of a group that lists them (spec Appendix A: slimeChance, wyrmChance)
   roomClearMemory: 180,
   hardExtra: 0.5,
   rareHardMultiplier: 2,
-  tells: { shooterStop: 0.4, turretGlow: 0.3, chargeTell: 0.3 },
+  tells: { shooterStop: 0.4, chargeTell: 0.3 }, // the turret's glow is TUNING.traps.turret.glow
   ai: {
     wanderLeg: [0.8, 1.6],
     wanderPause: [0.3, 0.6],

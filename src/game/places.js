@@ -16,6 +16,9 @@
 //   roomEntry()                    where the hero came into the current screen
 //                                  (pits send him back there)
 //   screenRect(screen), screenId(screen), currentRect()
+//   registerPlace({ id, name, kind, spot, area })   a named place: village, inn, castle, dungeon, ...
+//   places(kind), getPlace(id), placeVisited(id), warpPlaces(kinds)   (the warp feather's list)
+//   areaKind(area)                 'overworld' | 'town' | 'castle' | 'interior' | 'cave' | 'dungeon' | 'arena' | 'test'
 //
 // It works on main and after feat/world is merged: screens there carry x0, z0,
 // w, h and world.resolveSpot; on main they carry sx, sy on a 16 x 11 lattice.
@@ -165,6 +168,53 @@ on('mode-change', ({ from }) => {
   if (state.respawn === stash.set) state.respawn = stash.before;
   stash = null;
 });
+
+// ---------------------------------------------------------------- named places
+// Villages, inns, the castle, the cabin, the trader and dungeon entrances,
+// registered by the stream that builds them (overworld; dungeon for its
+// entrances) so the warp feather (items), the world map (ui) and the inns
+// find them without knowing each other's ids:
+//
+//   registerPlace({ id: 'v1', name: 'Millbrook', kind: 'village',
+//                   spot: { area: 'v1', screen: [1, 2], x: 8, z: 9, yaw: 0 } })   where a warp lands
+//   registerPlace({ id: 'd1', name: '...', kind: 'dungeon', area: 'd1', spot: <outside its door> })
+//
+// `area` is the area whose first visit makes the place known (default: the
+// spot's area; a dungeon's is its own first area, while its spot is outside
+// the door). placeVisited(id) is true once that area is in state.visitedAreas.
+export const PLACE_KINDS = ['village', 'inn', 'castle', 'cabin', 'trader', 'dungeon', 'cave', 'other'];
+export const WARP_KINDS = ['village', 'inn', 'dungeon']; // gameplay spec 9.3: the warp feather
+const namedPlaces = new Map();
+
+export function registerPlace(def) {
+  if (!def?.id) throw new Error('registerPlace: a place needs an id');
+  if (namedPlaces.has(def.id)) throw new Error(`Place "${def.id}" is already registered`);
+  if (!PLACE_KINDS.includes(def.kind)) throw new Error(`Place "${def.id}": kind must be one of ${PLACE_KINDS.join(', ')}`);
+  if (!def.spot?.area) throw new Error(`Place "${def.id}" needs a spot with an area`);
+  const full = { name: def.id, order: 100, ...def, area: def.area ?? def.spot.area };
+  namedPlaces.set(def.id, full);
+  return full;
+}
+
+export const getPlace = (id) => namedPlaces.get(id) ?? null;
+export const places = (kind = null) =>
+  [...namedPlaces.values()].filter((p) => !kind || p.kind === kind).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+export const placeVisited = (id) => {
+  const p = getPlace(id);
+  return !!p && state.visitedAreas.has(p.area);
+};
+// Places of these kinds the hero has been to, in order: what the warp feather offers.
+export const warpPlaces = (kinds = WARP_KINDS) => places().filter((p) => kinds.includes(p.kind) && placeVisited(p.id));
+
+// What kind of place an area is (the minimap shows in 'overworld' and
+// 'town' areas only, gameplay spec 4.6): the area's `kind` field, else
+// 'dungeon' for an area of rooms, else 'overworld'. New areas set `kind`.
+export const AREA_KINDS = ['overworld', 'town', 'castle', 'interior', 'cave', 'dungeon', 'arena', 'test'];
+export function areaKind(area = currentScreen()?.area) {
+  const a = typeof area === 'string' ? getArea(area) : area;
+  if (!a) return null;
+  return a.kind ?? (a.rooms ? 'dungeon' : 'overworld');
+}
 
 // ---------------------------------------------------------------- visits
 let entry = null;

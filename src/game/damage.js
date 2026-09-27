@@ -6,6 +6,8 @@
 //   dealDamage(enemy, { amount: 4, source: 'arrow', from: arrow })
 //     -> { result: 'hit' | 'killed' | 'immune' | 'blocked' | 'ignored', damage }
 //   damageAt(x, z, 1.5, { amount: 6, source: 'bomb' })  -> [{ entity, result, damage }]
+//   freezeAt(x, z, 5, 5)   the freeze spell: freezes what is in the radius
+//                          without hurting it -> [entity]; 'enemy-hit' result 'frozen'
 //
 // opts:
 //   amount     damage points (enemy HP is in the same points: blade-start does 3)
@@ -15,7 +17,11 @@
 //              TUNING.enemy.heavyKnock; 0: none) over TUNING.enemy.knockTime
 //   stun       seconds stunned after the stagger (default TUNING.enemy.stagger;
 //              the boomerang passes TUNING.enemy.stunBoomerang)
-//   freeze     seconds frozen (the freeze special and spell); bosses never freeze
+//   freeze     seconds frozen (the sword's freeze special); bosses never freeze.
+//              A hit that freezes still hurts, and shatters what is already
+//              frozen; the freeze spell uses freezeAt, which does neither
+//   crit       true for a critical hit (sword specials, pinch power): the ui
+//              shows the red word
 //   swingId    one thrust (or one arrow, one blast) hits a target once
 //   by         'hero' or the entity that dealt it
 //
@@ -24,6 +30,8 @@
 //   weak: { arrow: 2 }           damage multipliers per source
 //   guards(hit) -> true          a front guard stops it ('blocked'); shield knights
 //   boss: true                   never frozen, never shattered
+//   rare: true                   a rare spawn (treasure-slime, wyrm): the
+//                                rare-slayer special kills it in one hit
 //   heavy: true                  staggers TUNING.enemy.heavyKnock instead
 //   shatter: false               stays alive while frozen (casters): frozen hits are 'immune'
 //   frozenT                      seconds left frozen; a frozen enemy that is not a
@@ -35,11 +43,14 @@
 // Enemy.hurt, with the stagger converted to the M1 knockback speed.
 import { emit } from '../core/events.js';
 import { TUNING } from '../core/tuning.js';
+import { world } from '../world/world.js';
 import { entities } from '../entities/manager.js';
 import { registerPlayHook } from '../systems/flow.js';
 
-export const SOURCES = ['sword', 'beam', 'spin', 'dash', 'arrow', 'bomb', 'boomerang', 'grapple', 'fire', 'book', 'quake', 'reflect', 'hazard', 'enemy'];
+export const SOURCES = ['sword', 'beam', 'spin', 'dash', 'arrow', 'bomb', 'boomerang', 'grapple', 'fire', 'book', 'quake', 'freeze', 'reflect', 'hazard', 'enemy'];
 export const HIT_RESULTS = ['hit', 'killed', 'immune', 'blocked', 'ignored'];
+// 'enemy-hit' also reports 'frozen' for freezeAt.
+export const EVENT_RESULTS = [...HIT_RESULTS.filter((r) => r !== 'ignored'), 'frozen'];
 
 const pointOf = (from) => (from && Number.isFinite(from.x) && Number.isFinite(from.z) ? { x: from.x, z: from.z } : null);
 
@@ -55,7 +66,7 @@ function m1Speed(tiles, seconds) {
 export const isFrozen = (e) => (e?.frozenT ?? 0) > 0;
 
 export function dealDamage(target, opts = {}) {
-  const { amount = 1, source = 'sword', from = null, freeze = 0, swingId, by = 'hero' } = opts;
+  const { amount = 1, source = 'sword', from = null, freeze = 0, swingId, by = 'hero', crit = false } = opts;
   const out = (result, damage = 0, hit = null) => {
     if (result !== 'ignored') emit('enemy-hit', { entity: target, hit, result, damage });
     return { result, damage };
@@ -76,6 +87,7 @@ export function dealDamage(target, opts = {}) {
     by,
     freeze,
     tiles,
+    crit,
   };
   if (target.canBeHit && !target.canBeHit(hit)) return { result: 'ignored', damage: 0 };
   if (target.invulnerable || target.immune?.includes(source)) {
@@ -114,6 +126,25 @@ export function damageAt(x, z, radius, opts = {}, filter = null) {
     if (r.result !== 'ignored') hits.push({ entity: e, ...r });
   }
   return hits;
+}
+
+// The freeze spell (gameplay spec 9.4): everything that can freeze within
+// `radius` of (x, z) (plus its own radius) is frozen for `seconds`, with no
+// damage, guard or shatter. Bosses, enemies immune to 'freeze' and
+// non-enemies are left alone; a second cast only renews the time. Tiles in
+// the radius get onFreeze (flame walls turn to ice: the dungeon's tiles).
+// Returns the frozen entities; each gets 'enemy-hit' with result 'frozen'.
+export function freezeAt(x, z, radius = TUNING.spells.freeze.radius, seconds = TUNING.spells.freeze.time) {
+  const out = [];
+  for (const e of [...entities]) {
+    if (e.removed || e.kind !== 'enemy' || e.boss || e.immune?.includes('freeze') || e.invulnerable) continue;
+    if (Math.hypot(e.x - x, e.z - z) > radius + (e.r ?? 0)) continue;
+    e.frozenT = Math.max(e.frozenT ?? 0, seconds);
+    out.push(e);
+    emit('enemy-hit', { entity: e, hit: { damage: 0, source: 'freeze', freeze: seconds, fromX: x, fromZ: z }, result: 'frozen', damage: 0 });
+  }
+  for (const [tx, tz] of world.tilesInRadius?.(x, z, radius) ?? []) world.trigger(tx, tz, 'onFreeze', { x, z, radius, seconds });
+  return out;
 }
 
 // Frozen enemies count down and stand still (the M1 stun keeps them from

@@ -32,3 +32,11 @@ export const options = {
 };
 
 export const profile = { nameMax: 8 };
+
+// Menus: a held direction moves the cursor again after repeatDelay s, then
+// every repeatEvery s (core/input.js menuDir).
+export const menu = { repeatDelay: 0.35, repeatEvery: 0.1 };
+
+// Toasts: how long the key toast stays (gameplay spec 6.3; it was
+// TUNING.dungeon.keyToast).
+export const toasts = { key: 2.0 };

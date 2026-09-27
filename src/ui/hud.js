@@ -2,17 +2,26 @@
 //
 // The HUD is a list of widgets. Each widget turns state into a short key
 // string, and is redrawn only when that key changes, so nothing else has to
-// remember to "update the HUD". A feature adds a widget from its own file in
-// src/ui/hud/ (loaded automatically):
+// remember to "update the HUD". The ui stream owns the HUD and its widgets
+// (src/ui/hud/*, loaded automatically); other streams do not add widgets:
+// they put what should show in state or emit an event (docs/CONTRACTS.md,
+// "HUD").
 //
 //   registerHudWidget({
 //     id: 'bombs',
-//     region: 'right',        // 'left' | 'center' | 'right' (default 'right')
+//     region: 'counters',     // a region below (default 'right')
 //     order: 25,              // position in the region, low first (default 50)
 //     mount({ host }) { host.append(...my elements...); },
-//     key: (state) => String(state.bombs),
+//     key: (state) => String(state.inventory.ammo.bombs ?? 0),
 //     render(state) { ...update the elements... },
 //   });
+//
+// Regions follow the art bible's HUD (section 12): vitals (top left: hearts
+// and mana gems), counters (under them: money, bombs, arrows), slots (top
+// centre-right: the item and weapon slots), minimap (top right), prompts
+// (bottom right: the prompt bar) and toast (the key toast and short
+// notices). Until the ui lays them out, each maps onto one of M1's three
+// containers, and M1's names left, center and right stay as aliases.
 //
 // Every widget gets its own slot element `host` in its region, placed by
 // order (then id), so the HUD reads the same whatever order the files load
@@ -25,7 +34,18 @@ import { keyCount } from '../systems/keys.js';
 import { setSetting, registerSettingApplier } from '../game/settings.js';
 import { $ } from './dom.js';
 
-const REGIONS = { left: 'hud-left', center: 'hud-center', right: 'hud-right' };
+export const REGIONS = {
+  vitals: 'hud-left',
+  counters: 'hud-left',
+  slots: 'hud-center',
+  minimap: 'hud-right',
+  prompts: 'hud-right',
+  toast: 'hud-center',
+  // M1 names (aliases until the ui's layout lands)
+  left: 'hud-left',
+  center: 'hud-center',
+  right: 'hud-right',
+};
 const widgets = [];
 let mounted = false;
 let areaLabel = '';
@@ -35,7 +55,7 @@ const before = (a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 
 export function registerHudWidget(def) {
   if (widgets.some((x) => x.id === def.id)) throw new Error(`HUD widget "${def.id}" is already registered`);
   const w = { region: 'right', order: 50, ...def, last: null, host: null };
-  if (!REGIONS[w.region]) throw new Error(`HUD widget "${w.id}": region must be left, center or right, not "${w.region}"`);
+  if (!REGIONS[w.region]) throw new Error(`HUD widget "${w.id}": region must be one of ${Object.keys(REGIONS).join(', ')}, not "${w.region}"`);
   widgets.push(w);
   if (mounted) mountWidget(w);
 }
@@ -47,8 +67,9 @@ function mountWidget(w) {
   const host = document.createElement('div');
   host.className = 'hud-widget';
   host.dataset.widget = w.id;
-  const next = widgets.filter((o) => o.host && o.region === w.region && before(w, o) < 0).sort(before)[0];
-  region.insertBefore(host, next?.host ?? (w.region === 'right' ? $('mute') : null));
+  const same = (o) => REGIONS[o.region] === REGIONS[w.region];
+  const next = widgets.filter((o) => o.host && same(o) && before(w, o) < 0).sort(before)[0];
+  region.insertBefore(host, next?.host ?? (REGIONS[w.region] === 'hud-right' ? $('mute') : null));
   w.host = host;
   w.mount?.({ host, region, hud: $('hud') });
 }
@@ -67,6 +88,10 @@ export function refreshHud() {
     w.render(state);
   }
 }
+
+// What the Sound button says ('Sound on' / 'Sound off'), for tests: the ui
+// may restyle or hide the button but keeps this answer.
+export const muteLabel = () => $('mute')?.textContent ?? (state.settings.muted ? 'Sound off' : 'Sound on');
 
 // Mute is an option (game/settings.js 'muted', kept across visits): the N
 // key and the Sound button flip it, and the button shows it.

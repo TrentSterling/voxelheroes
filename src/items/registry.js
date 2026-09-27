@@ -29,6 +29,8 @@
 //             of an item shows the item get, systems/grants.js)
 //   getText   the item-get line (default "<name>!")
 //   bottle    true for contents of a bottle (potions, the elixir)
+//   model     () => THREE.Object3D: the prize the hero holds overhead at the
+//             item get (built with look's kit in models/items/*; optional)
 // The quick ring (gameplay spec 9.1) holds every selectable item the
 // inventory has not taken off it (items/inventory.js setOnRing).
 
@@ -38,7 +40,8 @@ export function registerItem(def) {
   if (!def?.id) throw new Error('registerItem: an item needs an id');
   if (items.has(def.id)) throw new Error(`Item "${def.id}" is already registered`);
   if (!def.passive && typeof def.use !== 'function') throw new Error(`Item "${def.id}" needs use(ctx) (or passive: true)`);
-  const full = { name: def.id, icon: '', order: 100, ammo: null, maxAmmo: 99, startAmmo: 0, passive: false, kind: def.passive ? 'passive' : 'tool', ...def };
+  if (def.model != null && typeof def.model !== 'function') throw new Error(`Item "${def.id}": model must be a function returning a THREE.Object3D`);
+  const full = { name: def.id, icon: '', order: 100, ammo: null, maxAmmo: 99, startAmmo: 0, passive: false, model: null, kind: def.passive ? 'passive' : 'tool', ...def };
   items.set(def.id, full);
   return full;
 }
