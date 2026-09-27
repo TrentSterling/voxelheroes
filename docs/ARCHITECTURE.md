@@ -1,5 +1,11 @@
 # Voxel Heroes architecture
 
+> **M2 contracts:** [CONTRACTS.md](CONTRACTS.md) fixes what the seven M2 streams
+> share: file owners, units, state fields, events, input actions and keys, the
+> APIs and the reserved regions of the global grid. Where this file differs
+> from it (the feature table and screen origins under "Working in parallel
+> (M2)", the example key for the map, M as mute), CONTRACTS.md wins.
+
 This is the map of the code after the M1 foundation work, and the rulebook
 for adding to it. The short version:
 

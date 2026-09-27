@@ -10,7 +10,7 @@
 //       { id: 'heart', grant: 'heart', price: 5 },
 //       { id: 'arrows-10', grant: 'arrows', amount: 10, price: 8, when: () => hasFlag('boss:d1') },
 //       { id: 'bow', grant: 'bow', price: 30, stock: 1 },
-//       { id: 'potion-life', grant: 'potion-life', price: 80, can: () => hasEmptyBottle() || 'no-bottle' },
+//       { id: 'potion-life', grant: 'potion-life', price: 80, can: () => state.bottles.includes('empty') || 'no-bottle' },
 //     ],
 //   });
 //
