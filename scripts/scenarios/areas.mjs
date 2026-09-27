@@ -143,7 +143,7 @@ export default async function areasScenario(t) {
       blocked: g.world.blocked(p.x, p.z, p.r, p),
     };
   });
-  t.expect(s.size.join() === '12,9' && burrow.x0 === 474 * 16 && burrow.z0 === 0, `  a 12 x 9 room with its corner at tile ${burrow.x0}, ${burrow.z0} (at: [474 * 16, 0])`);
+  t.expect(s.size.join() === '12,9' && burrow.x0 === 476 * 16 && burrow.z0 === 0, `  a 12 x 9 room with its corner at tile ${burrow.x0}, ${burrow.z0} (at: [476 * 16, 0])`);
   t.expect(near(s.lx, 6) && near(s.lz, 7.4) && !burrow.blocked, `  the hero stands at ${s.lx}, ${s.lz}, clear of the walls`);
   t.expect(s.cam.preset === 'dungeon' && near(s.cam.x, 6) && near(s.cam.z, 4.5), `  the dungeon camera centres on the room (${s.cam.x}, ${s.cam.z})`);
   t.expect(burrow.inFrame && burrow.shown.join() === 'test-burrow:0,0', `  the hero is in frame and only the Burrow is drawn (${burrow.shown.join(', ')})`);

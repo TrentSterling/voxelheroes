@@ -855,15 +855,20 @@ area's own screen height, which is why each region has one height. An area
 whose screens are not 16 wide is placed by tile with `at`: take the region's
 column times 16 and its row times the region's height. Areas that touch are
 joined (walking across changes area), so areas that must stay apart need an
-empty screen between them.
+empty screen between them. Outdoor areas also get a far band of scenery
+around them (up to 16 tiles to the east and west, 19 to the north), which is
+not part of any screen: keep anything that is not joined to an outdoor area
+(a room, another town) at least two empty screen columns away from it, or
+the band shows past a room's walls.
 
 | Columns | Rows | Screens | For |
 |---------|------|---------|-----|
 | 0-99 | 0-99 | 16 x 11 | The overworld: the 7 x 5 map of areas, laid edge to edge from `[0, 0]`. If every area is W x H screens, area (c, r) of the map sits at `[c * W, r * H]`; areas of other sizes are fine as long as neighbours touch along their shared edge. Today's `overworld` (3 x 2) is at `[0, 0]` (feature 6) |
-| 100-199 | 0-99 | 16 x 11 | Towns and other outdoor areas reached by warps: town t at `[100 + 10 t, 0]`, up to 10 x 10 screens (feature 6) |
+| 100-199 | 0-99 | 16 x 11 | Towns and other outdoor areas reached by warps: town t at `[100 + 10 t, 0]`, up to 8 x 10 screens, so two empty columns keep towns apart (feature 6) |
 | 200-299 | 0-99 | 16 x 12 | Dungeons, 10 columns each, one area per dungeon: dungeon d at `[200 + 10 d, 0]`. Floor f's rooms are local rows `11 f` to `11 f + 9` of that area (the gameplay spec's 8 x 10 canvas, rows A-J, fits; the empty row keeps floors apart), so stairs between floors are warps inside the area, without a card. Rooms of another size (a boss arena, 22 x 16) are areas of their own placed by tile in the dungeon's free columns, with the dungeon's `keyGroup` and `entrance`. Cairn Crypt is dungeon 0 at `[200, 0]` (feature 5 grows it) |
 | 300-399 | 0-99 | 16 x 12 | Interiors: houses, shops, the inn, caves. Building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`, one empty screen from the next; a building of several rooms uses neighbouring screens of one area. A building of smaller rooms (10 x 8 to 16 x 12) goes in the same place by tile: `at: [(300 + 2 (k % 50)) * 16, 24 floor(k / 50)]` |
-| 400-479 | 0-99 | any, one height per block | Test areas, 10 columns per feature: 400 sword yard (1), 410 overworld enemy field (2), 420 dungeon enemy and boss rooms (3), 430 sub-item range (4), 440 dungeon mechanics (5), 450 overworld and town (6), 460 UI (7), 470 world and camera (`test-borders.js` uses 470-472, and Hedge Burrow, 12 x 9, sits at column 474 by tile) |
+| 400-479 | 0-99 | any, one height per block | Test areas, 10 columns per feature: 400 sword yard (1), 410 overworld enemy field (2), 420 dungeon enemy and boss rooms (3), 430 sub-item range (4), 440 dungeon mechanics (5), 450 overworld and town (6), 460 UI (7), 470 world and camera (`test-borders.js` uses 470-472, and Hedge Burrow, 12 x 9, sits at column 476 by tile) |
+| 480-499 | 0-99 | any | Look and kit test areas (the look-kits branch: 488 Kit Lineup, 492 Kit Field, 496 Kit Room) |
 
 ## Build rules
 

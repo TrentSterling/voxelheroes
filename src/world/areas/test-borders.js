@@ -17,7 +17,7 @@
 //
 // A cave door in Hedge Corner leads down into Hedge Burrow, one room of
 // 12 x 9 tiles: an interior whose screens are not 16 wide, so it is placed
-// by tile (`at`, the corner of screen column 474) instead of by `origin`.
+// by tile (`at`, the corner of screen column 476) instead of by `origin`.
 // A tunnel in Hedge Hollow comes out in Hedge Crossing: a warp inside one
 // area, so it blinks without a loading card.
 import { registerArea } from '../areas.js';
@@ -93,8 +93,9 @@ registerArea({
 
 // One room of 12 x 9 tiles (art bible section 9 walls on the outer ring,
 // side walls inset half a tile), the stairs out in the middle of the south
-// wall. 12 wide, so it is placed by tile: `at` the corner of column 474, one
-// empty column east of Far Hedges.
+// wall. 12 wide, so it is placed by tile: `at` the corner of column 476,
+// three empty columns east of Far Hedges, so the far band drawn around an
+// outdoor area (up to 16 tiles out) never shows past the room's walls.
 registerArea({
   id: 'test-burrow',
   name: 'Hedge Burrow',
@@ -103,7 +104,7 @@ registerArea({
   camera: 'dungeon',
   rooms: true,
   screen: [12, 9],
-  at: [474 * 16, 0],
+  at: [476 * 16, 0],
   warps: {
     X: { area: 'test-hedgerows', screen: [0, 0], x: 8.5, z: 2.7, yaw: 0 },
   },
