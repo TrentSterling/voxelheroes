@@ -1,6 +1,6 @@
 // Places: spots, the respawn point, where the hero has been, and the room
-// entry point. Spots are feat/world's way of naming a place independently of
-// where an area sits in the global grid:
+// entry point. A spot names a place independently of where an area sits in
+// the global grid (world.resolveSpot):
 //
 //   { area: 'crypt', screen: [0, 1], x: 8, z: 8.4, yaw: Math.PI }   (x, z: local tiles)
 //
@@ -20,12 +20,10 @@
 //   places(kind), getPlace(id), placeVisited(id), warpPlaces(kinds)   (the warp feather's list)
 //   areaKind(area)                 'overworld' | 'town' | 'castle' | 'interior' | 'cave' | 'dungeon' | 'arena' | 'test'
 //
-// It works on main and after feat/world is merged: screens there carry x0, z0,
-// w, h and world.resolveSpot; on main they carry sx, sy on a 16 x 11 lattice.
-// state.visited / state.visitedAreas record every screen and area entered
-// ('screen-visited' the first time); the world map and the dungeon map read
-// them.
-import { SCREEN_W, SCREEN_H } from '../core/constants.js';
+// Screens carry their own rect (x0, z0, x1, z1) and size (w, h), which
+// differ between areas. state.visited / state.visitedAreas record every
+// screen and area entered ('screen-visited' the first time); the world map
+// and the dungeon map read them.
 import { state } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { world, currentScreen } from '../world/world.js';
@@ -36,24 +34,20 @@ import { startWarp, chooseCameraPreset } from '../systems/transitions.js';
 import { registerSettingApplier } from './settings.js';
 import './fields.js';
 
-const hasSpots = () => typeof world.resolveSpot === 'function'; // feat/world
-
 // ---------------------------------------------------------------- screens
 export function screenRect(screen) {
   if (!screen) return null;
-  const w = screen.w ?? SCREEN_W;
-  const h = screen.h ?? SCREEN_H;
-  const x0 = screen.x0 ?? screen.sx * SCREEN_W;
-  const z0 = screen.z0 ?? screen.sy * SCREEN_H;
-  return { x0, z0, x1: x0 + w, z1: z0 + h, w, h };
+  const { x0, z0, x1, z1, w, h } = screen;
+  return { x0, z0, x1, z1, w, h };
 }
 
 export const currentRect = () => screenRect(currentScreen());
 
-// 'area:i,j', the same on main and on feat/world.
+// 'area:i,j' (the screen's key).
 export const screenId = (screen) => (screen ? `${screen.area.id}:${screen.lx},${screen.ly}` : null);
 
-// A rect that moveBody accepts as bounds on main ({ x, z }) and after feat/world ({ x0 .. z1 }).
+// The screen's rect as moveBody bounds ({ x0 .. z1 }; x and z repeat x0 and
+// z0 for code written against M1's origin form).
 export function bodyBounds(screen = currentScreen()) {
   const r = screenRect(screen);
   return r ? { x: r.x0, z: r.z0, ...r } : null;
@@ -62,23 +56,15 @@ export function bodyBounds(screen = currentScreen()) {
 // ---------------------------------------------------------------- spots
 export function spotHere() {
   const s = currentScreen();
-  const r = screenRect(s);
   if (!s) return null;
-  return { area: s.area.id, screen: [s.lx, s.ly], x: player.x - r.x0, z: player.z - r.z0, yaw: player.yaw };
+  return { area: s.area.id, screen: [s.lx, s.ly], x: player.x - s.x0, z: player.z - s.z0, yaw: player.yaw };
 }
 
 // spot -> { screen, x, z, yaw } (x, z local), or null if it names nothing.
 export function resolveSpot(spot) {
-  if (!spot) return null;
+  if (!spot?.area) return null;
   try {
-    if (hasSpots()) return world.resolveSpot(spot);
-    const area = getArea(spot.area);
-    if (!area) return null;
-    const [i, j] = spot.screen ?? area.start ?? [0, 0];
-    const [ox, oy] = area.origin ?? [0, 0];
-    const screen = world.screen(ox + i, oy + j);
-    if (!screen) return null;
-    return { screen, x: spot.x ?? SCREEN_W / 2, z: spot.z ?? SCREEN_H / 2, yaw: spot.yaw ?? 0 };
+    return world.resolveSpot(spot);
   } catch {
     return null;
   }
@@ -99,7 +85,7 @@ export function goToSpot(spot, { fade = true } = {}) {
   const r = resolveSpot(spot);
   if (!r) return false;
   if (fade) {
-    startWarp(hasSpots() ? r : { sx: r.screen.sx, sy: r.screen.sy, x: r.x, z: r.z, yaw: r.yaw });
+    startWarp(r);
   } else {
     teleport({ area: r.screen.area.id, screen: [r.screen.lx, r.screen.ly] }, r.x, r.z, { yaw: r.yaw });
   }
@@ -107,28 +93,12 @@ export function goToSpot(spot, { fade = true } = {}) {
 }
 
 // ---------------------------------------------------------------- respawn
-// state.respawn (declared in systems/flow.js) holds a spot after feat/world,
-// { sx, sy, x, z, yaw } on main; these convert.
-export function toFlowSpot(spot) {
-  const r = resolveSpot(spot);
-  if (!r) return null;
-  if (hasSpots()) return { area: r.screen.area.id, screen: [r.screen.lx, r.screen.ly], x: r.x, z: r.z, yaw: r.yaw };
-  return { sx: r.screen.sx, sy: r.screen.sy, x: r.x, z: r.z, yaw: r.yaw };
-}
-
-export function fromFlowSpot(p) {
-  if (!p) return null;
-  if (p.area) return fullSpot(p);
-  if (!Number.isFinite(p.sx) || !Number.isFinite(p.sy)) return null;
-  const s = hasSpots()
-    ? world.screenAt(p.sx * SCREEN_W + (p.x ?? SCREEN_W / 2), p.sy * SCREEN_H + (p.z ?? SCREEN_H / 2)) // an M1 spot after feat/world
-    : world.screen(p.sx, p.sy);
-  if (!s) return null;
-  const r = screenRect(s);
-  const gx = p.sx * SCREEN_W + (p.x ?? SCREEN_W / 2);
-  const gz = p.sy * SCREEN_H + (p.z ?? SCREEN_H / 2);
-  return { area: s.area.id, screen: [s.lx, s.ly], x: gx - r.x0, z: gz - r.z0, yaw: p.yaw ?? 0 };
-}
+// state.respawn (declared in systems/flow.js) holds a spot (an M1 save's
+// { sx, sy } point is converted when it loads: SAVE_MIGRATIONS in
+// core/state.js). These fill a spot in, or give null for one that names
+// nothing.
+export const toFlowSpot = (spot) => fullSpot(spot);
+export const fromFlowSpot = (p) => fullSpot(p);
 
 export function setRespawn(spot) {
   const p = toFlowSpot(spot);
