@@ -596,9 +596,9 @@ on('screen-enter', () => showRings(true));
 // registerBackdrop(tileset, { charAt(tx, tz, info) -> char, north, south, side, spread })
 // fills the tiles around every area of that tileset. info: { area, rect, d (tiles outside the
 // area's rectangle), dn / ds / dw / de (tiles north / south / west / east of it), edge (the nearest
-// screen cell) }. The band reaches `north` tiles north and `south` south; sideways it reaches `side`
-// tiles plus `spread` tiles for every tile further from the camera, which is how a view looking
-// north widens.
+// screen cell) }, always for the nearest area of the tileset, so areas that touch share one band.
+// The band reaches `north` tiles north and `south` south; sideways it reaches `side` tiles plus
+// `spread` tiles for every tile further from the camera, which is how a view looking north widens.
 const backdrops = new Map();
 
 export function registerBackdrop(tileset, def) {
@@ -619,51 +619,75 @@ export function buildBackdrops(world) {
   }
   world.backdrop = [];
   backdropTiles.clear();
+  // One rectangle per area whose tileset has a backdrop.
   const byArea = new Map();
   for (const s of world.screens.values()) {
     if (!backdrops.has(s.tileset)) continue;
     const b = screenBox(s);
-    const r = byArea.get(s.area) ?? { x0: Infinity, z0: Infinity, x1: -Infinity, z1: -Infinity, tileset: s.tileset };
+    let r = byArea.get(s.area);
+    if (!r) byArea.set(s.area, (r = { area: s.area, tileset: s.tileset, x0: b.x0, z0: b.z0, x1: b.x1, z1: b.z1 }));
     r.x0 = Math.min(r.x0, b.x0);
     r.z0 = Math.min(r.z0, b.z0);
     r.x1 = Math.max(r.x1, b.x1);
     r.z1 = Math.max(r.z1, b.z1);
-    byArea.set(s.area, r);
   }
+  const rects = [...byArea.values()];
+  // Tiles from a rectangle along each axis, and the squared distance to break ties.
+  const offset = (r, tx, tz) => {
+    const dx = Math.max(r.x0 - tx, 0, tx - r.x1 + 1);
+    const dz = Math.max(r.z0 - tz, 0, tz - r.z1 + 1);
+    return { d: Math.max(dx, dz), e: dx * dx + dz * dz };
+  };
+  // Every tile some area's band reaches is filled by the band of the nearest area of that tileset,
+  // so the bands of areas that touch (joined areas) meet seamlessly and each continues its own
+  // area's edge.
+  const seen = new Set();
   const chunks = new Map();
-  for (const [area, rect] of byArea) {
+  for (const rect of rects) {
     const B = backdrops.get(rect.tileset);
-    const maxSide = B.sideMax;
     for (let tz = rect.z0 - B.north; tz < rect.z1 + B.south; tz++) {
       const far = rect.z1 + B.eye - tz; // tiles from a camera behind the area's south row
-      const side = Math.min(maxSide, Math.ceil(B.side + Math.max(0, B.spread * far - 8)));
+      const side = Math.min(B.sideMax, Math.ceil(B.side + Math.max(0, B.spread * far - 8)));
       for (let tx = rect.x0 - side; tx < rect.x1 + side; tx++) {
         const k = tkey(tx, tz);
-        if (backdropTiles.has(k) || world.locate(tx, tz)) continue;
-        const cx = Math.min(Math.max(tx, rect.x0), rect.x1 - 1);
-        const cz = Math.min(Math.max(tz, rect.z0), rect.z1 - 1);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        if (world.locate(tx, tz)) continue;
+        let R = rect;
+        let best = offset(rect, tx, tz);
+        for (const r of rects) {
+          if (r === rect || r.tileset !== rect.tileset) continue;
+          const o = offset(r, tx, tz);
+          if (o.d < best.d || (o.d === best.d && o.e < best.e)) [R, best] = [r, o];
+        }
+        const cx = Math.min(Math.max(tx, R.x0), R.x1 - 1);
+        const cz = Math.min(Math.max(tz, R.z0), R.z1 - 1);
         const edge = cellAt(world, cx, cz);
-        const dn = Math.max(0, rect.z0 - tz);
-        const ds = Math.max(0, tz - rect.z1 + 1);
-        const dw = Math.max(0, rect.x0 - tx);
-        const de = Math.max(0, tx - rect.x1 + 1);
-        const ch = B.charAt(tx, tz, { area, rect, dn, ds, dw, de, d: Math.max(dn, ds, dw, de), edge });
+        const dn = Math.max(0, R.z0 - tz);
+        const ds = Math.max(0, tz - R.z1 + 1);
+        const dw = Math.max(0, R.x0 - tx);
+        const de = Math.max(0, tx - R.x1 + 1);
+        const ch = B.charAt(tx, tz, { area: R.area, rect: R, dn, ds, dw, de, d: Math.max(dn, ds, dw, de), edge });
         if (ch == null) continue;
-        const def = getTile(rect.tileset, ch);
-        if (!def) throw new Error(`Backdrop of "${rect.tileset}" made unknown tile "${ch}"`);
+        const def = getTile(R.tileset, ch);
+        if (!def) throw new Error(`Backdrop of "${R.tileset}" made unknown tile "${ch}"`);
         backdropTiles.set(k, { ch, def, screen: null, backdrop: true });
         const ck = tkey(Math.floor(tx / CHUNK), Math.floor(tz / CHUNK));
-        if (!chunks.has(ck)) chunks.set(ck, { cx: Math.floor(tx / CHUNK), cz: Math.floor(tz / CHUNK), rect });
+        if (!chunks.has(ck)) chunks.set(ck, { cx: Math.floor(tx / CHUNK), cz: Math.floor(tz / CHUNK) });
       }
     }
   }
-  for (const { cx, cz, rect } of chunks.values()) {
-    // Tiles between a square piece [x0, x0 + n) x [z0, z0 + n) and the play area (0: touching it).
-    const gapOf = (x0, z0, n) => Math.max(rect.x0 - (x0 + n), x0 - rect.x1, rect.z0 - (z0 + n), z0 - rect.z1, 0);
+  // Tiles between a square piece [x0, x0 + n) x [z0, z0 + n) and the nearest play area (0: touching).
+  const gapOf = (x0, z0, n) => {
+    let gap = Infinity;
+    for (const r of rects) gap = Math.min(gap, Math.max(r.x0 - (x0 + n), x0 - r.x1, r.z0 - (z0 + n), z0 - r.z1, 0));
+    return gap;
+  };
+  for (const { cx, cz } of chunks.values()) {
     const X0 = cx * CHUNK;
     const Z0 = cz * CHUNK;
     const Q = QUARTER;
-    // A chunk touching the play area is meshed in quarters, and only the quarters touching it are at
+    // A chunk touching a play area is meshed in quarters, and only the quarters touching one are at
     // full resolution (the first one to four tiles out). Every other piece is meshed at half
     // resolution, without north faces and without casting shadows (onto the play area or anything).
     const parts =
