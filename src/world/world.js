@@ -19,7 +19,7 @@
 import * as THREE from 'three';
 import { VoxelGrid, buildGeometry, voxelMaterial, rng } from '../core/voxel.js';
 import { R, TV } from '../core/constants.js';
-import { state } from '../core/state.js';
+import { state, setTileKeyCodec } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { CAMERA_PRESETS } from '../core/camera.js';
 import { LIGHTING } from '../core/renderer.js';
@@ -380,6 +380,24 @@ export class World {
     return best && { x: best.x, z: best.z };
   }
 
+  // A tile named by place: 'area:i,j:x,z', its area, local screen and local
+  // tile. Unlike the global tile it stays the same when an area is moved in
+  // the global grid, so save data names tiles this way (see the tile-key
+  // codec below). null outside every screen.
+  placeKey(tx, tz) {
+    const at = this.locate(tx, tz);
+    return at ? `${at.screen.key}:${at.lx},${at.lz}` : null;
+  }
+
+  // The global tile [tx, tz] a place key names, or null if no screen has it now.
+  placeTile(key) {
+    const m = /^([\w-]+:-?\d+,-?\d+):(-?\d+),(-?\d+)$/.exec(key);
+    const s = m && this.screens.get(m[1]);
+    if (!s) return null;
+    const [x, z] = [Number(m[2]), Number(m[3])];
+    return x >= 0 && x < s.w && z >= 0 && z < s.h ? [s.x0 + x, s.z0 + z] : null;
+  }
+
   // ---------------------------------------------------------------- hooks
   // Call a tile's hook (onPush, onSword, ...) if it has one; returns its result.
   trigger(tx, tz, hook, extra = {}) {
@@ -558,6 +576,21 @@ export class World {
 }
 
 export const world = new World();
+
+// Save data names tiles by place (world.placeKey), so a save stays right
+// when an area is moved in the global grid; in play they are global tiles
+// ('tx,tz'; core/state.js). A tile on no screen keeps its global key, and a
+// place no screen has today keeps its place key, so neither is lost.
+setTileKeyCodec({
+  save: (key) => {
+    const [tx, tz] = key.split(',').map(Number);
+    return world.placeKey(tx, tz);
+  },
+  load: (key) => {
+    const t = world.placeTile(key);
+    return t ? tileKey(t[0], t[1]) : null;
+  },
+});
 
 // The screen the hero is on (or sliding into): its key is state.screenKey.
 export const currentScreen = () => (state.screenKey ? world.screens.get(state.screenKey) ?? null : null);

@@ -16,6 +16,14 @@
 //
 // serializeState() returns plain JSON; loadState(json) restores every
 // registered field and resets the ones missing from the data.
+//
+// Tiles in save data. In play, flags and tile edits that belong to a tile
+// name its global tile: any flag of the form '<name>:<tx>,<tz>' ('chest:
+// 3223,5'), and every key of tileEdits ('3223,5'). An area can be moved in
+// the global grid, so save data names those tiles by place instead ('chest:
+// crypt:1,0:7,5', the area, its local screen and the local tile); the world
+// installs that translation with setTileKeyCodec (world/world.js). Keep other
+// flags out of the '<name>:<number>,<number>' form.
 
 export const SAVE_VERSION = 1;
 export const START_HP = 6; // three hearts, counted in halves
@@ -63,6 +71,25 @@ export function serializeState() {
   return { version: SAVE_VERSION, fields };
 }
 
+// codec.save('tx,tz') -> the key to save; codec.load(key) -> 'tx,tz', or null
+// when the key names no tile today (it is then kept as it is).
+let tileKeys = { save: (k) => k, load: () => null };
+export function setTileKeyCodec(codec) {
+  tileKeys = codec;
+}
+const TILE_FLAG = /^([\w-]+):(-?\d+,-?\d+)$/;
+const PLACE_FLAG = /^([\w-]+):([\w-]+:-?\d+,-?\d+:-?\d+,-?\d+)$/;
+const saveTileKey = (k) => tileKeys.save(k) ?? k;
+const loadTileKey = (k) => (/^-?\d+,-?\d+$/.test(k) ? k : tileKeys.load(k) ?? k);
+function saveFlag(flag) {
+  const m = TILE_FLAG.exec(flag);
+  return m ? `${m[1]}:${saveTileKey(m[2])}` : flag;
+}
+function loadFlag(flag) {
+  const m = PLACE_FLAG.exec(flag);
+  return m ? `${m[1]}:${loadTileKey(m[2])}` : flag;
+}
+
 export function loadState(data) {
   const fields = data?.fields ?? {};
   for (const [key, f] of saveFields) {
@@ -76,8 +103,15 @@ defineState('hp', () => START_HP);
 defineState('maxHp', () => START_HP);
 defineState('gems', () => 0); // the currency
 defineState('keys', () => ({})); // small keys per dungeon: { crypt: 1 }
-defineState('flags', () => new Set(), { toJSON: (s) => [...s], fromJSON: (a) => new Set(a) });
-defineState('tileEdits', () => ({})); // persistent tile changes: { 'tx,tz': char }
+defineState('flags', () => new Set(), {
+  toJSON: (s) => [...s].map(saveFlag),
+  fromJSON: (a) => new Set([...(a ?? [])].map(loadFlag)),
+});
+// persistent tile changes: { 'tx,tz': char }
+defineState('tileEdits', () => ({}), {
+  toJSON: (o) => Object.fromEntries(Object.entries(o).map(([k, ch]) => [saveTileKey(k), ch])),
+  fromJSON: (o) => Object.fromEntries(Object.entries(o ?? {}).map(([k, ch]) => [loadTileKey(k), ch])),
+});
 
 export const hasFlag = (flag) => state.flags.has(flag);
 export const setFlag = (flag) => state.flags.add(flag);

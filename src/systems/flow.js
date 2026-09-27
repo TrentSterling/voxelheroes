@@ -40,16 +40,56 @@ registerSaveField('pos', {
 
 export const startPoint = () => ({ yaw: 0, ...START });
 
-// M1 saves held { sx, sy, x, z, yaw }: a global screen of the one 16 x 11
-// lattice of that time. Turn such a spot into an area spot, if a screen is
-// still there.
+// M1 laid every area on one lattice of 16 x 11 screens (origins in screens)
+// and its saves named places by that lattice: pos and respawn as { sx, sy,
+// x, z, yaw }, flags and tile edits by global tile. The overworld is still
+// where it was; the crypt has since moved to its dungeon columns and grown
+// 16 x 12 rooms (its rows 0-10 kept their places).
+const M1_AREAS = [
+  { id: 'overworld', origin: [0, 0], size: [3, 2] },
+  { id: 'crypt', origin: [0, 10], size: [2, 2] },
+];
+
+// The place of an M1 global point: { area, screen: [i, j], x, z } with x and
+// z local to the screen, or null where M1 had nothing.
+function m1Place(gx, gz) {
+  const sx = Math.floor(gx / SCREEN_W);
+  const sy = Math.floor(gz / SCREEN_H);
+  for (const a of M1_AREAS) {
+    const [i, j] = [sx - a.origin[0], sy - a.origin[1]];
+    if (i >= 0 && j >= 0 && i < a.size[0] && j < a.size[1]) return { area: a.id, screen: [i, j], x: gx - sx * SCREEN_W, z: gz - sy * SCREEN_H };
+  }
+  return null;
+}
+
+// Turn an M1 spot ({ sx, sy, x, z, yaw }) into an area spot.
 function normalizeSpot(p) {
   if (!p || p.area) return p ?? null;
   if (!Number.isFinite(p.sx) || !Number.isFinite(p.sy)) return null;
-  const gx = p.sx * SCREEN_W + (p.x ?? SCREEN_W / 2);
-  const gz = p.sy * SCREEN_H + (p.z ?? SCREEN_H / 2);
-  const s = world.screenAt(gx, gz);
-  return s ? { area: s.area.id, screen: [s.lx, s.ly], x: gx - s.x0, z: gz - s.z0, yaw: p.yaw ?? 0 } : null;
+  const place = m1Place(p.sx * SCREEN_W + (p.x ?? SCREEN_W / 2), p.sy * SCREEN_H + (p.z ?? SCREEN_H / 2));
+  return place ? { ...place, yaw: p.yaw ?? 0 } : null;
+}
+
+// An M1 save (its pos is { sx, sy, ... }) names tiles in flags and tile edits
+// by M1 global tile: name them by place instead ('crypt:1,1:7,0'), which the
+// load then puts on today's tiles (core/state.js). Other saves pass through.
+function fromM1(data) {
+  const f = data?.fields;
+  if (!f || !Number.isFinite(f.pos?.sx) || !Number.isFinite(f.pos?.sy)) return data;
+  const byPlace = (key) => {
+    const [tx, tz] = key.split(',').map(Number);
+    const p = m1Place(tx, tz);
+    return p ? `${p.area}:${p.screen.join(',')}:${p.x},${p.z}` : key;
+  };
+  const fields = { ...f };
+  if (Array.isArray(f.flags))
+    fields.flags = f.flags.map((flag) => {
+      const m = /^([\w-]+):(-?\d+,-?\d+)$/.exec(flag);
+      return m ? `${m[1]}:${byPlace(m[2])}` : flag;
+    });
+  if (f.tileEdits && typeof f.tileEdits === 'object')
+    fields.tileEdits = Object.fromEntries(Object.entries(f.tileEdits).map(([k, ch]) => [byPlace(k), ch]));
+  return { ...data, fields };
 }
 
 // A spot resolved to { screen, x, z, yaw }, or null if it names nothing that exists.
@@ -158,9 +198,10 @@ export function loadFromSlot(n) {
   return true;
 }
 
-// Apply save data (serializeState() output) and resume play where it was made.
+// Apply save data (serializeState() output, or an M1 save) and resume play
+// where it was made.
 export function loadGame(data) {
-  loadState(data);
+  loadState(fromM1(data));
   clearScreen();
   world.reset();
   placeAtPoint(resolvePlace(loadedPos) ? loadedPos : respawnPoint());

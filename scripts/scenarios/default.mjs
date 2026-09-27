@@ -1,13 +1,16 @@
 // The M1 smoke play-through. Every step is played with the keyboard or the
 // bot helpers (no teleports until the extras at the end), so it exercises
 // scrolling, warps, combat, pickups, the key, the locked door and the chest.
+import { clearFoes } from '../lib/helpers.mjs';
+
 export const description =
-  'Title, Crossroads, a fight in Rattlestone Hollow, Cairn Ridge, the crypt (key, locked door, chest) and out by the stairs; then pause, dialog, save/load and game over.';
+  'Title, Crossroads, a fight in Rattlestone Hollow, Cairn Ridge, the crypt (key, locked door, chest) and out by the stairs; then pause, dialog, save/load (tiles saved by place), game over, and loading an M1 save made after the crypt.';
 
 const near = (a, b, eps = 0.1) => Math.abs(a - b) <= eps;
 
 // Global tile key 'tx,tz' of local tile (x, z) in a screen ('crypt:0,0'), as
-// flags and tile edits name tiles.
+// flags and tile edits name tiles in play (save data names them by place,
+// 'crypt:0,0:7,5').
 const tileOf = (t, key, x, z) =>
   t.eval(([k, x, z]) => {
     const s = window.__voxelHeroes.world.screen(k);
@@ -191,6 +194,11 @@ export default async function defaultScenario(t) {
   const saved = await t.state();
   const save = JSON.parse(JSON.stringify(await t.save()));
   t.expect(save.version >= 1 && save.fields, 'the save data is plain JSON with a version');
+  const byPlace = ['taken:crypt:0,0:7,5', 'door:crypt:1,1:7,0', 'door:crypt:1,1:8,0', 'chest:crypt:1,0:7,5'];
+  t.expect(
+    byPlace.every((k) => save.fields.flags.includes(k)) && save.fields.tileEdits['crypt:1,1:7,0'] === '.',
+    `  it names the key, door and chest tiles by place, so it survives moving an area (${byPlace.join(', ')})`
+  );
   await t.teleport('Whisperwood', 8, 5.5);
   await t.setHp(1);
   await t.load(save);
@@ -220,6 +228,36 @@ export default async function defaultScenario(t) {
   s = await t.state();
   t.expect(s.mode === 'play' && s.screenName === 'Crossroads' && s.hp === s.maxHp, 'Try again: back on the Crossroads with full health');
   await t.shot('15-try-again');
+
+  // ---------------------------------------------------------------- an M1 save
+  // M1 kept the crypt at screen [0, 10] of one 16 x 11 lattice and named its
+  // tiles by global tile: a save made after the crypt, in the Treasure Chamber.
+  const m1 = {
+    version: 1,
+    fields: {
+      hp: 8,
+      maxHp: 8,
+      gems: 0,
+      flags: ['taken:7,115', 'door:23,121', 'door:24,121', 'chest:23,115'],
+      tileEdits: { '23,121': '.', '24,121': '.' },
+      pos: { sx: 1, sy: 10, x: 8, z: 7, yaw: 0 },
+    },
+  };
+  await t.load(m1);
+  await t.step(0.1);
+  s = await t.state();
+  t.expect(s.screenName === 'Treasure Chamber' && near(s.lx, 8) && near(s.lz, 7), `an M1 save made in the crypt resumes in the same room (${s.screenName}, ${s.lx}, ${s.lz})`);
+  t.expect(
+    [`taken:${keyTile}`, ...doorTiles.map((d) => `door:${d}`), `chest:${chestTile}`].every((k) => s.flags.includes(k)),
+    "  its key, door and chest flags land on today's crypt tiles"
+  );
+  t.expect((await t.eval((d) => window.__voxelHeroes.world.tile(...d.split(',').map(Number)), doorTiles[0])) === '.', '  the Pillar Hall door stays open');
+  const opened = (await t.events('chest-opened')).length;
+  await clearFoes(t);
+  await t.walkTo(7.5, 6.5);
+  await t.hold('ArrowUp', 0.3);
+  s = await t.state();
+  t.expect(s.maxHp === 8 && (await t.events('chest-opened')).length === opened, '  and the chest stays open: no second heart container');
 
   const hurt = await t.events('player-hurt');
   const kills = await t.events('enemy-killed');
