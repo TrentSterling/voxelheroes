@@ -25,8 +25,15 @@
 // SAVE_VERSION and add a migration only for a change loadState cannot absorb
 // (renaming or reshaping a field); new fields need neither.
 
-export const SAVE_VERSION = 1;
-export const SAVE_MIGRATIONS = {};
+export const SAVE_VERSION = 2;
+export const SAVE_MIGRATIONS = {
+  // 1 -> 2 (M2 contracts): money is counted in coins; the M1 field was 'gems'.
+  1: (data) => {
+    const { gems, ...fields } = data.fields ?? {};
+    if (gems !== undefined && fields.coins === undefined) fields.coins = gems;
+    return { ...data, version: 2, fields };
+  },
+};
 export const START_HP = 6; // three hearts, counted in halves
 
 export const state = {
@@ -111,7 +118,17 @@ export function loadState(data) {
 // ---------------------------------------------------------------- core fields
 defineState('hp', () => START_HP);
 defineState('maxHp', () => START_HP);
-defineState('gems', () => 0); // the currency
+defineState('coins', () => 0); // money, in coins (wallet max TUNING.economy.walletMax)
+// M1 name of the money field, kept as an alias for code written before M2
+// (the test hook's snapshot, the game-over panel). New code uses state.coins.
+Object.defineProperty(state, 'gems', {
+  get: () => state.coins,
+  set: (v) => {
+    state.coins = v;
+  },
+  enumerable: false,
+  configurable: true,
+});
 defineState('keys', () => ({})); // small keys per dungeon: { crypt: 1 }
 defineState('flags', () => new Set(), { toJSON: (s) => [...s], fromJSON: (a) => new Set(a) });
 defineState('tileEdits', () => ({})); // persistent tile changes: { 'tx,tz': char }

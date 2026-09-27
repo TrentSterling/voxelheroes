@@ -4,17 +4,38 @@
 // Play a sound with sfx.name(). A feature adds its own sounds from its own
 // file with registerSfx('bomb', () => { noise(...); tone(...); }), built from
 // the exported tone() and noise() voices.
+//
+// Levels: voices go through an effects bus, music (M6; game/music.js is the
+// stub) through a music bus, both into the master gain. setVolumes({ master,
+// music, sfx }) takes 0..1 each and setMuted(on) silences everything; the
+// options (game/settings.js) drive both. Mute is kept while no context exists
+// yet and applied when it is created.
 let ctx = null;
 let master = null;
+let sfxBus = null;
+let musicBus = null;
 export let muted = false;
+const BASE = 0.5; // master gain at volume 1 (the prototype's level)
+const levels = { master: 1, music: 1, sfx: 1 };
+
+function applyLevels() {
+  if (!ctx) return;
+  master.gain.value = muted ? 0 : BASE * levels.master;
+  sfxBus.gain.value = levels.sfx;
+  musicBus.gain.value = levels.music;
+}
 
 export function initAudio() {
   if (!ctx) {
     try {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       master = ctx.createGain();
-      master.gain.value = 0.5;
       master.connect(ctx.destination);
+      sfxBus = ctx.createGain();
+      sfxBus.connect(master);
+      musicBus = ctx.createGain();
+      musicBus.connect(master);
+      applyLevels();
     } catch {
       ctx = null;
     }
@@ -23,12 +44,28 @@ export function initAudio() {
 }
 
 export function toggleMute() {
-  muted = !muted;
-  if (master) master.gain.value = muted ? 0 : 0.5;
+  return setMuted(!muted);
+}
+
+export function setMuted(on) {
+  muted = !!on;
+  applyLevels();
   return muted;
 }
 
 export const isMuted = () => muted;
+
+// setVolumes({ master: 0.8, sfx: 1 }): any subset, each clamped to 0..1.
+export function setVolumes(v = {}) {
+  for (const k of Object.keys(levels)) if (Number.isFinite(v[k])) levels[k] = Math.max(0, Math.min(1, v[k]));
+  applyLevels();
+  return { ...levels };
+}
+
+export const volumes = () => ({ ...levels });
+
+// The node music voices connect to (null before the first key press or tap).
+export const musicOutput = () => musicBus;
 
 export function tone(freq, dur, { type = 'square', vol = 0.12, to = null, delay = 0 } = {}) {
   if (!ctx) return;
@@ -40,7 +77,7 @@ export function tone(freq, dur, { type = 'square', vol = 0.12, to = null, delay 
   if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g).connect(master);
+  o.connect(g).connect(sfxBus);
   o.start(t);
   o.stop(t + dur + 0.02);
 }
@@ -62,7 +99,7 @@ export function noise(dur, { vol = 0.2, freq = 2000, q = 1, delay = 0 } = {}) {
   const g = ctx.createGain();
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  src.connect(f).connect(g).connect(master);
+  src.connect(f).connect(g).connect(sfxBus);
   src.start(t);
 }
 

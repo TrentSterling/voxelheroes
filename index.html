@@ -49,18 +49,26 @@
           <button id="start" type="button">Start adventure</button>
           <dl class="controls">
             <div><dt>Move</dt><dd>WASD or arrows</dd></div>
-            <div><dt>Sword</dt><dd>Space, J or Z</dd></div>
-            <div><dt>Shield</dt><dd>Face the shot</dd></div>
+            <div><dt>Sword</dt><dd>J or Z</dd></div>
+            <div><dt>Item</dt><dd>K or X</dd></div>
+            <div><dt>Dash</dt><dd>Space</dd></div>
+            <div><dt>Guard</dt><dd>Hold Shift</dd></div>
             <div><dt>Pause</dt><dd>Enter, Esc or P</dd></div>
           </dl>
         </div>
       </div>
       <div id="touch" hidden>
         <div id="stick"><div id="knob"></div></div>
-        <button id="btn-start" type="button" aria-label="Menu">Menu</button>
+        <div class="touch-menu">
+          <button id="btn-map" class="touch-pill" type="button" aria-label="Map">Map</button>
+          <button id="btn-inv" class="touch-pill" type="button" aria-label="Inventory">Menu</button>
+          <button id="btn-start" class="touch-pill" type="button" aria-label="Pause">Pause</button>
+        </div>
         <div class="touch-buttons">
+          <button id="btn-guard" type="button" aria-label="Guard (hold)">G</button>
+          <button id="btn-dash" type="button" aria-label="Dash">D</button>
           <button id="btn-b" type="button" aria-label="Use item" hidden>B</button>
-          <button id="btn-a" type="button" aria-label="Swing sword">A</button>
+          <button id="btn-a" type="button" aria-label="Sword">A</button>
         </div>
       </div>
     </div>
