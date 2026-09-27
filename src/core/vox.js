@@ -84,6 +84,7 @@ export class DenseGrid {
 }
 
 // Face table: normal, the 4 corners (unit cube, CCW seen from outside), and the tangent axes for face UVs.
+// Face order (and the bit order of opts.faces): +x, -x, +y, -y, +z, -z.
 const FACES = [
   { n: [1, 0, 0], c: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]] },
   { n: [-1, 0, 0], c: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]] },
@@ -95,47 +96,77 @@ const FACES = [
 const FACE_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
 const AO_CURVE = [1.0, 0.8, 0.66, 0.52];
 
+// Face bits for opts.faces.
+export const FACE_PX = 1, FACE_NX = 2, FACE_PY = 4, FACE_NY = 8, FACE_PZ = 16, FACE_NZ = 32, FACE_ALL = 63;
+
+// Per face and corner: the corner offset and the three AO probe offsets (the two edge neighbours and
+// the corner neighbour in the face's outward layer), precomputed so the mesher allocates nothing per face.
+const FACE_TABLE = FACES.map((F) => {
+  const axes = [0, 1, 2].filter((i) => F.n[i] === 0);
+  return {
+    n: F.n,
+    corners: F.c.map((c) => {
+      const d = [c[0] * 2 - 1, c[1] * 2 - 1, c[2] * 2 - 1];
+      const e1 = [0, 0, 0], e2 = [0, 0, 0];
+      e1[axes[0]] = d[axes[0]]; e2[axes[1]] = d[axes[1]];
+      return { c, e1, e2, ec: [e1[0] + e2[0], e1[1] + e2[1], e1[2] + e2[2]] };
+    }),
+  };
+});
+
 const _c = new THREE.Color();
 
 // Build a BufferGeometry with only exposed faces, per-vertex colors (linear) with baked voxel AO,
 // face UVs (0..1 per voxel face) for the bevel shader, and per-face flags.
 // opts.scale: world size of one voxel. opts.origin: [ox,oy,oz] in voxels subtracted before scaling.
 // opts.neighbors(x,y,z) → bool can report occupancy outside the grid (for seamless tiles).
+// opts.region: [x0,y0,z0,x1,y1,z1] (upper bounds exclusive) meshes only the voxels inside that box;
+//   voxels outside it still hide faces and darken AO, so a grid built with a margin of neighbouring
+//   tiles meshes one screen seamlessly.
+// opts.faces: bit mask of the face directions to emit (FACE_PX | ... ; default all six).
+// opts.skipBottom: true drops every bottom face; a number drops only those of voxels whose y index is
+//   below it (terrain: no bottom faces on the ground, but overhangs keep theirs for shadow maps).
 export function meshVoxels(grid, opts = {}) {
   const scale = opts.scale ?? VOXEL;
   const [ox, oy, oz] = opts.origin ?? [grid.sx / 2, 0, grid.sz / 2];
-  const solid = (x, y, z) => grid.has(x, y, z) || (!grid.inside(x, y, z) && opts.neighbors ? opts.neighbors(x, y, z) : false);
+  const { sx, sy, sz, data } = grid;
+  const nb = opts.neighbors ?? null;
+  const solid = (x, y, z) => {
+    if (x >= 0 && y >= 0 && z >= 0 && x < sx && y < sy && z < sz) return data[x + sx * (y + sy * z)] !== 0;
+    return nb ? !!nb(x, y, z) : false;
+  };
   const aoOn = opts.ao !== false;
-  const skipBottom = opts.skipBottom ?? false;
+  const sb = opts.skipBottom ?? false;
+  const skipBelow = sb === true ? Infinity : typeof sb === 'number' ? sb : -Infinity;
+  const mask = opts.faces ?? FACE_ALL;
+  const [rx0, ry0, rz0, rx1, ry1, rz1] = opts.region ?? [0, 0, 0, sx, sy, sz];
+  const x0 = Math.max(0, rx0), y0 = Math.max(0, ry0), z0 = Math.max(0, rz0);
+  const x1 = Math.min(sx, rx1), y1 = Math.min(sy, ry1), z1 = Math.min(sz, rz1);
   const pos = [], nor = [], col = [], uv = [], idx = [];
+  const aos = [0, 0, 0, 0];
   let v = 0;
-  for (let z = 0; z < grid.sz; z++) for (let y = 0; y < grid.sy; y++) for (let x = 0; x < grid.sx; x++) {
-    const val = grid.get(x, y, z);
+  for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+    const val = data[x + sx * (y + sy * z)];
     if (!val) continue;
     _c.setHex(val & 0xffffff, THREE.SRGBColorSpace); // → linear working space
     for (let f = 0; f < 6; f++) {
-      const F = FACES[f];
-      const [nx, ny, nz] = F.n;
-      if (solid(x + nx, y + ny, z + nz)) continue;
-      if (skipBottom && ny === -1) continue;
-      const aos = [];
+      if (!(mask & (1 << f))) continue;
+      const F = FACE_TABLE[f];
+      const nx = F.n[0], ny = F.n[1], nz = F.n[2];
+      if (ny === -1 && y < skipBelow) continue;
+      const px = x + nx, py = y + ny, pz = z + nz;
+      if (solid(px, py, pz)) continue;
       for (let k = 0; k < 4; k++) {
-        const [cx, cy, cz] = F.c[k];
+        const C = F.corners[k];
         let a = 3;
         if (aoOn) {
-          // The two edge neighbours and the corner neighbour in the face's outward layer.
-          const px = x + nx, py = y + ny, pz = z + nz;
-          const d = [cx * 2 - 1, cy * 2 - 1, cz * 2 - 1];
-          const axes = [0, 1, 2].filter(i => F.n[i] === 0);
-          const e1 = [0, 0, 0], e2 = [0, 0, 0];
-          e1[axes[0]] = d[axes[0]]; e2[axes[1]] = d[axes[1]];
-          const s1 = solid(px + e1[0], py + e1[1], pz + e1[2]) ? 1 : 0;
-          const s2 = solid(px + e2[0], py + e2[1], pz + e2[2]) ? 1 : 0;
-          const sc = solid(px + e1[0] + e2[0], py + e1[1] + e2[1], pz + e1[2] + e2[2]) ? 1 : 0;
+          const s1 = solid(px + C.e1[0], py + C.e1[1], pz + C.e1[2]) ? 1 : 0;
+          const s2 = solid(px + C.e2[0], py + C.e2[1], pz + C.e2[2]) ? 1 : 0;
+          const sc = solid(px + C.ec[0], py + C.ec[1], pz + C.ec[2]) ? 1 : 0;
           a = (s1 && s2) ? 0 : 3 - (s1 + s2 + sc);
         }
-        aos.push(a);
-        pos.push((x + cx - ox) * scale, (y + cy - oy) * scale, (z + cz - oz) * scale);
+        aos[k] = a;
+        pos.push((x + C.c[0] - ox) * scale, (y + C.c[1] - oy) * scale, (z + C.c[2] - oz) * scale);
         nor.push(nx, ny, nz);
         const m = AO_CURVE[3 - a];
         col.push(_c.r * m, _c.g * m, _c.b * m);
@@ -156,6 +187,14 @@ export function meshVoxels(grid, opts = {}) {
   g.computeBoundingSphere();
   g.computeBoundingBox();
   return g;
+}
+
+// The colours a grid is made of, most used first: [{ color, count }]. Handy for bursting a model
+// into cubes of its own colours (see systems/particles.js).
+export function gridColors(grid) {
+  const counts = new Map();
+  for (const v of grid.data) if (v) counts.set(v & 0xffffff, (counts.get(v & 0xffffff) ?? 0) + 1);
+  return [...counts].map(([color, count]) => ({ color, count })).sort((a, b) => b.count - a.count);
 }
 
 // Deterministic hash noise for color jitter (so renders are reproducible).
