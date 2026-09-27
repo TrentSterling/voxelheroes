@@ -10,6 +10,7 @@
 //     screen: [16, 12],                // tiles per screen (w, h); default [16, 11], rooms [16, 12]
 //     rooms: true,                     // dungeon rooms: walls and doors of art bible section 9
 //     origin: [200, 0],                // global screen of the local '0,0' screen (see below)
+//                                      // (or at: [tx, tz], its north-west tile)
 //     start: [0, 1],                   // local screen used by teleport('crypt')
 //     keyGroup: 'crypt',               // small keys are counted per group (default: id)
 //     spawns: { e: 'slime', K: { type: 'key', once: true } },
@@ -24,21 +25,27 @@
 // local screen 'i,j' covers global tiles
 //   x from (origin[0] + i) * w to (origin[0] + i + 1) * w - 1
 //   z from (origin[1] + j) * h to (origin[1] + j + 1) * h - 1.
-// So `origin` counts screens of the area's own size. Every screen is 16 tiles
-// wide, so origin[0] means the same column of the world for every area;
-// docs/ARCHITECTURE.md ("Global regions") says which columns each kind of
-// area uses. Areas of the same size whose screens touch are neighbours:
-// walking off an edge into another area's screen changes area (a fade and a
-// loading card) instead of sliding. Areas must not overlap (the world checks).
+// So `origin` counts screens of the area's own size. Screens are 16 tiles
+// wide unless an area says otherwise, so origin[0] means the same column of
+// the world for all of them; docs/ARCHITECTURE.md ("Global regions") says
+// which columns each kind of area uses. An area with screens of another
+// width (a small house) gives `at: [tx, tz]` instead of `origin`: the global
+// tile of local screen '0,0's north-west corner (areaCorner below), e.g.
+// at: [300 * 16, 0] for the corner of screen column 300. Areas whose screens
+// touch are neighbours, whatever their sizes: walking off an edge into
+// another area's screen changes area (a fade and a loading card) instead of
+// sliding. Areas must not overlap (the world checks).
 //
-// Rooms (`rooms: true`, art bible section 9): each screen is one room of
-// 16 x 12 tiles. Row 0 is the north wall, rows 1 to 10 the floor, row 11 the
-// south wall (a room may set `southWall: false` to leave out its black band;
-// collision is unchanged), columns 0 and 15 the side walls. Doors are two
-// open tiles in the middle of a wall: columns 7 and 8 of rows 0 and 11, rows
-// 5 and 6 of columns 0 and 15. Side walls are drawn half a tile inward, so
-// their collision stops bodies at x = 1.5 and x = 14.5; only the current
-// room is drawn. Rooms of one dungeon adjoin, so door gaps line up.
+// Rooms (`rooms: true`, art bible section 9): each screen is one room, in
+// dungeons 16 x 12 tiles. Row 0 is the north wall, rows 1 to 10 the floor,
+// row 11 the south wall (a room may set `southWall: false` to leave out its
+// black band; collision is unchanged), columns 0 and 15 the side walls. Doors
+// are two open tiles in the middle of a wall: columns 7 and 8 of rows 0 and
+// 11, rows 5 and 6 of columns 0 and 15. Side walls are drawn half a tile
+// inward, so their collision stops bodies at x = 1.5 and x = 14.5; only the
+// current room is drawn, and the camera centres on it. Rooms of one dungeon
+// adjoin, so door gaps line up. Rooms of another size (house interiors) work
+// the same way: the outer ring of tiles is the wall.
 //
 // Screens can override lighting, camera, tileset, spawns and warps, and may
 // carry data for tiles, such as chest contents (`chest: 'heart-container'`,
@@ -69,6 +76,15 @@ const isInt = (v) => Number.isInteger(v);
 // Tiles per screen for an area: [w, h].
 export const areaScreenSize = (area) => area.screen ?? (area.rooms ? ROOM_SCREEN : DEFAULT_SCREEN);
 
+// The global tile at the north-west corner of an area's local screen '0,0':
+// `at`, or `origin` counted in the area's screens.
+export function areaCorner(area) {
+  if (area.at) return [area.at[0], area.at[1]];
+  const [w, h] = areaScreenSize(area);
+  const [ox, oy] = area.origin ?? [0, 0];
+  return [ox * w, oy * h];
+}
+
 export function registerArea(def) {
   if (!def?.id) throw new Error('registerArea: an area needs an id');
   if (areas.has(def.id)) throw new Error(`Area "${def.id}" is already registered`);
@@ -78,6 +94,9 @@ export function registerArea(def) {
   const [w, h] = size;
   if (def.origin !== undefined && !(Array.isArray(def.origin) && def.origin.length === 2 && def.origin.every(isInt)))
     throw new Error(`Area ${def.id}: origin must be [x, y] in whole screens, got ${JSON.stringify(def.origin)}`);
+  if (def.at !== undefined && !(Array.isArray(def.at) && def.at.length === 2 && def.at.every(isInt)))
+    throw new Error(`Area ${def.id}: at must be [x, z] in whole tiles, got ${JSON.stringify(def.at)}`);
+  if (def.at !== undefined && def.origin !== undefined) throw new Error(`Area ${def.id}: give origin (screens) or at (tiles), not both`);
   for (const [key, s] of Object.entries(def.screens ?? {})) {
     if (!/^-?\d+,-?\d+$/.test(key)) throw new Error(`Area ${def.id}: screen key "${key}" must look like "x,y"`);
     if (!Array.isArray(s.rows) || s.rows.length !== h)

@@ -22,7 +22,7 @@ import { R, TV } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { getTile, tilesetFloor, isSolidDef } from './tiles.js';
-import { areaScreenSize } from './areas.js';
+import { areaScreenSize, areaCorner } from './areas.js';
 import { screenKey, tileKey } from './grid.js';
 
 // The spatial index: square cells of CELL tiles, each listing the screens
@@ -100,15 +100,15 @@ export class World {
 
   addArea(area) {
     this.areas.set(area.id, area);
-    const [ox, oy] = area.origin ?? [0, 0];
+    const [ax, az] = areaCorner(area); // global tile of local screen 0,0's corner
     const [w, h] = areaScreenSize(area);
     const areaTileset = area.tileset ?? 'overworld';
     for (const [key, def] of Object.entries(area.screens)) {
       const [lx, ly] = key.split(',').map(Number);
-      const sx = ox + lx; // global screen, counted in this area's screen size
-      const sy = oy + ly;
-      const x0 = sx * w; // north-west corner, global tiles
-      const z0 = sy * h;
+      const x0 = ax + lx * w; // north-west corner, global tiles
+      const z0 = az + ly * h;
+      const sx = x0 / w; // global screen, counted in this area's screen size (fractional for some `at`)
+      const sy = z0 / h;
       const tileset = def.tileset ?? areaTileset;
       const markers = { ...area.spawns, ...def.spawns };
       const floor = def.floor ?? area.floor ?? tilesetFloor(tileset);
@@ -166,7 +166,7 @@ export class World {
           if (o.x0 < screen.x1 && screen.x0 < o.x1 && o.z0 < screen.z1 && screen.z0 < o.z1)
             throw new Error(
               `Screen ${screen.key} (tiles x ${screen.x0}-${screen.x1 - 1}, z ${screen.z0}-${screen.z1 - 1}) overlaps ` +
-                `screen ${o.key} (x ${o.x0}-${o.x1 - 1}, z ${o.z0}-${o.z1 - 1}): give one of the areas another origin`
+                `screen ${o.key} (x ${o.x0}-${o.x1 - 1}, z ${o.z0}-${o.z1 - 1}): give one of the areas another origin (or at)`
             );
         list.push(screen);
       }

@@ -19,10 +19,12 @@
 // the middle of the screen or room (for a room, the floor centre) and move
 // only as far as it takes to keep the hero's feet in frame; where the frame
 // is less than half as wide as the room (a phone held upright) they follow
-// the hero across instead, still inside the room. Areas can fix a preset
-// (`camera: 'dungeon'`); other screens use the player's choice in
-// state.settings.camera. A slide between screens with different presets
-// blends the lens as it moves.
+// the hero across instead, still inside the room. Nothing past a room's walls
+// is drawn, so in a room (a rect with area.rooms) the bottom edge may show
+// past its south wall: a room shorter than the frame stays centred too.
+// Areas can fix a preset (`camera: 'dungeon'`); other screens use the
+// player's choice in state.settings.camera. A slide between screens with
+// different presets blends the lens as it moves.
 import * as THREE from 'three';
 import { camera, renderer, followSun } from './renderer.js';
 import { DEG } from './constants.js';
@@ -134,7 +136,8 @@ export function cameraFootprint(p = CAMERA_PRESETS[presetName], aspect = camera.
 // screen object will do).
 //   depth   follow presets track the hero's row; fixed presets aim at the
 //           middle. Either way the ground at the frame's bottom edge stays
-//           inside the rect, and the hero stays above that edge.
+//           inside the rect (except a fixed preset in a room: nothing is
+//           drawn past its walls), and the hero stays above that edge.
 //   across  measured on the hero's row (rows nearer the camera are
 //           narrower). Where the frame is wider than the rect there, it is
 //           centred. Otherwise follow presets track the hero with the
@@ -153,8 +156,10 @@ export function subjectFor(pos, rect, p = CAMERA_PRESETS[presetName], aspect = c
   const { south } = cameraFootprint(p, aspect);
   const zMax = rect.z1 - south; // any further south and the frame shows the screen below
   let z;
-  if (p.fixed) z = Math.min(Math.max(cz, pos.z - south + FRAME_MARGIN), zMax);
-  else z = zMax >= rect.z0 ? clamp(pos.z, rect.z0, zMax) : zMax;
+  if (p.fixed) {
+    z = Math.max(cz, pos.z - south + FRAME_MARGIN);
+    if (!rect.area?.rooms) z = Math.min(z, zMax);
+  } else z = zMax >= rect.z0 ? clamp(pos.z, rect.z0, zMax) : zMax;
   const dz = pos.z - z; // the hero's row, from the subject
   const hw = halfWidthAt(p, dz, aspect); // the frame's half-width on the hero's row
   let x;

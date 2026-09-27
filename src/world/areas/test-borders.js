@@ -14,6 +14,10 @@
 //   Hedgerows (2 x 2 screens), Far Hedges (1 x 2) east of it, Low Fields
 //   (2 x 1) south of it. Gaps in the tree border: columns 6-9 on the north
 //   and south edges, rows 4-6 on the east and west edges.
+//
+// A cave door in Hedge Corner leads down into Hedge Burrow, one room of
+// 12 x 9 tiles: an interior whose screens are not 16 wide, so it is placed
+// by tile (`at`, the corner of screen column 474) instead of by `origin`.
 import { registerArea } from '../areas.js';
 
 // A 16 x 11 field ringed by trees, open on the named sides ('n', 's', 'e',
@@ -45,8 +49,14 @@ registerArea({
   name: 'Hedgerows',
   origin: [470, 0],
   start: [0, 0],
+  warps: {
+    D: { area: 'test-burrow', screen: [0, 0], x: 6, z: 7.4, yaw: Math.PI },
+  },
   screens: {
-    '0,0': { name: 'Hedge Corner', rows: field('es', { '3,2': 'B', '11,3': ',', '4,7': 'R', '12,8': 'B' }) },
+    '0,0': {
+      name: 'Hedge Corner',
+      rows: field('es', { '3,2': 'B', '11,3': ',', '4,7': 'R', '12,8': 'B', '7,1': '#', '8,1': 'D', '9,1': '#' }),
+    },
     '1,0': { name: 'Hedge Gate', rows: field('wes', { '2,2': ',', '12,2': 'R', '4,8': 'B', '11,8': ',' }) },
     '0,1': { name: 'Hedge Hollow', rows: field('nes', { '3,3': 'R', '12,2': 'B', '3,8': ',', '12,7': ',' }) },
     '1,1': { name: 'Hedge Crossing', rows: field('nwes', { '3,2': 'B', '12,2': 'B', '3,8': 'R', '12,8': 'R' }) },
@@ -72,5 +82,39 @@ registerArea({
   screens: {
     '0,0': { name: 'Low Field West', rows: field('ne', { '3,3': ',', '11,7': 'R', '4,8': 'B' }) },
     '1,0': { name: 'Low Field East', rows: field('nw', { '12,3': 'B', '4,7': ',', '11,8': 'R' }) },
+  },
+});
+
+// One room of 12 x 9 tiles (art bible section 9 walls on the outer ring,
+// side walls inset half a tile), the stairs out in the middle of the south
+// wall. 12 wide, so it is placed by tile: `at` the corner of column 474, one
+// empty column east of Far Hedges.
+registerArea({
+  id: 'test-burrow',
+  name: 'Hedge Burrow',
+  tileset: 'dungeon',
+  lighting: 'crypt',
+  camera: 'dungeon',
+  rooms: true,
+  screen: [12, 9],
+  at: [474 * 16, 0],
+  warps: {
+    X: { area: 'test-hedgerows', screen: [0, 0], x: 8.5, z: 2.7, yaw: 0 },
+  },
+  screens: {
+    '0,0': {
+      name: 'Burrow',
+      rows: [
+        'WWWWWWWWWWWW',
+        'W.F......F.W',
+        'W..........W',
+        'W..........W',
+        'W..........W',
+        'W..........W',
+        'W..........W',
+        'W..........W',
+        'WWWWWXXWWWWW',
+      ],
+    },
   },
 });
