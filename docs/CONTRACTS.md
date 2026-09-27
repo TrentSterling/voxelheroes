@@ -1494,24 +1494,30 @@ dies (`player-revived`). The rest:
 
 ### Merging the M1.5 branches
 
-`feat/world`, `feat/look-kits` and `feat/look-render` branch from `a00fb70`,
-before main's M1 review fixes (`3f86c4d`), so merging any of them with main
-conflicts in world and look files (`core/camera.js`,
-`systems/transitions.js`, `debug/testhook.js`, `world/world.js`, ...)
-whatever this branch does. This branch adds no conflict of its own: the one
-file it shares with them is `core/state.js` (feat/world), in separate hunks.
-Trial merges of this branch with each of them, with those conflicts settled
-as below, build and pass `contracts-m2`, and the feat/world one passes
-feat/world's `default` scenario too. When settling main against feat/world,
+`feat/world` and `feat/look` (which merged `feat/look-kits` and
+`feat/look-render`) branch from `a00fb70`, before main's M1 review fixes
+(`3f86c4d`), so merging either with main conflicts in world and look files
+(`core/camera.js`, `systems/transitions.js`, `debug/testhook.js`,
+`world/world.js`, ...) whatever this branch does. Checked with
+`git merge-tree` at `e814f95`: against feat/world this branch conflicts in
+exactly main's files (`core/state.js` among them, where this branch's own
+hunks stay apart from feat/world's); against feat/look it adds one, the
+header comment of `core/loop.js`, which feat/look rewrote (manual mode no
+longer draws): take feat/look's comment and keep this branch's
+`import { TICK } from './tuning.js'`. Trial merges at `2e4b87e`, with the
+conflicts settled as below, built and passed `contracts-m2` (and, for
+feat/world, its `default`); both branches and this one have moved since, so
+the M1.5 merge runs them again. When settling main against feat/world,
 keep main's:
 
 - `CARRY` and the `carry` of the scroll and warp modes
-  (`systems/transitions.js`), and `playerCameraPresets` (`core/camera.js`);
-- `selectable: true` on presets A-D: feat/world's presets drop the flag, and
-  main's `chooseCameraPreset` then refuses every preset (the camera option
-  only warns);
+  (`systems/transitions.js`); feat/world now has `playerCameraPresets` and
+  `selectable: true` on presets A-D itself;
 - the warp check that warns about an unknown area instead of throwing
-  (`world.js`, `checkWarp`): M2 streams warp into areas other streams add;
+  (`world.js`, `checkWarp`): M2 streams warp into areas other streams add.
+  feat/world's `validate()` now resolves every warp and entrance at startup
+  and throws on an unknown area, so the merge makes it warn and skip those
+  too (section 1: a warp naming another stream's area waits for the merge);
 - `spawnsAt` and the spawn marker checks (`world.js`): NPCs are placed with
   it (8.12);
 - the test hook's imports (`activeSlot`, `registerPlayHook`,
