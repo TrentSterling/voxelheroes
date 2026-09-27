@@ -658,9 +658,11 @@ the room.
 **Backdrops.** `registerBackdrop(tileset, { charAt(tx, tz, info), north,
 south, side, spread })` fills the tiles around every area of that tileset with
 ordinary tiles, so the camera sees the world go on (section 8, "The far
-distance"). They are meshed in chunks of 8 x 8 tiles; chunks four or more
-tiles from the play area are meshed at half resolution (1/4 tile blocks),
-without north faces and without casting shadows. `cellAt` returns backdrop
+distance"). They are meshed in chunks of 8 x 8 tiles, and a chunk touching
+the play area in quarters of 4 x 4. Only the quarters touching the play area
+(the first one to four tiles out) are at full resolution; the rest is meshed
+at half resolution (1/4 tile blocks), without north faces and without casting
+shadows, which keeps the band cheap to draw. `cellAt` returns backdrop
 tiles too, so a screen's edge tiles blend into them. The overworld's band
 (`farband.js`) continues the edge tiles for a tile, then forest, then plateaus
 of one, two and four levels fronted by tree lines, up to 19 tiles north: the
@@ -724,7 +726,10 @@ line, a lighter ring and a darker centre.
 A lamp is a small dark sconce on the wall, a glow strip on it and a warm point
 light, all fixtures of the screen. The light comes from `makeLampLight()` in
 `core/renderer.js` when the renderer has it, else it is a single
-`PointLight(0xffb060, 4.5, 8, 1.5)`; lamps never cast shadows.
+`PointLight(0xffb060, 4.5, 8, 1.5)`; lamps never cast shadows. Fallback lights
+are switched on only in the screen the hero has entered (`'screen-enter'`),
+since every lit material pays for every visible point light wherever it is; a
+renderer with `makeLampLight` culls its own lamps.
 
 ### Models: `models/`
 

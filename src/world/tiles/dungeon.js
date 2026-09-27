@@ -27,6 +27,7 @@ import * as renderer from '../../core/renderer.js';
 import { GROUND_Y } from '../../core/constants.js';
 import { hash3, shadeHex } from '../../core/vox.js';
 import { makeGlowMaterial } from '../../core/materials.js';
+import { on } from '../../core/events.js';
 import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile, getTile } from '../tiles.js';
 import { GOLD } from '../palette.js';
@@ -138,7 +139,19 @@ const LAMP_FACTORY = 'makeLampLight'; // looked up at run time: renderers withou
 let stripGeo = null;
 let stripMat = null;
 
-function lampFixture(x, zFace) {
+// Fallback lights burn only in the room the hero is in: every lit material pays for every visible
+// point light, wherever it is. (A renderer with makeLampLight culls its own lamps.)
+const fallbackLamps = new Set(); // { light, screen }
+let litScreen = null;
+on('screen-enter', (e) => {
+  litScreen = e?.screen ?? null;
+  for (const l of fallbackLamps) {
+    if (l.light.parent && !l.light.parent.parent) fallbackLamps.delete(l); // its screen was rebuilt
+    else l.light.visible = l.screen === litScreen;
+  }
+});
+
+function lampFixture(x, zFace, screen) {
   const group = new THREE.Group();
   group.name = 'lamp';
   if (!stripGeo) {
@@ -158,6 +171,8 @@ function lampFixture(x, zFace) {
     const L = LAMP_FALLBACK;
     light = new THREE.PointLight(L.color, L.intensity, L.distance, L.decay);
     light.name = 'lamp-light';
+    light.visible = screen === litScreen;
+    fallbackLamps.add({ light, screen });
   }
   light.traverse((o) => {
     if (o.isLight) o.castShadow = false;
@@ -174,7 +189,7 @@ function sconces(ctx, pos) {
     if (X < ctx.X0 || X >= ctx.X0 + BPT) continue;
     const Z = ctx.Z0 + BPT; // one block out of the wall's inner face
     ctx.T.box(X, LAMP_BLOCK, Z, X + 2, LAMP_BLOCK + 1, Z + 1, GOLD.sconce);
-    ctx.fixture(lampFixture((X + 1) / BPT, Z / BPT));
+    if (ctx.own) ctx.fixture(lampFixture((X + 1) / BPT, Z / BPT, ctx.owner));
   }
 }
 

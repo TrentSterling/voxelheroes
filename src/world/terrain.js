@@ -608,6 +608,7 @@ export function registerBackdrop(tileset, def) {
 export const backdropTile = (tx, tz) => backdropTiles.get(tkey(tx, tz)) ?? null;
 
 const CHUNK = 8;
+const QUARTER = CHUNK / 2;
 
 // Fill and mesh the backdrop around every area whose tileset has one. Meshes go into world.scene
 // and world.backdrop ({ name, mesh, layer } like screen meshes). Call after the screens are built.
@@ -657,28 +658,37 @@ export function buildBackdrops(world) {
     }
   }
   for (const { cx, cz, rect } of chunks.values()) {
-    const x0 = cx * CHUNK;
-    const z0 = cz * CHUNK;
-    // Chunks away from the play area never cast shadows onto it, never show north faces and are
-    // meshed at half resolution.
-    const gap = Math.max(rect.x0 - (x0 + CHUNK), x0 - rect.x1, rect.z0 - (z0 + CHUNK), z0 - rect.z1, 0);
-    const far = gap >= 4;
-    const meshes = buildRect(world, {
-      x0,
-      z0,
-      w: CHUNK,
-      h: CHUNK,
-      screen: null,
-      cells: (tx, tz) => backdropTiles.get(tkey(tx, tz)) ?? null,
-      solidVoid: true,
-      coarse: far,
-      faces: far ? FACE_ALL & ~FACE_NZ : FACE_ALL,
-      terrainLayer: far ? { castShadow: false } : null,
-    });
-    for (const m of meshes) {
-      m.mesh.name = `backdrop ${cx},${cz} ${m.name}`;
-      world.scene.add(m.mesh);
-      world.backdrop.push(m);
+    // Tiles between a square piece [x0, x0 + n) x [z0, z0 + n) and the play area (0: touching it).
+    const gapOf = (x0, z0, n) => Math.max(rect.x0 - (x0 + n), x0 - rect.x1, rect.z0 - (z0 + n), z0 - rect.z1, 0);
+    const X0 = cx * CHUNK;
+    const Z0 = cz * CHUNK;
+    const Q = QUARTER;
+    // A chunk touching the play area is meshed in quarters, and only the quarters touching it are at
+    // full resolution (the first one to four tiles out). Every other piece is meshed at half
+    // resolution, without north faces and without casting shadows (onto the play area or anything).
+    const parts =
+      gapOf(X0, Z0, CHUNK) > 0
+        ? [[X0, Z0, CHUNK]]
+        : [[X0, Z0, Q], [X0 + Q, Z0, Q], [X0, Z0 + Q, Q], [X0 + Q, Z0 + Q, Q]];
+    for (const [x0, z0, n] of parts) {
+      const far = gapOf(x0, z0, n) > 0;
+      const meshes = buildRect(world, {
+        x0,
+        z0,
+        w: n,
+        h: n,
+        screen: null,
+        cells: (tx, tz) => backdropTiles.get(tkey(tx, tz)) ?? null,
+        solidVoid: true,
+        coarse: far,
+        faces: far ? FACE_ALL & ~FACE_NZ : FACE_ALL,
+        terrainLayer: far ? { castShadow: false } : null,
+      });
+      for (const m of meshes) {
+        m.mesh.name = `backdrop ${x0},${z0} ${m.name}`;
+        world.scene.add(m.mesh);
+        world.backdrop.push(m);
+      }
     }
   }
   return world.backdrop;
