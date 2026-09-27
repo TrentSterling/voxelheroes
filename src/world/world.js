@@ -21,9 +21,12 @@ import { VoxelGrid, buildGeometry, voxelMaterial, rng } from '../core/voxel.js';
 import { R, TV } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { on, emit } from '../core/events.js';
+import { CAMERA_PRESETS } from '../core/camera.js';
+import { LIGHTING } from '../core/renderer.js';
 import { getTile, tilesetFloor, isSolidDef } from './tiles.js';
-import { areaScreenSize, areaCorner } from './areas.js';
+import { areaScreenSize, areaCorner, areaStart } from './areas.js';
 import { screenKey, tileKey } from './grid.js';
+import { edgeReport } from './links.js';
 
 // The spatial index: square cells of CELL tiles, each listing the screens
 // that overlap it.
@@ -84,6 +87,7 @@ export class World {
     this.scene = scene;
     for (const area of areas) this.addArea(area);
     this.validate();
+    this.checkEdges();
     for (const screen of this.screens.values()) {
       this.buildScreen(screen);
       this.buildProps(screen);
@@ -172,15 +176,22 @@ export class World {
       }
   }
 
-  // Catch map typos and bad warp targets at startup, with a readable message.
+  // Catch map typos, bad warp targets and unknown camera or lighting names at
+  // startup, with a readable message.
   validate() {
     for (const s of this.screens.values()) {
       s.tiles.forEach((row, z) =>
         row.forEach((ch, x) => {
-          if (!getTile(s.tileset, ch))
+          const def = getTile(s.tileset, ch);
+          if (!def)
             throw new Error(`Unknown tile "${ch}" in area "${s.area.id}" screen ${s.lx},${s.ly} ("${s.name}") at ${x},${z} (tileset "${s.tileset}")`);
+          if (def.onEnter?.isWarp && !this.warpSpec(s, ch))
+            throw new Error(`Warp tile "${ch}" at ${x},${z} of ${s.key} ("${s.name}") has no destination in the screen's or the area's warps`);
         })
       );
+      if (s.camera && !CAMERA_PRESETS[s.camera])
+        throw new Error(`Screen ${s.key} ("${s.name}") names unknown camera preset "${s.camera}" (core/camera.js registerCameraPreset)`);
+      if (!LIGHTING[s.lighting]) throw new Error(`Screen ${s.key} ("${s.name}") names unknown lighting "${s.lighting}" (core/renderer.js registerLighting)`);
       for (const [ch, spec] of Object.entries(s.def.warps ?? {})) this.checkSpot(`Warp "${ch}" of ${s.key}`, this.resolveWarp(s.area, spec));
     }
     for (const area of this.areas.values()) {
@@ -189,12 +200,33 @@ export class World {
     }
   }
 
-  // A destination must be inside its screen and on a tile the hero can stand on.
+  // A destination must be inside its screen, on a tile the hero can stand on,
+  // and not on a warp tile (he would warp straight on, back and forth).
   checkSpot(what, { screen, x, z }) {
     if (!(x >= 0 && x < screen.w && z >= 0 && z < screen.h))
       throw new Error(`${what} lands at ${x},${z}, outside screen ${screen.key} (${screen.w} x ${screen.h} tiles)`);
-    if (this.isSolid(screen.x0 + Math.floor(x), screen.z0 + Math.floor(z)))
-      throw new Error(`${what} lands on a solid tile at ${x},${z} of ${screen.key} ("${screen.name}")`);
+    const tx = screen.x0 + Math.floor(x);
+    const tz = screen.z0 + Math.floor(z);
+    if (this.isSolid(tx, tz)) throw new Error(`${what} lands on a solid tile at ${x},${z} of ${screen.key} ("${screen.name}")`);
+    if (this.tileDefAt(tx, tz)?.onEnter?.isWarp)
+      throw new Error(
+        `${what} lands on warp tile "${this.tile(tx, tz)}" at ${x},${z} of ${screen.key} ("${screen.name}"): the hero would warp straight on, so put it a tile off the doorway`
+      );
+  }
+
+  // Edges that strand the hero, found at startup: an open edge tile facing a
+  // wall across the edge (a mismatch), or, in a room, a doorway onto no
+  // screen at all. Both throw. An open outdoor edge onto no screen only
+  // warns: the hero stops at the edge of the map there.
+  checkEdges() {
+    const { mismatches, deadEnds } = edgeReport(this);
+    const where = (m) => `${m.name} (${m.screen}) ${m.dir} edge tile ${m.x},${m.z}`;
+    if (mismatches.length)
+      throw new Error(`Edge tiles open on one side and a wall on the other:\n  ${mismatches.map((m) => `${where(m)} faces a wall in ${m.facing}`).join('\n  ')}`);
+    const inRooms = deadEnds.filter((d) => this.screens.get(d.screen).area.rooms);
+    if (inRooms.length) throw new Error(`Doorways onto no room:\n  ${inRooms.map(where).join('\n  ')}`);
+    const outdoors = deadEnds.filter((d) => !this.screens.get(d.screen).area.rooms);
+    if (outdoors.length) console.warn(`Open edge tiles onto no screen (the hero stops there):\n  ${outdoors.map(where).join('\n  ')}`);
   }
 
   // ---------------------------------------------------------------- queries
@@ -297,24 +329,30 @@ export class World {
     return out;
   }
 
+  // The warp spec for tile char `ch` on a screen: the screen's own warps
+  // first, then its area's. null if neither has one.
+  warpSpec(screen, ch) {
+    return screen.def.warps?.[ch] ?? screen.area.warps?.[ch] ?? null;
+  }
+
   // Warp destination for the tile at (tx, tz), or null.
   warpAt(tx, tz) {
     const at = this.locate(tx, tz);
     if (!at) return null;
-    const ch = at.screen.tiles[at.lz][at.lx];
-    const spec = at.screen.def.warps?.[ch] ?? at.screen.area.warps?.[ch];
+    const spec = this.warpSpec(at.screen, at.screen.tiles[at.lz][at.lx]);
     return spec ? this.resolveWarp(at.screen.area, spec) : null;
   }
 
   // A spot names a place the way content does: { area, screen: [i, j], x, z,
   // yaw }, with the area's local screen and tile coordinates inside it (x and
-  // z default to the middle of the screen; area defaults to fromArea).
+  // z default to the middle of the screen; screen to the area's start, else
+  // its first screen; area to fromArea).
   // Returns { screen, x, z, yaw }, x and z still local to that screen.
   resolveSpot(spot, fromArea = null) {
     const area = spot.area ? this.areas.get(spot.area) : fromArea;
     const from = fromArea ? ` from "${fromArea.id}"` : '';
     if (!area) throw new Error(`A spot${from} points at unknown area "${spot.area}"`);
-    const [i, j] = spot.screen ?? area.start ?? [0, 0];
+    const [i, j] = spot.screen ?? areaStart(area);
     const screen = this.screen(area.id, i, j);
     if (!screen) throw new Error(`A spot${from} points at missing screen ${i},${j} of "${area.id}"`);
     return { screen, x: spot.x ?? screen.w / 2, z: spot.z ?? screen.h / 2, yaw: spot.yaw ?? 0 };
@@ -323,6 +361,23 @@ export class World {
   // Warp specs are spots; kept under this name for older callers.
   resolveWarp(fromArea, spec) {
     return this.resolveSpot(spec, fromArea);
+  }
+
+  // Where a body of radius r can stand on a screen, nearest local (x, z): the
+  // point itself if it is clear, else the nearest clear tile centre. Clear:
+  // nothing solid under the body and no onEnter hook (warp, pit) under its
+  // centre. null if the screen has no such spot.
+  freeSpot(screen, x = screen.w / 2, z = screen.h / 2, r = 0.3) {
+    const clear = (lx, lz) =>
+      !this.blocked(screen.x0 + lx, screen.z0 + lz, r) && !getTile(screen.tileset, screen.tiles[Math.floor(lz)]?.[Math.floor(lx)])?.onEnter;
+    if (x >= 0 && x < screen.w && z >= 0 && z < screen.h && clear(x, z)) return { x, z };
+    let best = null;
+    for (let tz = 0; tz < screen.h; tz++)
+      for (let tx = 0; tx < screen.w; tx++) {
+        const d = Math.hypot(tx + 0.5 - x, tz + 0.5 - z);
+        if ((!best || d < best.d) && clear(tx + 0.5, tz + 0.5)) best = { x: tx + 0.5, z: tz + 0.5, d };
+      }
+    return best && { x: best.x, z: best.z };
   }
 
   // ---------------------------------------------------------------- hooks

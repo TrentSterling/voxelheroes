@@ -3,12 +3,17 @@
 //   areaGroups(world)  areas joined through touching screens (the whole
 //                      overworld is one group; a dungeon or a house stands
 //                      alone). Screens of the hero's group are drawn.
-//   edgeReport(world)  { links, mismatches }: links are the places where a
-//                      screen of one area touches a screen of another (walking
-//                      across one changes area); mismatches are edge tiles that
-//                      are open on one side and a permanent wall on the other,
-//                      which strand the hero in a dead end or a wall. Tiles
-//                      that open (doors, bushes: `becomes`) count as open.
+//   edgeReport(world)  { links, mismatches, deadEnds }: links are the places
+//                      where a screen of one area touches a screen of another
+//                      (walking across one changes area); mismatches are edge
+//                      tiles that are open on one side and a permanent wall on
+//                      the other, which strand the hero in a dead end or a
+//                      wall; deadEnds are open edge tiles with no screen past
+//                      them at all. Tiles that open (doors, bushes: `becomes`)
+//                      count as open; warp tiles (doorways, stairs) are left
+//                      out, since the hero warps before he gets across.
+//                      World.build() throws on a mismatch and on a dead end in
+//                      a room, and warns about outdoor dead ends.
 import { getTile, isSolidDef } from './tiles.js';
 
 // Every edge tile of a screen with the global tile just outside it.
@@ -25,9 +30,11 @@ function edgeTiles(screen) {
   return out;
 }
 
-// 'open' (walkable), 'door' (solid until opened, cut or blown) or 'wall'.
+// 'open' (walkable), 'door' (solid until opened, cut or blown), 'warp' (a
+// doorway or stairs: onEnter is enterWarp) or 'wall'.
 function openness(screen, lx, lz) {
   const def = getTile(screen.tileset, screen.base[lz][lx]);
+  if (def.onEnter?.isWarp) return 'warp';
   if (!isSolidDef(def, null)) return 'open';
   return def.becomes ? 'door' : 'wall';
 }
@@ -57,19 +64,24 @@ export function areaGroups(world) {
 export function edgeReport(world) {
   const links = new Map();
   const mismatches = [];
+  const deadEnds = [];
   for (const s of world.screens.values())
     for (const e of edgeTiles(s)) {
-      const at = world.locate(e.ox, e.oz);
-      if (!at) continue;
       const inside = openness(s, e.lx, e.lz);
+      if (inside === 'warp') continue;
+      const at = world.locate(e.ox, e.oz);
+      if (!at) {
+        if (inside !== 'wall') deadEnds.push({ screen: s.key, name: s.name, dir: e.dir, x: e.lx, z: e.lz });
+        continue;
+      }
       const outside = openness(at.screen, at.lx, at.lz);
       if (inside === 'open' && outside === 'wall')
         mismatches.push({ screen: s.key, name: s.name, dir: e.dir, x: e.lx, z: e.lz, facing: at.screen.key });
       if (at.screen.area === s.area) continue;
       const key = `${s.key}>${at.screen.key}`;
       const link = links.get(key) ?? { from: s.key, to: at.screen.key, dir: e.dir, crossings: 0 };
-      if (inside !== 'wall' && outside !== 'wall') link.crossings++;
+      if (inside !== 'wall' && outside !== 'wall' && outside !== 'warp') link.crossings++;
       links.set(key, link);
     }
-  return { links: [...links.values()], mismatches };
+  return { links: [...links.values()], mismatches, deadEnds };
 }

@@ -11,7 +11,7 @@
 //     rooms: true,                     // dungeon rooms: walls and doors of art bible section 9
 //     origin: [200, 0],                // global screen of the local '0,0' screen (see below)
 //                                      // (or at: [tx, tz], its north-west tile)
-//     start: [0, 1],                   // local screen used by teleport('crypt')
+//     start: [0, 1],                   // local screen used by teleport('crypt') (default: the first screen)
 //     entrance: { screen: [0, 1], x: 8, z: 10.4, yaw: Math.PI }, // get up here after falling in here
 //     keyGroup: 'crypt',               // small keys are counted per group (default: id)
 //     spawns: { e: 'slime', K: { type: 'key', once: true } },
@@ -116,5 +116,22 @@ export function registerArea(def) {
 }
 
 export const getArea = (id) => areas.get(id) ?? null;
+
+// The local screen [i, j] an area starts on: its `start`, else its first
+// screen. Spots without a screen and teleport('<area id>') use it.
+export const areaStart = (area) => area.start ?? Object.keys(area.screens)[0].split(',').map(Number);
+
+// A dungeon room's local screen [i, j] from the gameplay spec's label (3):
+// a row letter A-J, north to south, and a column 1-8, west to east; the
+// entrance is on row J. Floor f's rooms are local rows 11 f to 11 f + 9
+// ("Global regions" in docs/ARCHITECTURE.md), so
+//   room('J-3') is [2, 9], room('A-1', 1) is [0, 11]
+// and a room's screen key is room('J-3').join(',').
+export function room(label, floor = 0) {
+  const m = /^([A-J])-([1-8])$/.exec(label);
+  if (!m || !isInt(floor) || floor < 0)
+    throw new Error(`room(${JSON.stringify(label)}, ${floor}): a room is a row A-J and a column 1-8 ("J-3") on floor 0, 1, 2, ...`);
+  return [Number(m[2]) - 1, 11 * floor + (m[1].charCodeAt(0) - 65)];
+}
 
 export const allAreas = () => [...areas.values()];

@@ -7,7 +7,7 @@ import { initAudio, sfx } from '../core/audio.js';
 import { input } from '../core/input.js';
 import { registerMode, setMode, pushMode, popMode } from '../core/modes.js';
 import { world, currentScreen } from '../world/world.js';
-import { START, getArea } from '../world/areas.js';
+import { START, getArea, areaStart } from '../world/areas.js';
 import { updateEntities } from '../entities/manager.js';
 import { updateItems } from '../items/inventory.js';
 import { player } from '../entities/player.js';
@@ -180,12 +180,16 @@ export function loadGame(data) {
 // (area-local screen, the same as the screen's key), { area, screen: [i, j] },
 // a screen name ('Key Vault', any case), or, as in M1, a global screen of the
 // default 16 x 11 lattice ('1,0', [1, 0], { sx, sy }), which is the
-// overworld's. x, z are local tile coordinates (default: the middle of the
-// screen).
+// overworld's. x, z are local tile coordinates; without them the hero stands
+// in the middle of the screen, or on the free tile nearest it (not in a chest
+// or a wall, not on a warp).
 export function resolveScreen(target) {
   if (Array.isArray(target)) return defaultLatticeScreen(target[0], target[1]);
   if (target && typeof target === 'object') {
-    if (target.area) return world.screen(target.area, target.screen?.[0] ?? 0, target.screen?.[1] ?? 0);
+    if (target.area) {
+      const area = getArea(target.area);
+      return area ? world.screen(area.id, ...(target.screen ?? areaStart(area))) : null;
+    }
     return defaultLatticeScreen(target.sx, target.sy);
   }
   if (typeof target !== 'string') return null;
@@ -194,11 +198,7 @@ export function resolveScreen(target) {
   const global = target.match(/^(-?\d+),(-?\d+)$/);
   if (global) return defaultLatticeScreen(+global[1], +global[2]);
   const area = getArea(target);
-  if (area) {
-    const key = area.start ? `${area.start[0]},${area.start[1]}` : Object.keys(area.screens)[0];
-    const [lx, ly] = key.split(',').map(Number);
-    return world.screen(area.id, lx, ly);
-  }
+  if (area) return world.screen(area.id, ...areaStart(area));
   const name = target.toLowerCase();
   for (const s of world.screens.values()) if (s.name?.toLowerCase() === name) return s;
   return null;
@@ -210,10 +210,11 @@ const defaultLatticeScreen = (sx, sy) =>
 export function teleport(target, x, z, { yaw = player.yaw } = {}) {
   const screen = resolveScreen(target);
   if (!screen) throw new Error(`teleport: no screen matches ${JSON.stringify(target)}`);
+  const spot = x === undefined && z === undefined ? world.freeSpot(screen, screen.w / 2, screen.h / 2, player.r) : null;
   clearScreen();
   hideOverlay();
   setFade(0);
-  placeAt(screen, x ?? screen.w / 2, z ?? screen.h / 2, yaw);
+  placeAt(screen, x ?? spot?.x ?? screen.w / 2, z ?? spot?.z ?? screen.h / 2, yaw);
   player.resetTileTracking();
   standUp();
   player.knockT = 0;
