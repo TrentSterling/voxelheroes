@@ -7,6 +7,7 @@
 //   D  cave mouth in a raised tile's south face (warp, destination in the area's warps)
 //   ^  stairs cut into a raised tile's south face (decoration: the hero stays on the ground)
 //   ~  water       =  stone bridge over water                  f  wooden fence
+//   g  gravestone  i  signpost     v  clay pot     C  chest (walk into it)
 // Backdrop only (the far distance around an area, see farband.js):
 //   4  four levels   u / t / w  a tree on raised ground of level 1 / 2 / 4
 import { hash3, shadeHex } from '../../core/vox.js';
@@ -14,7 +15,8 @@ import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile } from '../tiles.js';
 import { LEVEL } from '../terrain.js';
 import { TP, GROUND, PROP } from '../palette.js';
-import { bushProp, cutPlant } from '../tilekit.js';
+import { bushProp, potProp, chestProp, cutPlant, openChest } from '../tilekit.js';
+import { gravestone, signpost } from '../../models/props.js';
 
 defineTileset('overworld', { floor: '.' });
 
@@ -101,7 +103,7 @@ export function land(ctx, { kind = ctx.def.ground ?? 'grass', level = ctx.level 
 
 // Cliff faces toward lower land (refs 29, 36, 40): a ragged dirt rim on the plateau's edge, one
 // column in ten carrying an extra block, a third of the columns (in runs of about four) stepping
-// out one block as full-height ridges, and a few recessed dark cracks. Faces toward water, toward
+// out one block as full-height ridges, and about 8% of the columns recessed as dark cracks. Faces toward water, toward
 // higher ground and toward the edge of the world stay plain.
 function cliffEdges(ctx, nb, level) {
   const { T, X0, Z0 } = ctx;
@@ -122,7 +124,8 @@ function cliffEdges(ctx, nb, level) {
       if (run < 0.35) {
         const y1 = top - (hash3(ax, 15, az, 57) < 0.5 ? 1 : 0);
         for (let Y = y0; Y <= y1; Y++) T.set(X + dx, Y, Z + dz, hash3(X, Y >> 1, Z, 58) < 0.2 ? TP.cliffDark : TP.cliff);
-      } else if (run > 0.92) {
+      } else if (hash3(X, 16, Z, 59) < 0.08 / 0.65) {
+        // about 8% of all columns: a one-block recessed dark crack
         for (let Y = y0; Y < top; Y++) {
           T.set(X, Y, Z, null);
           T.set(X - dx, Y, Z - dz, TP.cliffCrack);
@@ -341,6 +344,36 @@ registerTile('overworld', 'f', {
     for (const r of [1, 3]) for (let a = 0; a < 8; a++) if (a !== 1 && a !== 6) at(a, 0, y0 + r, TP.wood);
   },
 });
+
+// Small props at character resolution (1/16) standing on grass: static ones are stamped into the
+// detail layer, the others are props.
+function stampModel(ctx, grid) {
+  ctx.D.stamp(grid, ctx.FX0 + ((16 - grid.sx) >> 1), 1, ctx.FZ0 + ((16 - grid.sz) >> 1));
+}
+const graveGrid = gravestone();
+const signGrid = signpost();
+registerTile('overworld', 'g', {
+  name: 'grave',
+  solid: true,
+  ground: 'grass',
+  detailHeight: graveGrid.sy,
+  build(ctx) {
+    land(ctx);
+    stampModel(ctx, graveGrid);
+  },
+});
+registerTile('overworld', 'i', {
+  name: 'sign',
+  solid: true,
+  ground: 'grass',
+  detailHeight: signGrid.sy,
+  build(ctx) {
+    land(ctx);
+    stampModel(ctx, signGrid);
+  },
+});
+registerTile('overworld', 'v', { name: 'pot', solid: true, ground: 'grass', build: (ctx) => land(ctx), prop: potProp });
+registerTile('overworld', 'C', { name: 'chest', solid: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, onPush: openChest });
 
 // ---------------------------------------------------------------- backdrop tiles
 registerTile('overworld', '4', { name: 'cliff-4', solid: true, ground: 'grass', level: 4, build: (ctx) => land(ctx) });
