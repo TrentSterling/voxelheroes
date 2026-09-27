@@ -1,5 +1,6 @@
 // The extension points and fixes from the M1 review, one check each: A and B
-// carried through slides and warps, the slide landing guard, solid NPCs,
+// ignored during slides and warps (gameplay spec 4.3), the slide landing
+// that stops short of anything solid, solid NPCs,
 // dialog follow-ups between ticks, dialogs cancelled by a mode change, ammo
 // grants and upgradable capacity, HUD widget order, drop odds, map checks
 // (markers hiding tiles, warps and spawns by position, warps into missing
@@ -10,7 +11,7 @@
 // Runtime content (a test item, tile, entity, HUD widget, play hook, mode) is
 // registered through __voxelHeroes.api and prefixed "probe".
 export const description =
-  'Review fixes and M2 contracts: carried presses, landing guard, solid NPCs, dialogs, grants, HUD order, drops, map checks, flying, camera, knockback, hooks, blasts, safe loading.';
+  'Review fixes and M2 contracts: presses during slides and warps, blocked landings, solid NPCs, dialogs, grants, HUD order, drops, map checks, flying, camera, knockback, hooks, blasts, safe loading.';
 
 const DT = 1 / 60;
 const near = (a, b, eps = 0.05) => Math.abs(a - b) <= eps;
@@ -25,7 +26,9 @@ export default async function contracts(t) {
   await t.step(1.1);
   t.expect((await t.state()).mode === 'play', 'the game starts');
 
-  // ---------------------------------------------------------------- carried presses
+  // ---------------------------------------------------------------- presses during slides and warps
+  // Input is ignored during both (gameplay spec 4.3): a press on the way is
+  // dropped, neither played mid-slide nor carried to the arrival.
   await t.teleport('overworld:1,1', 13.5, 5.5, { yaw: Math.PI / 2 });
   await kb.down('ArrowRight');
   await t.waitFor((st) => st.mode === 'scroll', { seconds: 3 });
@@ -36,10 +39,10 @@ export default async function contracts(t) {
   t.expect((await t.state()).mode === 'scroll' && (await swings()) === n, 'a sword press during the slide does not swing mid-slide');
   await t.waitFor((st) => st.mode === 'play', { seconds: 2 });
   await t.step(5 * DT);
-  let sw = await t.events('sword-swing');
-  const arrived = (await t.events('mode-change')).filter((e) => e.from === 'scroll' && e.to === 'play').pop();
-  t.expect(sw.length === n + 1, 'the press swings once on arrival in Rattlestone Hollow');
-  t.expect(near(sw[sw.length - 1].time - arrived.time, DT, 0.002), 'the swing starts on the first play tick after the slide');
+  s = await t.state();
+  t.expect(s.screenName === 'Rattlestone Hollow' && (await swings()) === n && !s.attacking, 'nor on arrival in Rattlestone Hollow: the press is dropped');
+  await t.press('KeyJ');
+  t.expect((await swings()) === n + 1, 'a press once play resumes swings as usual');
 
   await t.step(0.5);
   n = await swings();
@@ -57,9 +60,11 @@ export default async function contracts(t) {
   await t.step(10 * DT);
   n = await swings();
   await t.press('KeyJ');
-  await t.waitFor((st) => st.mode === 'play' && st.area === 'crypt', { seconds: 2 });
+  t.expect((await t.state()).mode === 'warp' && (await swings()) === n, 'a sword press during the doorway warp does not swing on the way');
+  await t.waitFor((st) => st.mode === 'play' && st.area === 'crypt', { seconds: 3 });
   await t.step(5 * DT);
-  t.expect((await swings()) === n + 1, 'a sword press during the doorway warp swings on arrival in the Sunken Gate');
+  s = await t.state();
+  t.expect(s.screenName === 'Sunken Gate' && (await swings()) === n && !s.attacking, 'nor on arrival in the Sunken Gate');
 
   // ---------------------------------------------------------------- slide landing
   const lane = async (label) => {
@@ -75,10 +80,12 @@ export default async function contracts(t) {
   };
   t.expect((await t.eval(() => window.__voxelHeroes.world.tile(2 * 16 + 7, 9))) === '.', "Mirror Lake's south lane has no bush on it");
   s = await lane('north from Rattlestone Hollow into Mirror Lake');
-  t.expect(near(s.lz, 9.87, 0.1), 'he lands 1.1 tiles into the lane as usual');
+  t.expect(near(s.lz, 10, 0.02), `he lands 1 tile into the lane (lz ${s.lz})`);
   await t.eval(() => window.__voxelHeroes.world.setTile(2 * 16 + 7, 9, 'B', { rebuild: false }));
   s = await lane('with a bush planted on the landing spot');
-  t.expect(s.lz <= 8.7 + 1e-6, `the slide carries him past the bush instead of into it (lz ${s.lz})`);
+  // The bush fills z 9..10 of column 7 and the hero's body reaches 0.3 either
+  // side of him: clear of it means lz - 0.3 >= 10; past it would be lz < 9.
+  t.expect(s.lz >= 10.3 - 1e-6 && s.lz < 11, `the slide stops short of the bush: he lands clear of it, not inside it and not past it (lz ${s.lz})`);
   await t.eval(() => window.__voxelHeroes.world.setTile(2 * 16 + 7, 9, '.', { rebuild: false }));
 
   // ---------------------------------------------------------------- solid NPCs
@@ -260,16 +267,18 @@ export default async function contracts(t) {
     } catch (e) {
       out.validate = e.message;
     }
-    out.byPos = world.warpAt(90 * 16 + 3, 0);
-    out.byChar = world.warpAt(90 * 16 + 7, 0);
-    out.spawns = world.screen(90, 0).spawns.map((sp) => `${sp.type}@${sp.x},${sp.z}`).join(' ');
-    out.tile = world.screen(90, 0).tiles[4][4];
+    const probe = world.screen('probe-doors', 0, 0);
+    const at = world.warpAt(probe.x0 + 3, probe.z0);
+    out.byPos = at && { screen: at.screen.key, x: at.x, z: at.z, yaw: at.yaw };
+    out.byChar = world.warpAt(probe.x0 + 7, probe.z0);
+    out.spawns = probe.spawns.map((sp) => `${sp.type}@${sp.x},${sp.z}`).join(' ');
+    out.tile = probe.tiles[4][4];
     return out;
   });
   t.expect(/marker "B" hides the "bush" tile/.test(w.hide), `a spawn marker that is also a tile stops the build: ${w.hide}`);
   t.expect(w.validate === 'ok', `a warp into an area that is not registered only warns (${w.validate})`);
   t.expect(w.byChar === null, 'and that warp does nothing');
-  t.expect(JSON.stringify(w.byPos) === JSON.stringify({ sx: 90, sy: 0, x: 5, z: 6, yaw: 0 }), 'a warp keyed by position wins over the door char');
+  t.expect(JSON.stringify(w.byPos) === JSON.stringify({ screen: 'probe-doors:0,0', x: 5, z: 6, yaw: 0 }), `a warp keyed by position wins over the door char (${JSON.stringify(w.byPos)})`);
   t.expect(w.spawns === 'npc@4,4' && w.tile === '.', 'spawnsAt places an entity by position and keeps the map tile');
 
   // ---------------------------------------------------------------- flying
@@ -287,7 +296,7 @@ export default async function contracts(t) {
   // ---------------------------------------------------------------- camera presets
   const cam = await t.eval(() => {
     const h = window.__voxelHeroes;
-    h.api.registerCameraPreset('probe-boss', { pitch: 70 });
+    h.api.registerCameraPreset('probe-boss', { pitch: 70, fov: 30, height: 14 });
     let err = 'none';
     try {
       h.camera.choose('dungeon');
@@ -359,12 +368,13 @@ export default async function contracts(t) {
     const h = window.__voxelHeroes;
     window.__shots = [];
     h.api.registerTile('overworld', 'Q', { name: 'probe-target', solid: true, onShot: (ctx) => window.__shots.push(`${ctx.x},${ctx.z}:${ctx.hit.source}`) });
-    const tx = h.state.sx * 16 + 13;
-    const tz = h.state.sy * 11 + 5;
+    const tx = h.screen().x0 + 13;
+    const tz = h.screen().z0 + 5;
+    const was = h.world.tile(tx, tz);
     h.world.setTile(tx, tz, 'Q', { rebuild: false });
     h.spawn('rock-shot', 10.5, 5.5, { vx: 5.5, vz: 0 });
     await h.step(1);
-    h.world.setTile(tx, tz, 'p', { rebuild: false });
+    h.world.setTile(tx, tz, was, { rebuild: false });
     return window.__shots.join(' ');
   });
   t.expect(shots === '13,5:rock-shot', `a rock that breaks on a tile calls its onShot hook (${shots})`);

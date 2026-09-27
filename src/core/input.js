@@ -14,10 +14,10 @@
 // so a tap between two frames is seen exactly once, including when tests step
 // the simulation by hand. Changing mode clears them (clearPresses) so one
 // press never acts in two modes; input.carry(action) re-presses an action on
-// the next tick (modes.js uses it to carry A and B through screen slides and
-// warps). Held + pressed + released is enough for hold actions (guard, a
-// hold-to-dash option): act on pressed, keep going while held, stop on
-// released.
+// the next tick (modes.js uses it for a mode's `carry` list; the slide and
+// warps carry nothing, see modes.js). Held + pressed + released is enough
+// for hold actions (guard, a hold-to-dash option): act on pressed, keep going
+// while held, stop on released.
 //
 // Default bindings follow the gameplay spec (section 7.1). In play every key
 // means one action; in menus confirm, cancel, the directions and item

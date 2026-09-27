@@ -30,7 +30,7 @@ import { burst } from '../systems/particles.js';
 import { moveBody } from '../systems/physics.js';
 import { rollDrop } from '../systems/drops.js';
 import { hurtPlayer, checkRoomCleared } from '../systems/combat.js';
-import { screenOrigin } from '../world/grid.js';
+import { currentScreen } from '../world/world.js';
 import { Entity } from './entity.js';
 import { player } from './player.js';
 
@@ -89,7 +89,7 @@ export class Enemy extends Entity {
       this.holder.scale.setScalar(this.growT);
     }
 
-    const bounds = screenOrigin(state.sx, state.sy);
+    const bounds = currentScreen(); // a rect: enemies stay on their screen
     const toP = { x: player.x - this.x, z: player.z - this.z };
     const dist = Math.hypot(toP.x, toP.z);
 

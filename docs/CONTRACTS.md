@@ -349,9 +349,15 @@ the right-hand column binds:
 
 Everything saved lives in `state` (`core/state.js`), declared with
 `defineState` or `registerSaveField`. Saves are versioned: `SAVE_VERSION` is
-2, and `SAVE_MIGRATIONS[1]` renames the M1 `gems` field to `coins`. New
-fields need no version bump; renaming or reshaping one does (contracts
-does it). Writers go through the owner's API so events fire; anyone may read.
+3. `SAVE_MIGRATIONS[1]` renames the M1 `gems` field to `coins`, and
+`SAVE_MIGRATIONS[2]` (the feat/world merge) moves a save of the M1 layout
+(its `pos` is `{ sx, sy }`) onto places: the hero's spot, the respawn point
+and the old crypt's tile flags and tile edits land on today's crypt, so an M1
+save gives back no key, door or chest. Tile flags and tile edits name global
+tiles in play and places in save data (`'chest:crypt:1,0:7,5'`, world's
+`placeKey`). New fields need no version bump; renaming or reshaping one does
+(contracts does it). Writers go through the owner's API so events fire;
+anyone may read.
 
 | Field | Type, default | Owner (writes through) | Saved |
 |---|---|---|---|
@@ -367,7 +373,7 @@ does it). Writers go through the owner's API so events fire; anyone may read.
 | `colorKeys` | `{ red, blue, green: count, master: bool }` | dungeon (`dungeons.addColorKey`, `useColorKey`) | yes |
 | `flags` | Set of strings | everyone, prefixed (section 9) | yes |
 | dungeon progress: map, boss key (the big key), boss beaten, orb | flags `dungeon:<id>:map`, `dungeon:<id>:bosskey`, `boss:<id>`, `orb:<n>`; there is no compass (spec 6) | dungeon (`dungeons.giveMap`, `giveBossKey`, `defeatBoss`, `completeDungeon`) | yes, in `flags` |
-| `tileEdits` | `{ 'tx,tz': char }` | world (`world.setTile`) | yes |
+| `tileEdits` | `{ 'tx,tz': char }` (saved by place: `'crypt:1,1:7,0'`) | world (`world.setTile`) | yes |
 | `inventory` | `{ owned: [], ammo: {}, selected: null, off: [] }` | items (`items/inventory.js`) | yes |
 | `bags` | `{ bombs: 0, arrows: 0 }` capacity levels | items | yes |
 | `bottles` | list of `'empty'`, `'potion-life'`, `'potion-magic'`, `'elixir'` | items | yes |
@@ -377,7 +383,7 @@ does it). Writers go through the owner's API so events fire; anyone may read.
 | `swords` | `{ owned: ['blade-start'], equipped: 'blade-start', bought: {}, spent: {} }`; `owned: []`, `equipped: null` in a prologue game | hero (`swords`) | yes |
 | `respawn` | spot or null | ui (`systems/flow.js`; `places.setRespawn`) | yes |
 | `pos` | the hero's spot (save field) | ui (`systems/flow.js`) | yes |
-| `camera` | preset letter (save field, feat/world) | world | yes |
+| `camera` | preset letter, A-D only (save field, feat/world) | world | yes |
 | `visited` | Set of screen ids `'area:i,j'` | contracts (`places`) | yes |
 | `visitedAreas` | Set of area ids | contracts (`places`) | yes |
 | `cardsSeen` | Set of card ids | ui (`cards.markCardSeen`) | yes |
@@ -385,7 +391,7 @@ does it). Writers go through the owner's API so events fire; anyone may read.
 | `shops` | `{ shopId: { entryId: bought } }` | overworld (`shops.buy`) | yes |
 | `playTime` | seconds in play | contracts (`watch.js`) | yes |
 | `deaths` | count | contracts (`watch.js`, +1 on `player-died`) | yes |
-| `sx`, `sy` | M1 screen; feat/world replaces them with `screenKey` | world | no |
+| `screenKey` | the current screen, `'area:i,j'` (M1's `sx`, `sy` went at the feat/world merge) | world | no |
 
 Life and magic: a class sets both at a new game (spec 7.12:
 `TUNING.progression.classes`); a game started without a profile (the M1 title's
@@ -469,9 +475,8 @@ its own use (`'items:bomb-lit'`).
 | `loaded` | `{ slot }` | `saves.loadSlot` |
 | `settings-changed` | `{ key, value, old }` | `settings.setSetting` |
 
-Events from world and look (`room-enter`, `area-enter`) arrive when feat/world
-is merged; the rest fire on this branch already or are the named stream's to
-emit.
+World's `room-enter` and `area-enter` fire since feat/world was merged
+(M1.5); the rest fire already or are the named stream's to emit.
 
 ---
 
@@ -522,7 +527,10 @@ Start, Esc or P close one only when neither fired.
 - Hold actions: act on `pressed`, keep going while `held`, stop on `released`
   (guard; dash with the `dashHold` option).
 - Changing mode clears latched presses, so one press never acts in two modes;
-  a mode's `carry: ['sword']` re-presses on the first tick after it ends.
+  a mode's `carry: ['sword']` re-presses on the first tick after it ends. No
+  built-in mode carries anything: input is ignored during the screen slide
+  and warps (gameplay spec 4.3), so A or B pressed on the way swings neither
+  mid-slide nor on arrival.
 - Gamepads are polled once per tick, the first time anything reads input; the
   left stick and the touch stick have a radial dead zone of
   `TUNING.hero.deadzone` (0.3), rescaled so movement starts at 0 past it.
@@ -1124,8 +1132,7 @@ M6 writes the music. `play(out)` gets the music bus from `core/audio.js`.
 first, then `state.respawn`, then the start), `registerRespawnRule(id, fn)`,
 `roomEntry()` (where the hero came into this screen), `onAreaChange(fn)`,
 `hasVisited(screenOrId)`, `screenRect(screen)`, `currentRect()`, `screenId(screen)`.
-These work on main and after feat/world merges (spots then resolve through
-`world.resolveSpot`).
+Spots resolve through `world.resolveSpot`.
 
 ```js
 registerPlace({ id: 'v1', name: '...', kind: 'village', spot: { area: 'v1', screen: [1, 2], x: 8, z: 9, yaw: 0 } });
@@ -1333,7 +1340,7 @@ between rooms and outdoor areas (their far band of scenery).
 |---|---|---|
 | 0-99 | the overworld lattice (spec 3, 4.1): 7 x 5 areas of 4 x 4 screens of 16 x 16 tiles, edge to edge. Area (c, r) (1-based) sets `screen: [16, 16]` and `origin: [(c - 1) 4, (r - 1) 4]`, so the lattice fills columns 0-27. Villages are lattice areas at their cell: V1 is area `v1` at (5, 3), origin `[16, 8]`. The M1 `overworld` (3 x 2 screens of 16 x 11) moves to origin `[90, 0]` (columns 90-92) in overworld's `world/areas/overworld.js` before any lattice area is added: the gate scenarios reach it by area and local tile only | overworld |
 | 100-199 | outdoor places off the lattice, reached only by warps (none in M2) | overworld |
-| 200-299 | dungeons, 16 x 12 rooms: dungeon d at `[200 + 10 d, 0]`, floor f in local rows `11 f` to `11 f + 9`; boss arenas (22 x 16) as areas of their own placed by tile in the dungeon's free columns. The crypt is dungeon 0 at `[200, 0]` once feat/world is merged (on main it is still at `[0, 10]`), D1 at `[210, 0]` | dungeon |
+| 200-299 | dungeons, 16 x 12 rooms: dungeon d at `[200 + 10 d, 0]`, floor f in local rows `11 f` to `11 f + 9`; boss arenas (22 x 16) as areas of their own placed by tile in the dungeon's free columns. The crypt is dungeon 0 at `[200, 0]` (M1 had it at `[0, 10]`; M1 saves are moved on load), D1 at `[210, 0]` | dungeon |
 | 300-399 | interiors (houses, shops, inns, caves), entered by door warps: building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`; smaller rooms by tile at `[(300 + 2 (k % 50)) 16, 24 floor(k / 50)]`. They use feat/world's `interior` camera preset (fixed, fitted to the room's width) | overworld |
 | 400-409 | sword yard | hero |
 | 410-419 | overworld enemy field | foes-overworld |
@@ -1472,7 +1479,7 @@ dies (`player-revived`). The rest:
 
 | File | Change |
 |---|---|
-| `core/state.js` | `SAVE_VERSION` 2 with the `gems` to `coins` migration; `coins` field, `gems` alias |
+| `core/state.js` | `SAVE_VERSION` 2 with the `gems` to `coins` migration (3 since the feat/world merge: 2 to 3 moves M1-layout saves onto places); `coins` field, `gems` alias |
 | `core/input.js` | spec 7.1 actions and bindings, gamepad, touch buttons, `move8`, `menuDir`, `clashes`, `lastDevice` |
 | `core/loop.js` | fixed 1/60 s steps with an accumulator (`advance`) |
 | `core/events.js` | the `EVENTS` catalogue, `onAny` |
@@ -1498,34 +1505,47 @@ dies (`player-revived`). The rest:
 `feat/look-render`) branch from `a00fb70`, before main's M1 review fixes
 (`3f86c4d`), so merging either with main conflicts in world and look files
 (`core/camera.js`, `systems/transitions.js`, `debug/testhook.js`,
-`world/world.js`, ...) whatever this branch does. Checked with
-`git merge-tree` at `e814f95`: against feat/world this branch conflicts in
-exactly main's files (`core/state.js` among them, where this branch's own
-hunks stay apart from feat/world's); against feat/look it adds one, the
-header comment of `core/loop.js`, which feat/look rewrote (manual mode no
-longer draws): take feat/look's comment and keep this branch's
-`import { TICK } from './tuning.js'`. Trial merges at `2e4b87e`, with the
-conflicts settled as below, built and passed `contracts-m2` (and, for
-feat/world, its `default`); both branches and this one have moved since, so
-the M1.5 merge runs them again. When settling main against feat/world,
-keep main's:
+`world/world.js`, ...) whatever this branch does.
 
-- `CARRY` and the `carry` of the scroll and warp modes
-  (`systems/transitions.js`); feat/world now has `playerCameraPresets` and
-  `selectable: true` on presets A-D itself;
-- the warp check that warns about an unknown area instead of throwing
-  (`world.js`, `checkWarp`): M2 streams warp into areas other streams add.
-  feat/world's `validate()` now resolves every warp and entrance at startup
-  and throws on an unknown area, so the merge makes it warn and skip those
-  too (section 1: a warp naming another stream's area waits for the merge);
-- `spawnsAt` and the spawn marker checks (`world.js`): NPCs are placed with
-  it (8.12);
-- the test hook's imports (`activeSlot`, `registerPlayHook`,
-  `registerHudWidget`, `registerMode`, `playerCameraPresets`, ...), and in
-  `scripts/lib/bot.js` the `occupied` helper and `async function exit` (its
-  body awaits).
+**feat/world: done.** It is merged into this branch on `integrate/m15`; the
+merge commit lists every call. Settled as follows:
 
-The look trials took main's side of the `camera.js` conflicts
-(`debug/testhook.js` imports `playerCameraPresets` from it). The coin and
-magic pickups find their models by name (M1's `gemGeometry`, or look-kits'
-`coinModel` and `gemModel`), so they build before and after feat/look-kits.
+- Slides, warps and presses (gameplay spec 4.3): input is ignored during
+  the screen slide and warps. `core/modes.js` keeps the generic `carry` and
+  `core/input.js` keeps `input.carry`, but the scroll and warp modes carry
+  nothing (main's `CARRY` is gone), so A or B pressed on the way swings
+  neither mid-slide nor on arrival.
+- A slide lands 1.0 tile inside the next screen (`SLIDE_STEP`, and in a room
+  `ROOM_STEP` past the doorway's wall). When something solid is on the way
+  to that spot the landing stops short of it, clear of it: never inside it
+  and never past it (main's `landingStep`, which walked the hero on past it,
+  is gone).
+- Camera: feat/world's rig, framing rules and presets, plus main's
+  `selectable` (true on A-D only; the dungeon, interior, area and boss
+  presets are false) and `playerCameraPresets()`. `registerCameraPreset`
+  needs pitch, fov and height and keeps an existing preset's `label` and
+  `selectable`. The camera option, the `camera` save field and
+  `chooseCameraPreset` take only selectable presets.
+- `world.js`: feat/world's addressing plus main's `spawnsAt`, spawn marker
+  checks and position-keyed warps (`'x,z'` keys in each screen's own size).
+  A warp into an area that is not registered warns and does nothing (M2
+  streams warp into each other's areas before M3); warps into registered
+  areas are checked at startup.
+- Saves: main's version check, migrations and decode-then-apply loading,
+  with feat/world's place keys and its M1 crypt conversion as the migration
+  from version 2 to 3 (section 5).
+- The test hook and `scripts/lib/bot.js`: main's async hook and bot
+  (`tick`, `step`, `occupied`, async `exit`) with feat/world's per-screen
+  sizes, `enter`, camera helpers and `transitions`.
+- `core/loop.js` stays this branch's fixed 60 Hz loop.
+
+**feat/look.** Checked with `git merge-tree` at `e814f95`: against feat/look
+this branch adds one conflict, the header comment of `core/loop.js`, which
+feat/look rewrote (manual mode no longer draws): take feat/look's comment and
+keep this branch's `import { TICK } from './tuning.js'`. A trial merge at
+`2e4b87e` built and passed `contracts-m2`; the branches have moved since, so
+the look merge runs it again. The look trials took
+main's side of the `camera.js` conflicts (`debug/testhook.js` imports
+`playerCameraPresets` from it). The coin and magic pickups find their models
+by name (M1's `gemGeometry`, or look-kits' `coinModel` and `gemModel`), so
+they build before and after feat/look-kits.

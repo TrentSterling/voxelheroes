@@ -1,4 +1,5 @@
-// The overworld: six screens laid out on a grid. Tiles: see world/tiles/overworld.js.
+// The overworld: six 16 x 11 screens laid out on a grid, in the overworld
+// columns of the global grid (origin [0, 0]). Tiles: see world/tiles/overworld.js.
 // Spawn markers: e = slime, o = spitter (both stand on grass).
 import { registerArea } from '../areas.js';
 
@@ -12,8 +13,9 @@ export default registerArea({
   start: [1, 1],
   spawns: { e: 'slime', o: 'spitter' },
   warps: {
-    // The doorway in the Cairn Ridge cliffs leads into the crypt.
-    D: { area: 'crypt', screen: [0, 1], x: 8, z: 8.4, yaw: Math.PI },
+    // The doorway in the Cairn Ridge cliffs leads into the crypt: the hero
+    // arrives just inside the Sunken Gate's south doorway, above the stairs.
+    D: { area: 'crypt', screen: [0, 1], x: 8, z: 10.4, yaw: Math.PI },
   },
   screens: {
     '0,0': {

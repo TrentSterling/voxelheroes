@@ -1,17 +1,16 @@
 // The hero. Reads input, walks, swings (systems/sword.js), uses the B item
 // (items/inventory.js), talks (systems/interact.js), pushes against tiles and
-// fires their onEnter/onLeave/onPush hooks, and scrolls at screen edges.
-import { GROUND_Y, SCREEN_W, SCREEN_H } from '../core/constants.js';
+// fires their onEnter/onLeave/onPush hooks, and leaves the screen at its edges.
+import { GROUND_Y } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { input } from '../core/input.js';
 import { lerpAngle } from '../core/math.js';
 import { makeHero } from '../models/hero.js';
-import { world } from '../world/world.js';
-import { screenOrigin } from '../world/grid.js';
+import { world, currentScreen } from '../world/world.js';
 import { moveBody } from '../systems/physics.js';
 import { startSwing, poseSword, tickSword, isSwinging } from '../systems/sword.js';
 import { tryInteract } from '../systems/interact.js';
-import { startScroll } from '../systems/transitions.js';
+import { crossEdge, southLine } from '../systems/transitions.js';
 import { useSelectedItem, cycleItem } from '../items/inventory.js';
 import { Entity } from './entity.js';
 
@@ -67,12 +66,13 @@ export class Player extends Entity {
     }
     moveBody(this, vx * dt, vz * dt, null);
 
-    // Crossing the screen edge scrolls to the next screen.
-    const o = screenOrigin(state.sx, state.sy);
-    if (this.x < o.x) startScroll(-1, 0);
-    else if (this.x > o.x + SCREEN_W) startScroll(1, 0);
-    else if (this.z < o.z) startScroll(0, -1);
-    else if (this.z > o.z + SCREEN_H) startScroll(0, 1);
+    // Crossing the screen's edge slides to the next screen, or into the next
+    // area; at a south edge before any of him drops out of frame (southLine).
+    const s = currentScreen();
+    if (this.x < s.x0) crossEdge('west');
+    else if (this.x >= s.x1) crossEdge('east');
+    else if (this.z < s.z0) crossEdge('north');
+    else if (this.z >= s.z1 - southLine(s)) crossEdge('south');
 
     if (state.mode === 'play') this.touchTiles(mv, dt);
 

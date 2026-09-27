@@ -250,6 +250,12 @@ export async function launch({
       const [o, soft] = splitSoft(opts);
       return bot('exit', [dir, o], soft);
     },
+    // Walk onto a door or stairs at local (x, z) and wait until play resumes
+    // past the warp: { ok, screen, moved }.
+    enter(x, z, opts) {
+      const [o, soft] = splitSoft(opts);
+      return bot('enter', [x, z, o], soft);
+    },
     fight(opts) {
       const [o, soft] = splitSoft(opts);
       return bot('fight', [o], soft);

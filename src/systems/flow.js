@@ -7,7 +7,7 @@ import { initAudio, sfx } from '../core/audio.js';
 import { input } from '../core/input.js';
 import { registerMode, setMode, pushMode, popMode } from '../core/modes.js';
 import { world, currentScreen } from '../world/world.js';
-import { START, getArea } from '../world/areas.js';
+import { START, getArea, areaStart } from '../world/areas.js';
 import { updateEntities } from '../entities/manager.js';
 import { updateItems } from '../items/inventory.js';
 import { player } from '../entities/player.js';
@@ -15,14 +15,21 @@ import { hideOverlay, setFade } from '../ui/overlay.js';
 import { setAreaLabel } from '../ui/hud.js';
 import { placeAt, applyScreenAmbience, clearScreen, enterScreen } from './transitions.js';
 
-// Where the hero gets back up after falling: { sx, sy, x, z, yaw } (global
-// screen, local tile coords), or null for the start screen. An inn sets it.
+// Places are spots: { area, screen: [i, j], x, z, yaw } with the area's local
+// screen and tile coordinates in that screen (world.resolveSpot), so they do
+// not depend on where an area sits in the global grid.
+
+// Where the hero gets back up after falling: a spot, or null for the start
+// screen. An inn sets it.
 defineState('respawn', () => null);
 
 // The hero's position, so a save resumes where it was made.
 let loadedPos = null;
 registerSaveField('pos', {
-  save: () => ({ sx: state.sx, sy: state.sy, x: player.x - state.sx * SCREEN_W, z: player.z - state.sy * SCREEN_H, yaw: player.yaw }),
+  save: () => {
+    const s = currentScreen();
+    return s ? { area: s.area.id, screen: [s.lx, s.ly], x: player.x - s.x0, z: player.z - s.z0, yaw: player.yaw } : null;
+  },
   load: (v) => {
     loadedPos = v;
   },
@@ -31,16 +38,38 @@ registerSaveField('pos', {
   },
 });
 
-export function startPoint() {
-  const area = getArea(START.area);
-  const [ox, oy] = area.origin ?? [0, 0];
-  return { sx: ox + START.screen[0], sy: oy + START.screen[1], x: SCREEN_W / 2, z: SCREEN_H / 2, yaw: 0 };
+export const startPoint = () => ({ yaw: 0, ...START });
+
+// A spot resolved to { screen, x, z, yaw }, or null if it names nothing that
+// exists. (Saves of the M1 layout have their spots converted on load:
+// SAVE_MIGRATIONS in core/state.js.)
+export function resolvePlace(p) {
+  if (!p || typeof p !== 'object' || !p.area) return null;
+  try {
+    return world.resolveSpot(p);
+  } catch {
+    return null;
+  }
 }
 
-export const respawnPoint = () => state.respawn ?? startPoint();
+export const respawnPoint = () => (resolvePlace(state.respawn) ? state.respawn : startPoint());
+
+// Where the hero gets back up after falling: the entrance of the area he fell
+// in, if the area names one (a dungeon, gameplay spec 6.7 and 11), else the
+// respawn point.
+export function continuePoint() {
+  const area = currentScreen()?.area;
+  const entrance = area?.entrance ? { area: area.id, ...area.entrance } : null;
+  return entrance && resolvePlace(entrance) ? entrance : respawnPoint();
+}
+
+// The screen the hero gets back up on.
+export const continueScreen = () => resolvePlace(continuePoint())?.screen ?? null;
+export const respawnScreen = continueScreen; // (the M1 name)
 
 function placeAtPoint(p) {
-  placeAt(p.sx, p.sy, p.x, p.z, p.yaw ?? 0);
+  const dest = resolvePlace(p) ?? world.resolveSpot(startPoint());
+  placeAt(dest.screen, dest.x, dest.z, dest.yaw);
   player.resetTileTracking();
 }
 
@@ -48,27 +77,32 @@ export function placeAtStart() {
   placeAtPoint(startPoint());
 }
 
+// Back on his feet, still: no knockback left over from the hit that felled
+// him (M1 let it carry over, so he slid after "Try again").
 function standUp() {
   player.hero.root.rotation.set(0, 0, 0);
   player.hero.root.position.y = GROUND_Y;
+  player.knockT = 0;
 }
 
-// Title -> play, or game over -> play at the respawn point with full health.
+// Title -> play, or game over -> play with full health at the entrance of
+// the dungeon the hero fell in, or else at the respawn point.
 export function startGame() {
   initAudio();
   if (state.mode === 'dead') {
     state.hp = state.maxHp;
     clearScreen();
-    placeAtPoint(respawnPoint());
+    placeAtPoint(continuePoint());
     world.regrow(currentScreen());
     applyScreenAmbience(currentScreen());
     standUp();
   }
+  const via = state.mode === 'dead' ? 'respawn' : 'start';
   hideOverlay();
   setMode('play');
   player.invT = 1;
   sfx.start();
-  enterScreen();
+  enterScreen(via);
 }
 
 export function pauseGame() {
@@ -120,14 +154,15 @@ export function loadFromSlot(n) {
   return true;
 }
 
-// Apply save data (serializeState() output) and resume play where it was
-// made. Throws before touching the running game if the data is rejected.
+// Apply save data (serializeState() output, or an older save, which
+// loadState upgrades: an M1 save's position, crypt flags and tile edits land
+// on today's crypt, core/state.js) and resume play where it was made. Throws
+// before touching the running game if the data is rejected.
 export function loadGame(data) {
   loadState(data);
   clearScreen();
   world.reset();
-  const p = loadedPos && world.screen(loadedPos.sx, loadedPos.sy) ? loadedPos : respawnPoint();
-  placeAtPoint(p);
+  placeAtPoint(resolvePlace(loadedPos) ? loadedPos : respawnPoint());
   state.hp = Math.max(1, state.hp);
   world.regrow(currentScreen());
   applyScreenAmbience(currentScreen());
@@ -136,54 +171,56 @@ export function loadGame(data) {
   hideOverlay();
   setFade(0);
   setMode('play');
-  enterScreen();
+  enterScreen('load');
 }
 
 // ---------------------------------------------------------------- teleport
-// target: 'crypt' (an area's first or start screen), 'crypt:0,1' (area-local
-// screen), '1,0' (global screen), [1, 0], { area, screen: [x, y] }, or a
-// screen name ('Key Vault'). x, z are local tile coordinates (default: the
-// middle of the screen).
+// target: 'crypt' (an area's start screen, else its first), 'crypt:0,1'
+// (area-local screen, the same as the screen's key), { area, screen: [i, j] },
+// a screen name ('Key Vault', any case), or, as in M1, a global screen of the
+// default 16 x 11 lattice ('1,0', [1, 0], { sx, sy }), which is the
+// overworld's. x, z are local tile coordinates; without them the hero stands
+// in the middle of the screen, or on the free tile nearest it (not in a chest
+// or a wall, not on a warp).
 export function resolveScreen(target) {
-  if (Array.isArray(target)) return world.screen(target[0], target[1]);
+  if (Array.isArray(target)) return defaultLatticeScreen(target[0], target[1]);
   if (target && typeof target === 'object') {
     if (target.area) {
       const area = getArea(target.area);
-      if (!area) return null;
-      const [ox, oy] = area.origin ?? [0, 0];
-      return world.screen(ox + target.screen[0], oy + target.screen[1]);
+      return area ? world.screen(area.id, ...(target.screen ?? areaStart(area))) : null;
     }
-    return world.screen(target.sx, target.sy);
+    return defaultLatticeScreen(target.sx, target.sy);
   }
   if (typeof target !== 'string') return null;
   const local = target.match(/^([\w-]+):(-?\d+),(-?\d+)$/);
-  if (local) return resolveScreen({ area: local[1], screen: [+local[2], +local[3]] });
+  if (local) return world.screen(local[1], +local[2], +local[3]);
   const global = target.match(/^(-?\d+),(-?\d+)$/);
-  if (global) return world.screen(+global[1], +global[2]);
+  if (global) return defaultLatticeScreen(+global[1], +global[2]);
   const area = getArea(target);
-  if (area) {
-    const key = area.start ? `${area.start[0]},${area.start[1]}` : Object.keys(area.screens)[0];
-    const [lx, ly] = key.split(',').map(Number);
-    return resolveScreen({ area: area.id, screen: [lx, ly] });
-  }
+  if (area) return world.screen(area.id, ...areaStart(area));
   const name = target.toLowerCase();
-  for (const s of world.screens.values()) if (s.name.toLowerCase() === name) return s;
+  for (const s of world.screens.values()) if (s.name?.toLowerCase() === name) return s;
   return null;
 }
 
-export function teleport(target, x = SCREEN_W / 2, z = SCREEN_H / 2, { yaw = player.yaw } = {}) {
+const defaultLatticeScreen = (sx, sy) =>
+  Number.isFinite(sx) && Number.isFinite(sy) ? world.screenAt(sx * SCREEN_W, sy * SCREEN_H) : null;
+
+export function teleport(target, x, z, { yaw = player.yaw } = {}) {
   const screen = resolveScreen(target);
   if (!screen) throw new Error(`teleport: no screen matches ${JSON.stringify(target)}`);
+  const spot = x === undefined && z === undefined ? world.freeSpot(screen, screen.w / 2, screen.h / 2, player.r) : null;
   clearScreen();
   hideOverlay();
   setFade(0);
-  placeAtPoint({ sx: screen.sx, sy: screen.sy, x, z, yaw });
+  placeAt(screen, x ?? spot?.x ?? screen.w / 2, z ?? spot?.z ?? screen.h / 2, yaw);
+  player.resetTileTracking();
   standUp();
   player.knockT = 0;
   world.regrow(screen);
   applyScreenAmbience(screen);
   setMode('play');
-  enterScreen();
+  enterScreen('teleport');
   return screen;
 }
 

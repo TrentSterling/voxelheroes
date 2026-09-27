@@ -16,9 +16,10 @@
 //
 // Every switch clears latched button presses, so one press never acts in two
 // modes. A mode can list actions in `carry`: a press of one of them while the
-// mode runs is pressed again on the first tick after the mode ends (the screen
-// slide and warps carry A and B, so a swing pressed on the way in comes out on
-// arrival).
+// mode runs is pressed again on the first tick after the mode ends. No built-in
+// mode carries anything: input is ignored during the screen slide and warps
+// (gameplay spec 4.3), so a swing pressed on the way in is dropped, not played
+// on arrival.
 //
 // setMode() unwinds the whole stack: every mode on it gets exit() with
 // suspended: false, top first, so a dialog or menu under the top closes too.

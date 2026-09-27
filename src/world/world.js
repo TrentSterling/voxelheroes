@@ -11,13 +11,40 @@
 //   world.setTile(tx, tz, '.', { persist: true })   // also remembered in save data
 // Rebuilds keep every other tile's colours: each tile replays the random
 // stream it used on the first build.
+//
+// Addressing: screens have per-area sizes (areas.js), so a screen is looked
+// up by area and local position (world.screen('crypt', 0, 1), or its key
+// 'crypt:0,1'), or from a global tile (world.locate(tx, tz)) through a coarse
+// spatial index. Each screen carries its footprint: w, h, x0, z0, x1, z1.
 import * as THREE from 'three';
 import { VoxelGrid, buildGeometry, voxelMaterial, rng } from '../core/voxel.js';
-import { SCREEN_W, SCREEN_H, R, TV } from '../core/constants.js';
-import { state } from '../core/state.js';
+import { R, TV } from '../core/constants.js';
+import { state, setTileKeyCodec } from '../core/state.js';
 import { on, emit } from '../core/events.js';
+import { CAMERA_PRESETS } from '../core/camera.js';
+import { LIGHTING } from '../core/renderer.js';
 import { getTile, tilesetFloor, isSolidDef } from './tiles.js';
+import { areaScreenSize, areaCorner, areaStart } from './areas.js';
 import { screenKey, tileKey } from './grid.js';
+import { edgeReport } from './links.js';
+
+// The spatial index: square cells of CELL tiles, each listing the screens
+// that overlap it.
+const CELL = 32;
+const cellKey = (cx, cz) => `${cx},${cz}`;
+
+// Room side walls (area.rooms) are drawn half a tile inward, so their
+// collision reaches that far past their own column.
+export const WALL_INSET = 0.5;
+
+// The solid box [x0, z0, x1, z1] of a solid tile located by locate().
+function solidExtent(at, tx, tz) {
+  if (at.screen.area.rooms) {
+    if (at.lx === 0) return [tx, tz, tx + 1 + WALL_INSET, tz + 1];
+    if (at.lx === at.screen.w - 1) return [tx - WALL_INSET, tz, tx + 1, tz + 1];
+  }
+  return [tx, tz, tx + 1, tz + 1];
+}
 
 const waterMaterial = new THREE.MeshLambertMaterial({
   vertexColors: true,
@@ -44,20 +71,22 @@ export function registerLayer(name, def) {
   LAYERS[name] = def;
 }
 
-// 'x,z' -> [x, z] for a tile inside one screen, else null.
-function parsePos(key) {
+// 'x,z' -> [x, z] for a tile inside a screen of w x h tiles, else null.
+function parsePos(key, w, h) {
   const m = /^(\d+),(\d+)$/.exec(key);
   if (!m) return null;
   const x = +m[1];
   const z = +m[2];
-  return x < SCREEN_W && z < SCREEN_H ? [x, z] : null;
+  return x < w && z < h ? [x, z] : null;
 }
 
 export class World {
   constructor() {
     this.scene = null;
-    this.screens = new Map(); // 'sx,sy' -> screen
+    this.screens = new Map(); // 'area:i,j' -> screen
     this.areas = new Map(); // id -> area def
+    this.cells = new Map(); // spatial index: 'cx,cz' -> screens overlapping that cell
+    this.lastHit = null; // the screen the last tile lookup found
     this.ticking = new Set(); // props with userData.tick(t, dt)
     this.dirty = new Set(); // screens waiting to be re-meshed
     this.warned = new Set();
@@ -68,6 +97,7 @@ export class World {
     this.scene = scene;
     for (const area of areas) this.addArea(area);
     this.validate();
+    this.checkEdges();
     for (const screen of this.screens.values()) {
       this.buildScreen(screen);
       this.buildProps(screen);
@@ -84,15 +114,15 @@ export class World {
 
   addArea(area) {
     this.areas.set(area.id, area);
-    const [ox, oy] = area.origin ?? [0, 0];
+    const [ax, az] = areaCorner(area); // global tile of local screen 0,0's corner
+    const [w, h] = areaScreenSize(area);
     const areaTileset = area.tileset ?? 'overworld';
     for (const [key, def] of Object.entries(area.screens)) {
       const [lx, ly] = key.split(',').map(Number);
-      const sx = ox + lx;
-      const sy = oy + ly;
-      const gkey = screenKey(sx, sy);
-      const clash = this.screens.get(gkey);
-      if (clash) throw new Error(`Screen ${gkey} belongs to both area "${clash.area.id}" and area "${area.id}"`);
+      const x0 = ax + lx * w; // north-west corner, global tiles
+      const z0 = az + ly * h;
+      const sx = x0 / w; // global screen, counted in this area's screen size (fractional for some `at`)
+      const sy = z0 / h;
       const tileset = def.tileset ?? areaTileset;
       const markers = { ...area.spawns, ...def.spawns };
       const floor = def.floor ?? area.floor ?? tilesetFloor(tileset);
@@ -100,8 +130,8 @@ export class World {
       // Record a spawn at local (x, z); returns the tile it asks for, if any.
       const addSpawn = (m, x, z) => {
         const { type, tile, once, ...opts } = typeof m === 'string' ? { type: m } : m;
-        const tx = sx * SCREEN_W + x;
-        const tz = sy * SCREEN_H + z;
+        const tx = x0 + x;
+        const tz = z0 + z;
         spawns.push({ type, x, z, opts, flag: once ? `taken:${tx},${tz}` : null });
         return tile;
       };
@@ -117,19 +147,25 @@ export class World {
           return addSpawn(m, x, z) ?? floor;
         })
       );
-      // Spawns by position: spawnsAt: { 'x,z': type | spec }. The map tile stays (unless `tile` is given).
+      // Spawns by position: spawnsAt: { 'x,z': type | spec } in local tiles. The map tile stays (unless `tile` is given).
       for (const [pos, m] of Object.entries(def.spawnsAt ?? {})) {
-        const p = parsePos(pos);
-        if (!p) throw new Error(`${where}: spawnsAt key "${pos}" must be "x,z" inside the 16 x 11 screen`);
+        const p = parsePos(pos, w, h);
+        if (!p) throw new Error(`${where}: spawnsAt key "${pos}" must be "x,z" inside the ${w} x ${h} screen`);
         const tile = addSpawn(m, p[0], p[1]);
         if (tile) tiles[p[1]][p[0]] = tile;
       }
-      this.screens.set(gkey, {
-        key: gkey,
+      const screen = {
+        key: screenKey(area.id, lx, ly),
         sx,
         sy,
         lx,
         ly,
+        w, // tiles, west to east
+        h, // tiles, north to south
+        x0,
+        z0,
+        x1: x0 + w,
+        z1: z0 + h,
         area,
         def,
         name: def.name,
@@ -143,51 +179,125 @@ export class World {
         meshes: [], // { name, mesh, layer }
         rngStates: null, // per-tile random state from the first build
         built: null, // tiles as last meshed, to skip needless rebuilds
-      });
+      };
+      this.index(screen);
+      this.screens.set(screen.key, screen);
     }
   }
 
-  // Catch map typos and bad warp targets at startup, with a readable message.
-  // A warp into an area that is not registered (another branch adds it) only
-  // warns; the warp does nothing until the area exists.
+  // Add a screen to the spatial index; two screens may never share a tile.
+  index(screen) {
+    for (let cx = Math.floor(screen.x0 / CELL); cx <= Math.floor((screen.x1 - 1) / CELL); cx++)
+      for (let cz = Math.floor(screen.z0 / CELL); cz <= Math.floor((screen.z1 - 1) / CELL); cz++) {
+        const k = cellKey(cx, cz);
+        let list = this.cells.get(k);
+        if (!list) this.cells.set(k, (list = []));
+        for (const o of list)
+          if (o.x0 < screen.x1 && screen.x0 < o.x1 && o.z0 < screen.z1 && screen.z0 < o.z1)
+            throw new Error(
+              `Screen ${screen.key} (tiles x ${screen.x0}-${screen.x1 - 1}, z ${screen.z0}-${screen.z1 - 1}) overlaps ` +
+                `screen ${o.key} (x ${o.x0}-${o.x1 - 1}, z ${o.z0}-${o.z1 - 1}): give one of the areas another origin (or at)`
+            );
+        list.push(screen);
+      }
+  }
+
+  // Catch map typos, bad warp targets and unknown camera or lighting names at
+  // startup, with a readable message. A warp (or entrance) into an area that
+  // is not registered (another branch adds it) only warns; the warp does
+  // nothing until the area exists.
   validate() {
     for (const s of this.screens.values()) {
       s.tiles.forEach((row, z) =>
         row.forEach((ch, x) => {
-          if (!getTile(s.tileset, ch))
+          const def = getTile(s.tileset, ch);
+          if (!def)
             throw new Error(`Unknown tile "${ch}" in area "${s.area.id}" screen ${s.lx},${s.ly} ("${s.name}") at ${x},${z} (tileset "${s.tileset}")`);
+          if (def.onEnter?.isWarp && !this.warpSpec(s, x, z))
+            throw new Error(`Warp tile "${ch}" at ${x},${z} of ${s.key} ("${s.name}") has no destination in the screen's or the area's warps`);
         })
       );
+      if (s.camera && !CAMERA_PRESETS[s.camera])
+        throw new Error(`Screen ${s.key} ("${s.name}") names unknown camera preset "${s.camera}" (core/camera.js registerCameraPreset)`);
+      if (!LIGHTING[s.lighting]) throw new Error(`Screen ${s.key} ("${s.name}") names unknown lighting "${s.lighting}" (core/renderer.js registerLighting)`);
       for (const [k, spec] of Object.entries(s.def.warps ?? {})) {
-        if (k.length > 1 && !parsePos(k))
-          throw new Error(`Area "${s.area.id}" screen ${s.lx},${s.ly}: warp key "${k}" must be a tile char or "x,z" inside the screen`);
-        this.checkWarp(s.area, spec);
+        if (k.length > 1 && !parsePos(k, s.w, s.h))
+          throw new Error(`Area "${s.area.id}" screen ${s.lx},${s.ly}: warp key "${k}" must be a tile char or "x,z" inside the ${s.w} x ${s.h} screen`);
+        this.checkWarp(`Warp "${k}" of ${s.key}`, s.area, spec);
       }
     }
-    for (const area of this.areas.values()) for (const spec of Object.values(area.warps ?? {})) this.checkWarp(area, spec);
+    for (const area of this.areas.values()) {
+      for (const [ch, spec] of Object.entries(area.warps ?? {})) this.checkWarp(`Warp "${ch}" of area "${area.id}"`, area, spec);
+      if (area.entrance) this.checkWarp(`The entrance of area "${area.id}"`, area, area.entrance);
+    }
   }
 
-  checkWarp(fromArea, spec) {
+  // A warp into an area that is not registered warns once and is skipped
+  // (warpAt returns null for it); any other must land somewhere the hero can
+  // stand (checkSpot).
+  checkWarp(what, fromArea, spec) {
     if (spec.area && !this.areas.has(spec.area)) {
-      const msg = `Warp from "${fromArea.id}" points at area "${spec.area}", which is not registered; it does nothing until that area exists`;
+      const msg = `${what} points at area "${spec.area}", which is not registered; it does nothing until that area exists`;
       if (!this.warned.has(msg)) console.warn(msg);
       this.warned.add(msg);
       return;
     }
-    this.resolveWarp(fromArea, spec);
+    this.checkSpot(what, this.resolveWarp(fromArea, spec));
+  }
+
+  // A destination must be inside its screen, on a tile the hero can stand on,
+  // and not on a warp tile (he would warp straight on, back and forth).
+  checkSpot(what, { screen, x, z }) {
+    if (!(x >= 0 && x < screen.w && z >= 0 && z < screen.h))
+      throw new Error(`${what} lands at ${x},${z}, outside screen ${screen.key} (${screen.w} x ${screen.h} tiles)`);
+    const tx = screen.x0 + Math.floor(x);
+    const tz = screen.z0 + Math.floor(z);
+    if (this.isSolid(tx, tz)) throw new Error(`${what} lands on a solid tile at ${x},${z} of ${screen.key} ("${screen.name}")`);
+    if (this.tileDefAt(tx, tz)?.onEnter?.isWarp)
+      throw new Error(
+        `${what} lands on warp tile "${this.tile(tx, tz)}" at ${x},${z} of ${screen.key} ("${screen.name}"): the hero would warp straight on, so put it a tile off the doorway`
+      );
+  }
+
+  // Edges that strand the hero, found at startup: an open edge tile facing a
+  // wall across the edge (a mismatch), or, in a room, a doorway onto no
+  // screen at all. Both throw. An open outdoor edge onto no screen only
+  // warns: the hero stops at the edge of the map there.
+  checkEdges() {
+    const { mismatches, deadEnds } = edgeReport(this);
+    const where = (m) => `${m.name} (${m.screen}) ${m.dir} edge tile ${m.x},${m.z}`;
+    if (mismatches.length)
+      throw new Error(`Edge tiles open on one side and a wall on the other:\n  ${mismatches.map((m) => `${where(m)} faces a wall in ${m.facing}`).join('\n  ')}`);
+    const inRooms = deadEnds.filter((d) => this.screens.get(d.screen).area.rooms);
+    if (inRooms.length) throw new Error(`Doorways onto no room:\n  ${inRooms.map(where).join('\n  ')}`);
+    const outdoors = deadEnds.filter((d) => !this.screens.get(d.screen).area.rooms);
+    if (outdoors.length) console.warn(`Open edge tiles onto no screen (the hero stops there):\n  ${outdoors.map(where).join('\n  ')}`);
   }
 
   // ---------------------------------------------------------------- queries
-  screen(sx, sy) {
-    return this.screens.get(screenKey(sx, sy)) || null;
+  // A screen by area and local position, world.screen('crypt', 0, 1), or by
+  // key, world.screen('crypt:0,1'). null if there is none.
+  screen(areaOrKey, lx, ly) {
+    if (typeof areaOrKey !== 'string')
+      throw new Error(
+        'world.screen(sx, sy) is gone (screens have per-area sizes): use world.screen(areaId, lx, ly), world.screen(key) or world.locate(tx, tz)'
+      );
+    return this.screens.get(lx === undefined ? areaOrKey : screenKey(areaOrKey, lx, ly)) ?? null;
+  }
+
+  // The screen whose footprint holds world point or tile (x, z), or null.
+  screenAt(x, z) {
+    const last = this.lastHit;
+    if (last && x >= last.x0 && x < last.x1 && z >= last.z0 && z < last.z1) return last;
+    const list = this.cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL)));
+    if (list) for (const s of list) if (x >= s.x0 && x < s.x1 && z >= s.z0 && z < s.z1) return (this.lastHit = s);
+    return null;
   }
 
   // The screen holding global tile (tx, tz) and the tile's local coordinates.
   locate(tx, tz) {
-    const sx = Math.floor(tx / SCREEN_W);
-    const sy = Math.floor(tz / SCREEN_H);
-    const screen = this.screens.get(screenKey(sx, sy));
-    return screen ? { screen, lx: tx - sx * SCREEN_W, lz: tz - sy * SCREEN_H } : null;
+    const screen = this.screenAt(tx, tz);
+    return screen ? { screen, lx: tx - screen.x0, lz: tz - screen.z0 } : null;
   }
 
   tileDef(screen, ch) {
@@ -212,10 +322,24 @@ export class World {
     return def === null || isSolidDef(def, body);
   }
 
-  // Does a circle at (x, z) with radius r overlap a solid tile?
+  // The solid part of global tile (tx, tz) for a body as [x0, z0, x1, z1], or
+  // null when the tile does not stop it. Outside every screen is solid. Room
+  // side walls reach their visible face (see WALL_INSET).
+  solidBox(tx, tz, body = null) {
+    const at = this.locate(tx, tz);
+    if (!at) return [tx, tz, tx + 1, tz + 1];
+    if (!isSolidDef(getTile(at.screen.tileset, at.screen.tiles[at.lz][at.lx]), body)) return null;
+    return solidExtent(at, tx, tz);
+  }
+
+  // Does a body at (x, z) with radius r (a square of half-size r) overlap
+  // anything solid? Touching an edge does not count.
   blocked(x, z, r, body = null) {
-    for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++)
-      for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) if (this.isSolid(tx, tz, body)) return true;
+    for (let tx = Math.floor(x - r - WALL_INSET); tx <= Math.floor(x + r + WALL_INSET); tx++)
+      for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) {
+        const b = this.solidBox(tx, tz, body);
+        if (b && x + r > b[0] && x - r < b[2] && z + r > b[1] && z - r < b[3]) return true;
+      }
     return false;
   }
 
@@ -224,6 +348,28 @@ export class World {
     const def = this.tileDefAt(tx, tz);
     if (def === null) return true;
     return def.blocksShots ?? isSolidDef(def, null);
+  }
+
+  // The tile [tx, tz] that stops a projectile at world point (x, z), or null.
+  // Like blocksShot, but room side walls count from their visible face, so
+  // near one it can be the wall beside the tile the shot is over. Its onShot
+  // hook is the one to call.
+  shotBlockerAt(x, z) {
+    const tx = Math.floor(x);
+    const tz = Math.floor(z);
+    if (this.blocksShot(tx, tz)) return [tx, tz];
+    for (const nx of [tx - 1, tx + 1]) {
+      const at = this.locate(nx, tz);
+      if (!at?.screen.area.rooms || !this.blocksShot(nx, tz)) continue;
+      const b = solidExtent(at, nx, tz);
+      if (x >= b[0] && x < b[2]) return [nx, tz];
+    }
+    return null;
+  }
+
+  // Does something at world point (x, z) stop a projectile?
+  shotBlockedAt(x, z) {
+    return this.shotBlockerAt(x, z) !== null;
   }
 
   // Global tiles whose centre lies within radius of (x, z).
@@ -235,28 +381,79 @@ export class World {
     return out;
   }
 
-  // Warp destination for the tile at (tx, tz), or null. Looked up by the
-  // tile's position in the screen's warps ('8,1'), then by its char in the
-  // screen's warps, then in the area's. null for an area not registered.
+  // The warp spec for the tile at local (lx, lz) of a screen: the screen's
+  // warps by the tile's position ('8,1'), then by its char, then the area's
+  // warps by its char. null if none has one.
+  warpSpec(screen, lx, lz) {
+    const ch = screen.tiles[lz]?.[lx];
+    const w = screen.def.warps;
+    return w?.[`${lx},${lz}`] ?? w?.[ch] ?? screen.area.warps?.[ch] ?? null;
+  }
+
+  // Warp destination for the tile at (tx, tz) as { screen, x, z, yaw } (x, z
+  // local to that screen), or null: no warp there, or one into an area that
+  // is not registered.
   warpAt(tx, tz) {
     const at = this.locate(tx, tz);
     if (!at) return null;
-    const ch = at.screen.tiles[at.lz][at.lx];
-    const w = at.screen.def.warps;
-    const spec = w?.[`${at.lx},${at.lz}`] ?? w?.[ch] ?? at.screen.area.warps?.[ch];
+    const spec = this.warpSpec(at.screen, at.lx, at.lz);
     if (!spec || (spec.area && !this.areas.has(spec.area))) return null;
     return this.resolveWarp(at.screen.area, spec);
   }
 
-  // { area?, screen: [x, y] (area-local), x, z, yaw } -> global { sx, sy, x, z, yaw }
+  // A spot names a place the way content does: { area, screen: [i, j], x, z,
+  // yaw }, with the area's local screen and tile coordinates inside it (x and
+  // z default to the middle of the screen; screen to the area's start, else
+  // its first screen; area to fromArea).
+  // Returns { screen, x, z, yaw }, x and z still local to that screen.
+  resolveSpot(spot, fromArea = null) {
+    const area = spot.area ? this.areas.get(spot.area) : fromArea;
+    const from = fromArea ? ` from "${fromArea.id}"` : '';
+    if (!area) throw new Error(`A spot${from} points at unknown area "${spot.area}"`);
+    const [i, j] = spot.screen ?? areaStart(area);
+    const screen = this.screen(area.id, i, j);
+    if (!screen) throw new Error(`A spot${from} points at missing screen ${i},${j} of "${area.id}"`);
+    return { screen, x: spot.x ?? screen.w / 2, z: spot.z ?? screen.h / 2, yaw: spot.yaw ?? 0 };
+  }
+
+  // Warp specs are spots; kept under this name for older callers.
   resolveWarp(fromArea, spec) {
-    const area = spec.area ? this.areas.get(spec.area) : fromArea;
-    if (!area) throw new Error(`Warp from "${fromArea.id}" points at unknown area "${spec.area}"`);
-    const [ox, oy] = area.origin ?? [0, 0];
-    const sx = ox + spec.screen[0];
-    const sy = oy + spec.screen[1];
-    if (!this.screen(sx, sy)) throw new Error(`Warp from "${fromArea.id}" points at missing screen ${spec.screen} of "${area.id}"`);
-    return { sx, sy, x: spec.x, z: spec.z, yaw: spec.yaw ?? 0 };
+    return this.resolveSpot(spec, fromArea);
+  }
+
+  // Where a body of radius r can stand on a screen, nearest local (x, z): the
+  // point itself if it is clear, else the nearest clear tile centre. Clear:
+  // nothing solid under the body and no onEnter hook (warp, pit) under its
+  // centre. null if the screen has no such spot.
+  freeSpot(screen, x = screen.w / 2, z = screen.h / 2, r = 0.3) {
+    const clear = (lx, lz) =>
+      !this.blocked(screen.x0 + lx, screen.z0 + lz, r) && !getTile(screen.tileset, screen.tiles[Math.floor(lz)]?.[Math.floor(lx)])?.onEnter;
+    if (x >= 0 && x < screen.w && z >= 0 && z < screen.h && clear(x, z)) return { x, z };
+    let best = null;
+    for (let tz = 0; tz < screen.h; tz++)
+      for (let tx = 0; tx < screen.w; tx++) {
+        const d = Math.hypot(tx + 0.5 - x, tz + 0.5 - z);
+        if ((!best || d < best.d) && clear(tx + 0.5, tz + 0.5)) best = { x: tx + 0.5, z: tz + 0.5, d };
+      }
+    return best && { x: best.x, z: best.z };
+  }
+
+  // A tile named by place: 'area:i,j:x,z', its area, local screen and local
+  // tile. Unlike the global tile it stays the same when an area is moved in
+  // the global grid, so save data names tiles this way (see the tile-key
+  // codec below). null outside every screen.
+  placeKey(tx, tz) {
+    const at = this.locate(tx, tz);
+    return at ? `${at.screen.key}:${at.lx},${at.lz}` : null;
+  }
+
+  // The global tile [tx, tz] a place key names, or null if no screen has it now.
+  placeTile(key) {
+    const m = /^([\w-]+:-?\d+,-?\d+):(-?\d+),(-?\d+)$/.exec(key);
+    const s = m && this.screens.get(m[1]);
+    if (!s) return null;
+    const [x, z] = [Number(m[2]), Number(m[3])];
+    return x >= 0 && x < s.w && z >= 0 && z < s.h ? [s.x0 + x, s.z0 + z] : null;
   }
 
   // ---------------------------------------------------------------- hooks
@@ -291,11 +488,11 @@ export class World {
 
   // Tiles marked `regrow` (bushes) come back each time a screen is entered.
   regrow(screen) {
-    for (let z = 0; z < SCREEN_H; z++)
-      for (let x = 0; x < SCREEN_W; x++) {
+    for (let z = 0; z < screen.h; z++)
+      for (let x = 0; x < screen.w; x++) {
         const base = screen.base[z][x];
         if (screen.tiles[z][x] !== base && getTile(screen.tileset, base).regrow)
-          this.setTile(screen.sx * SCREEN_W + x, screen.sy * SCREEN_H + z, base, { rebuild: false, reason: 'regrow' });
+          this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: false, reason: 'regrow' });
       }
   }
 
@@ -309,7 +506,7 @@ export class World {
   // Props are rebuilt too so they pick up flags (opened chests).
   reset() {
     for (const screen of this.screens.values())
-      for (let z = 0; z < SCREEN_H; z++) screen.tiles[z] = [...screen.base[z]];
+      for (let z = 0; z < screen.h; z++) screen.tiles[z] = [...screen.base[z]];
     for (const [key, ch] of Object.entries(state.tileEdits)) {
       const [tx, tz] = key.split(',').map(Number);
       const at = this.locate(tx, tz);
@@ -348,11 +545,11 @@ export class World {
     const g = layer('terrain');
     const pick = (arr) => arr[Math.floor(rand() * arr.length)];
     const first = !screen.rngStates;
-    if (first) screen.rngStates = new Array(SCREEN_W * SCREEN_H);
+    if (first) screen.rngStates = new Array(screen.w * screen.h);
 
-    for (let z = 0; z < SCREEN_H; z++) {
-      for (let x = 0; x < SCREEN_W; x++) {
-        const i = z * SCREEN_W + x;
+    for (let z = 0; z < screen.h; z++) {
+      for (let x = 0; x < screen.w; x++) {
+        const i = z * screen.w + x;
         if (first) screen.rngStates[i] = rand.getState();
         else rand.setState(screen.rngStates[i]);
         const ch = screen.tiles[z][x];
@@ -364,8 +561,8 @@ export class World {
           area: screen.area,
           x,
           z,
-          tx: screen.sx * SCREEN_W + x,
-          tz: screen.sy * SCREEN_H + z,
+          tx: screen.x0 + x,
+          tz: screen.z0 + z,
           bx: x * R,
           bz: z * R,
           ch,
@@ -379,8 +576,8 @@ export class World {
       }
     }
 
-    const ox = screen.sx * SCREEN_W;
-    const oz = screen.sy * SCREEN_H;
+    const ox = screen.x0;
+    const oz = screen.z0;
     for (const [name, grid] of grids) {
       if (name !== 'terrain' && !grid.map.size) continue;
       const L = LAYERS[name];
@@ -395,15 +592,15 @@ export class World {
   }
 
   buildProps(screen) {
-    for (let z = 0; z < SCREEN_H; z++)
-      for (let x = 0; x < SCREEN_W; x++) if (getTile(screen.tileset, screen.tiles[z][x]).prop) this.addProp(screen, x, z);
+    for (let z = 0; z < screen.h; z++)
+      for (let x = 0; x < screen.w; x++) if (getTile(screen.tileset, screen.tiles[z][x]).prop) this.addProp(screen, x, z);
   }
 
   addProp(screen, x, z) {
     const ch = screen.tiles[z][x];
     const def = getTile(screen.tileset, ch);
-    const tx = screen.sx * SCREEN_W + x;
-    const tz = screen.sy * SCREEN_H + z;
+    const tx = screen.x0 + x;
+    const tz = screen.z0 + z;
     const obj = def.prop({ world: this, screen, area: screen.area, x, z, tx, tz, cx: tx + 0.5, cz: tz + 0.5, ch, def });
     if (!obj) return null;
     obj.castShadow = true;
@@ -438,5 +635,20 @@ export class World {
 
 export const world = new World();
 
-// The screen the hero is on (or scrolling into).
-export const currentScreen = () => world.screen(state.sx, state.sy);
+// Save data names tiles by place (world.placeKey), so a save stays right
+// when an area is moved in the global grid; in play they are global tiles
+// ('tx,tz'; core/state.js). A tile on no screen keeps its global key, and a
+// place no screen has today keeps its place key, so neither is lost.
+setTileKeyCodec({
+  save: (key) => {
+    const [tx, tz] = key.split(',').map(Number);
+    return world.placeKey(tx, tz);
+  },
+  load: (key) => {
+    const t = world.placeTile(key);
+    return t ? tileKey(t[0], t[1]) : null;
+  },
+});
+
+// The screen the hero is on (or sliding into): its key is state.screenKey.
+export const currentScreen = () => (state.screenKey ? world.screens.get(state.screenKey) ?? null : null);

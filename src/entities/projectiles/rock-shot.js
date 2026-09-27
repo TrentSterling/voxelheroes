@@ -3,12 +3,12 @@
 // every projectile, it calls the onShot hook of the tile it breaks on.
 import * as THREE from 'three';
 import { voxelMaterial } from '../../core/voxel.js';
-import { GROUND_Y, SCREEN_W, SCREEN_H } from '../../core/constants.js';
+import { GROUND_Y } from '../../core/constants.js';
 import { state } from '../../core/state.js';
 import { sfx } from '../../core/audio.js';
 import { rockGeometry } from '../../models/rock.js';
-import { world } from '../../world/world.js';
-import { screenOrigin } from '../../world/grid.js';
+import { world, currentScreen } from '../../world/world.js';
+import { insideScreen } from '../../world/grid.js';
 import { burst } from '../../systems/particles.js';
 import { hurtPlayer, shieldBlocks } from '../../systems/combat.js';
 import { Entity } from '../entity.js';
@@ -41,17 +41,15 @@ export class RockShot extends Entity {
     this.spin += dt * 12;
     this.mesh.position.set(this.x, GROUND_Y + 0.35, this.z);
     this.mesh.rotation.set(this.spin, this.spin * 0.5, 0);
-    const b = screenOrigin(state.sx, state.sy);
-    const out = this.x < b.x || this.x > b.x + SCREEN_W || this.z < b.z || this.z > b.z + SCREEN_H;
-    if (out) {
+    const s = currentScreen();
+    if (!s || !insideScreen(s, this.x, this.z)) {
       this.shatter();
       return;
     }
-    const tx = Math.floor(this.x);
-    const tz = Math.floor(this.z);
-    if (world.blocksShot(tx, tz)) {
+    const wall = world.shotBlockerAt(this.x, this.z);
+    if (wall) {
       const hit = { damage: 1, fromX: this.x - this.vx * dt, fromZ: this.z - this.vz * dt, source: 'rock-shot' };
-      world.trigger(tx, tz, 'onShot', { projectile: this, hit });
+      world.trigger(wall[0], wall[1], 'onShot', { projectile: this, hit });
       this.shatter();
       return;
     }

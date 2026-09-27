@@ -9,11 +9,15 @@
 //
 // Keys, allowed values and who applies them are in SETTINGS below and in
 // docs/CONTRACTS.md ("Settings"). Defaults come from TUNING.options. The
-// camera preset is also written into each save slot by feat/world ('camera'
-// save field), so loading a slot can change it.
+// camera choices are the presets marked selectable (A-D, playerCameraPresets
+// in core/camera.js), the same names the 'camera' save field and
+// chooseCameraPreset accept. The choice is also written into each save slot
+// ('camera' save field, systems/transitions.js), so loading a slot can
+// change it.
 //
 // This module imports only core modules (dialog.js and hud.js import it).
 import { state } from '../core/state.js';
+import { CAMERA_PRESETS, playerCameraPresets } from '../core/camera.js';
 import { emit } from '../core/events.js';
 import { readPrefs, writePrefs } from '../core/save.js';
 import { setMuted, setVolumes } from '../core/audio.js';
@@ -25,7 +29,13 @@ const range = (lo, hi) => ({ check: (v) => typeof v === 'number' && Number.isFin
 
 // key -> { check, values | range, by: who applies it }
 export const SETTINGS = {
-  camera: { ...oneOf('A', 'B', 'C', 'D'), by: 'world: chooseCameraPreset (applied by game/places.js)' },
+  camera: {
+    check: (v) => typeof v === 'string' && !!CAMERA_PRESETS[v]?.selectable,
+    get values() {
+      return playerCameraPresets(); // A-D
+    },
+    by: 'world: chooseCameraPreset (applied by game/places.js)',
+  },
   look: { ...oneOf('auto', 'high', 'medium', 'low', 'flat'), by: "look: reads state.settings each drawn frame ('auto' = the device default)" },
   seams: { ...bool, by: "look: the voxel seams, live (the gameplay spec's grid option)" },
   brightness: { ...range(0.5, 1.5), by: 'look: times the exposure' },

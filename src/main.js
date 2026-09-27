@@ -3,7 +3,7 @@
 import './style.css';
 import './content.js';
 import { scene, mountRenderer, renderScene } from './core/renderer.js';
-import { initCamera, placeCamera } from './core/camera.js';
+import { initCamera, placeCamera, followSubject } from './core/camera.js';
 import { initInput, input } from './core/input.js';
 import { initAudio } from './core/audio.js';
 import { startLoop } from './core/loop.js';
@@ -14,7 +14,7 @@ import { allAreas } from './world/areas.js';
 import { player } from './entities/player.js';
 import { initParticles, updateParticles } from './systems/particles.js';
 import { placeAtStart, loadGame } from './systems/flow.js';
-import { applyScreenAmbience } from './systems/transitions.js';
+import { applyScreenAmbience, syncScreenVisibility } from './systems/transitions.js';
 import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
 import { initOverlay } from './ui/overlay.js';
 import { installTestHook } from './debug/testhook.js';
@@ -42,6 +42,8 @@ function update(dt) {
   updateMode(dt);
   updateParticles(dt);
   world.flush();
+  syncScreenVisibility();
+  followSubject(player, currentScreen());
   placeCamera();
   input.endFrame();
 }
@@ -69,7 +71,7 @@ function start(data = {}) {
 const hot = window.claude?.hot;
 try {
   hot?.snapshot?.(() => ({
-    mode: state.mode === 'scroll' || state.mode === 'dead' ? 'title' : state.mode,
+    mode: ['scroll', 'warp', 'dead'].includes(state.mode) ? 'title' : state.mode,
     save: serializeState(),
   }));
 } catch {

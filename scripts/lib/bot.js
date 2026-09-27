@@ -3,17 +3,16 @@
 // (virtual stick, button taps, hook.tick), so a whole walk or fight runs
 // inside one page.evaluate: fast, and deterministic for a given seed.
 //
-// All coordinates are local tile coordinates of the current screen
-// (0..16 x 0..11). Every helper is async (hook.tick lets promise
-// continuations such as dialog follow-ups run between ticks) and resolves to
-// { ok, reason?, t, ... }.
+// All coordinates are local tile coordinates of the current screen (0..w x
+// 0..h: 16 x 11 outdoors, 16 x 12 in dungeon rooms). Every helper is async
+// (hook.tick lets promise continuations such as dialog follow-ups run between
+// ticks) and resolves to { ok, reason?, t, ... }.
 (() => {
   const DT = 1 / 60;
-  const W = 16;
-  const H = 11;
   const hook = () => window.__voxelHeroes;
-  const screenKey = () => `${hook().state.sx},${hook().state.sy}`;
-  const origin = () => ({ x: hook().state.sx * W, z: hook().state.sy * H });
+  const scr = () => hook().screen();
+  const screenKey = () => hook().state.screenKey;
+  const origin = () => ({ x: scr().x0, z: scr().z0 });
   const local = (e) => {
     const o = origin();
     return { x: e.x - o.x, z: e.z - o.z };
@@ -32,22 +31,25 @@
     return hook().entities.some((e) => e.solid && Math.floor(e.x - o.x) === x && Math.floor(e.z - o.z) === z);
   }
 
-  // Can the hero stand on local tile (x, z)? Tiles with an onEnter hook
-  // (warps, pits) are avoided unless allowed; tiles holding a solid entity
-  // always are.
+  // Can the hero stand in the middle of local tile (x, z)? This is the real
+  // collision test, so tiles half covered by a room's side wall are out.
+  // Tiles with an onEnter hook (warps, pits) are avoided unless allowed;
+  // tiles holding a solid entity always are.
   function walkable(x, z, allowHooks) {
-    if (x < 0 || z < 0 || x >= W || z >= H) return false;
-    const o = origin();
+    const s = scr();
+    if (x < 0 || z < 0 || x >= s.w || z >= s.h) return false;
     const w = hook().world;
-    if (w.isSolid(o.x + x, o.z + z, hook().player)) return false;
+    const p = hook().player;
+    if (w.blocked(s.x0 + x + 0.5, s.z0 + z + 0.5, p.r, p)) return false;
     if (occupied(x, z)) return false;
-    const def = w.tileDefAt(o.x + x, o.z + z);
+    const def = w.tileDefAt(s.x0 + x, s.z0 + z);
     return allowHooks || !def?.onEnter;
   }
 
   // Breadth-first search over the screen's tiles. Returns the tiles to visit
   // after `start`, ending at the first tile where goal(x, z) is true.
   function bfs(start, goal, { allowHooks = false } = {}) {
+    const W = scr().w;
     const k = (x, z) => z * W + x;
     const prev = new Map([[k(start[0], start[1]), null]]);
     const queue = [start];
@@ -138,12 +140,14 @@
     }
   }
 
-  // Walk to the nearest open tile on one edge and keep going until the
-  // camera has slid to the next screen.
+  // Walk to the nearest open tile on one edge and keep going until the hero
+  // is on the next screen and play has resumed (after a slide, or after the
+  // fade into another area).
   async function exit(dir, { timeout = 20 } = {}) {
     const g = hook();
     const [ex, ez] = DIRS[dir];
     const from = screenKey();
+    const { w: W, h: H } = scr();
     const onEdge = (x, z) => (ex === 1 && x === W - 1) || (ex === -1 && x === 0) || (ez === 1 && z === H - 1) || (ez === -1 && z === 0);
     const L = local(g.player);
     const cur = [Math.floor(L.x), Math.floor(L.z)];
@@ -168,6 +172,32 @@
     } finally {
       g.input.setStick(0, 0);
     }
+  }
+
+  // Walk onto local (x, z), a tile whose onEnter hook starts something (a
+  // door or stairs: a warp), and wait through the fade (or slide) until play
+  // resumes, as exit() does for edges. Returns { ok, t, screen, moved }:
+  // screen is where play resumed, moved whether it is another screen.
+  async function enter(x, z, { timeout = 20 } = {}) {
+    const g = hook();
+    const from = screenKey();
+    const w = await walkTo(x, z, { timeout, allowHooks: true });
+    let t = w.t;
+    if (!w.ok && !/^mode became (warp|scroll)$/.test(w.reason)) return { ...w, reason: `walking onto ${x},${z}: ${w.reason}` };
+    // Arrived without anything starting: one more tick for the hook.
+    if (g.state.mode === 'play') {
+      await g.tick(DT);
+      t += DT;
+    }
+    if (g.state.mode === 'play')
+      return { ok: false, reason: `nothing started at ${x},${z} (for a doorway in a screen edge use exit(dir))`, t };
+    for (let i = 0; i < 600; i++) {
+      if (g.state.mode === 'play') return { ok: true, t, screen: screenKey(), moved: screenKey() !== from };
+      g.input.setStick(0, 0);
+      await g.tick(DT);
+      t += DT;
+    }
+    return { ok: false, reason: `still in mode ${g.state.mode} after 10 s`, t };
   }
 
   // Fight until the screen has no enemies (or `maxKills` enemies are down).
@@ -267,5 +297,5 @@
     return { ok: false, reason: 'timeout', t };
   }
 
-  window.__vhBot = { walkTo, exit, fight, waitFor, bfs, walkable, occupied };
+  window.__vhBot = { walkTo, exit, enter, fight, waitFor, bfs, walkable, occupied };
 })();

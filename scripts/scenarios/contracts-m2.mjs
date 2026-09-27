@@ -265,7 +265,7 @@ export default async function contractsM2(t) {
   const want = ['hp', 'maxHp', 'coins', 'keys', 'flags', 'heartPieces', 'magic', 'maxMagic', 'tokens', 'profile', 'gear', 'swords', 'bags', 'bottles', 'colorKeys', 'visited', 'visitedAreas', 'cardsSeen', 'bestiary', 'shops', 'playTime', 'deaths', 'inventory'];
   t.expect(want.every((f) => r.fields.includes(f)), `every shared field is saved (missing: ${want.filter((f) => !r.fields.includes(f)).join(', ') || 'none'})`);
   t.expect(!r.fields.includes('gems') && !r.fields.includes('effects'), 'the save has coins, not gems, and no runtime effects');
-  t.expect(r.version === 2 && r.alias, 'SAVE_VERSION is 2 and state.gems reads state.coins');
+  t.expect(r.version === 3 && r.alias, `SAVE_VERSION is 3 (2: coins; 3: places instead of the M1 lattice) and state.gems reads state.coins (${r.version})`);
   t.expect(JSON.stringify(r.defaults) === JSON.stringify([0, 0, 0, 0, 0, null, 1, 'blade-start', 'blade-start', 0, 0, 0]), `new-game defaults (${JSON.stringify(r.defaults)})`);
 
   r = await t.eval(() => {
@@ -286,7 +286,7 @@ export default async function contractsM2(t) {
     h.load(m1);
     out.migrated = st.coins;
     try {
-      h.load({ ...data, version: 3 });
+      h.load({ ...data, version: h.game.state.SAVE_VERSION + 1 });
       out.newer = 'loaded';
     } catch (e) {
       out.newer = e.message;
