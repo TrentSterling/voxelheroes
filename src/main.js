@@ -3,8 +3,8 @@ import './style.css';
 import { World, GROUND_Y } from './world.js';
 import { SCREEN_W, SCREEN_H, START_SCREEN, WARPS } from './maps.js';
 import { makeHero, makeSlime, makeSpitter, makeRock, makeHeart, makeGem, makeKey } from './models.js';
-import { voxelMaterial } from './voxel.js';
-import { initAudio, sfx, toggleMute } from './audio.js';
+import { voxelMaterial } from './core/voxel.js';
+import { initAudio, sfx, toggleMute } from './core/audio.js';
 
 const DEG = Math.PI / 180;
 const $ = (id) => document.getElementById(id);

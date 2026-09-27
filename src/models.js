@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { VoxelGrid, buildGeometry, voxelMaterial, rng } from './voxel.js';
+import { VoxelGrid, buildGeometry, voxelMaterial, rng } from './core/voxel.js';
 
 // Character voxels are finer than terrain voxels.
 export const MV = 1 / 14;

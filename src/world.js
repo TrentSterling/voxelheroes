@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { VoxelGrid, buildGeometry, voxelMaterial, rng } from './voxel.js';
+import { VoxelGrid, buildGeometry, voxelMaterial, rng } from './core/voxel.js';
 import { SCREENS, SCREEN_W, SCREEN_H } from './maps.js';
 
 // Terrain resolution: 8 voxels per tile edge.
