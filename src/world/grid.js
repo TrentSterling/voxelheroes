@@ -13,6 +13,14 @@ export const screenOrigin = (sx, sy) => ({ x: sx * SCREEN_W, z: sy * SCREEN_H })
 export const screenCenter = (sx, sy) =>
   new THREE.Vector3(sx * SCREEN_W + SCREEN_W / 2, 0, sy * SCREEN_H + SCREEN_H / 2);
 
+// The screen's footprint in world units: x0..x1 west to east, z0..z1 north to south.
+export const screenRect = (sx, sy) => ({
+  x0: sx * SCREEN_W,
+  z0: sy * SCREEN_H,
+  x1: (sx + 1) * SCREEN_W,
+  z1: (sy + 1) * SCREEN_H,
+});
+
 export const screenOfTile = (tx, tz) => [Math.floor(tx / SCREEN_W), Math.floor(tz / SCREEN_H)];
 
 export const tileKey = (tx, tz) => `${tx},${tz}`;

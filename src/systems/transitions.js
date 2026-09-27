@@ -10,9 +10,9 @@ import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
 import { applyLighting } from '../core/renderer.js';
-import { CAMERA_PRESETS, setCameraPreset, snapCamera, startCameraTween, stepCameraTween } from '../core/camera.js';
+import { CAMERA_PRESETS, setCameraPreset, snapCamera, startCameraTween, stepCameraTween, subjectFor } from '../core/camera.js';
 import { world, currentScreen } from '../world/world.js';
-import { screenCenter } from '../world/grid.js';
+import { screenRect } from '../world/grid.js';
 import { clearScreenEntities } from '../entities/manager.js';
 import { player } from '../entities/player.js';
 import { showBanner } from '../ui/banner.js';
@@ -24,20 +24,22 @@ export const SCROLL_TIME = 0.85; // seconds for the slide to the next screen
 export const SCROLL_STEP = 1.1; // tiles the hero walks in during the slide
 
 // Put the hero at local tile coordinates (x, z) of screen (sx, sy) and aim
-// the camera at that screen.
+// the camera at the hero within that screen.
 export function placeAt(sx, sy, x, z, yaw = player.yaw) {
   state.sx = sx;
   state.sy = sy;
   player.x = sx * SCREEN_W + x;
   player.z = sy * SCREEN_H + z;
   player.yaw = yaw;
-  snapCamera(screenCenter(sx, sy));
+  snapCamera(subjectFor(player, screenRect(sx, sy)));
 }
 
-// Lighting and camera preset for a screen.
+// Lighting and camera preset for a screen. The camera re-aims at once unless
+// a slide is running (the slide already aims at the new screen).
 export function applyScreenAmbience(screen) {
   applyLighting(screen.lighting);
   setCameraPreset(screen.camera ?? state.settings.camera);
+  if (state.mode !== 'scroll') snapCamera(subjectFor(player, screenRect(state.sx, state.sy)));
 }
 
 // The player's camera choice (for an options menu). It applies on every
@@ -74,7 +76,8 @@ export function startScroll(dx, dz) {
   clearScreen();
   setMode('scroll');
   trans = { px0: player.x, pz0: player.z, px1: player.x + dx * SCROLL_STEP, pz1: player.z + dz * SCROLL_STEP };
-  startCameraTween(screenCenter(state.sx + dx, state.sy + dz), SCROLL_TIME);
+  const land = { x: trans.px1, z: trans.pz1 };
+  startCameraTween(subjectFor(land, screenRect(state.sx + dx, state.sy + dz), CAMERA_PRESETS[next.camera ?? state.settings.camera]), SCROLL_TIME);
   state.sx += dx;
   state.sy += dz;
   world.regrow(next);

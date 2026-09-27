@@ -1,48 +1,51 @@
-// Camera framing and the screen-to-screen slide.
+// Camera rig and the screen-to-screen slide (art bible section 3).
 //
 // The camera never rotates: it always faces north (-z) and looks down at a
-// fixed pitch. How far it sits and how wide it sees comes from a named preset
-// in CAMERA_PRESETS. Areas pick a preset (`camera: 'dungeon'`); screens with no
-// preset use the player's choice in state.settings.camera. With zoom 1 the
-// distance is fitted so one whole 16 x 11 screen fills the view.
+// fixed pitch. A preset gives the camera's pose relative to a subject point on
+// the ground:
+//   pitch   degrees down from the horizon
+//   fov     vertical field of view in degrees
+//   height  camera height above the ground, in tiles
+//   lead    the look-at point sits this many tiles north of the subject
+//   fixed   aim at the centre of the screen or room instead of the hero
 //
-// Preset fields:
-//   pitch     degrees down from the horizon
-//   fov       vertical field of view in degrees
-//   padX      extra tiles kept visible left and right of the screen
-//   padZ      extra depth (world units) kept visible top and bottom
-//   zoom      multiplier on the fitted distance (<1 = closer, crops the screen)
-//   distance  optional fixed distance that replaces the fit
+// In the overworld the subject is the hero, clamped so the frame stays inside
+// the current screen where the frame is small enough: the ground at the
+// bottom edge never shows the screen to the south, and the frame's sides at
+// the hero's row never show the screens east or west. The north is never
+// clamped: the low presets always see far past the screen, as in the
+// reference. Areas can fix a preset (`camera: 'dungeon'`); other screens use
+// the player's choice in state.settings.camera.
 import * as THREE from 'three';
 import { camera, renderer, followSun } from './renderer.js';
-import { SCREEN_W, SCREEN_H, DEG } from './constants.js';
+import { DEG } from './constants.js';
 
-// Type A is the prototype's framing and stays the default. B, C and D follow
-// the research notes (higher, most overhead, closer) and are starting values
-// for M5 to tune. 'dungeon' is the fixed dungeon camera, identical to A for now.
+// A, B and dungeon are measured on the reference shots; C and D are guesses
+// until clean captures exist (art bible section 14).
 export const CAMERA_PRESETS = {
-  A: { label: 'Type A', pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
-  B: { label: 'Type B', pitch: 66, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
-  C: { label: 'Type C', pitch: 78, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
-  D: { label: 'Type D', pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 0.8 },
-  dungeon: { label: 'Dungeon', pitch: 60, fov: 30, padX: 0.3, padZ: 1.1, zoom: 1 },
+  A: { label: 'Type A', pitch: 21, fov: 44, height: 4.56, lead: 2.9 },
+  B: { label: 'Type B', pitch: 43.3, fov: 43.6, height: 11.2, lead: 0 },
+  C: { label: 'Type C', pitch: 60, fov: 40, height: 16, lead: 0 },
+  D: { label: 'Type D', pitch: 18, fov: 44, height: 3.4, lead: 2.2 },
+  dungeon: { label: 'Dungeon', pitch: 41.5, fov: 28, height: 12.7, lead: 0, fixed: true },
 };
 
 export const DEFAULT_PRESET = 'A';
+export const CAMERA_NEAR = 0.5;
+export const CAMERA_FAR = 400;
 
 export function registerCameraPreset(name, preset) {
   CAMERA_PRESETS[name] = { ...CAMERA_PRESETS[DEFAULT_PRESET], ...preset };
 }
 
-// The point the camera looks at: the centre of the current screen, or a point
-// in between two screens while sliding.
+// The subject point on the ground (y = 0) the camera is placed from: the
+// clamped hero, the room centre, or a point in between while sliding.
 export const camTarget = new THREE.Vector3();
 
 let presetName = DEFAULT_PRESET;
-let dist = 24;
 
 export const cameraPreset = () => presetName;
-export const cameraDistance = () => dist;
+export const currentCameraPreset = () => CAMERA_PRESETS[presetName];
 
 export function setCameraPreset(name = DEFAULT_PRESET) {
   if (!CAMERA_PRESETS[name]) throw new Error(`Unknown camera preset "${name}"`);
@@ -51,7 +54,7 @@ export function setCameraPreset(name = DEFAULT_PRESET) {
   fitCamera();
 }
 
-// Resize the canvas and fit the preset to the window's aspect ratio.
+// Resize the canvas and apply the preset's lens.
 export function fitCamera() {
   const p = CAMERA_PRESETS[presetName];
   const w = window.innerWidth;
@@ -59,19 +62,57 @@ export function fitCamera() {
   renderer.setSize(w, h);
   camera.aspect = w / h;
   camera.fov = p.fov;
-  const pitch = p.pitch * DEG;
-  const vf = (camera.fov * DEG) / 2;
-  const hf = Math.atan(Math.tan(vf) * camera.aspect);
-  const dW = (SCREEN_W / 2 + p.padX) / Math.tan(hf);
-  const dH = ((SCREEN_H / 2) * Math.sin(pitch) + p.padZ) / Math.tan(vf);
-  dist = p.distance ?? Math.max(dW, dH) * (p.zoom ?? 1);
+  camera.near = CAMERA_NEAR;
+  camera.far = CAMERA_FAR;
   camera.updateProjectionMatrix();
 }
 
+// Pose the camera for preset p around a subject point (art bible's placeRig).
+export function poseCamera(cam, p, subject) {
+  const pitch = p.pitch * DEG;
+  const lookZ = subject.z - (p.lead ?? 0);
+  cam.position.set(subject.x, p.height, lookZ + p.height / Math.tan(pitch));
+  cam.lookAt(subject.x, 0, lookZ);
+}
+
+// How much ground the preset shows around its subject, for the current aspect:
+// south  tiles from the subject to the ground at the frame's bottom edge
+// halfW  half the frame's width at the subject's row
+export function cameraFootprint(p = CAMERA_PRESETS[presetName], aspect = camera.aspect) {
+  const pitch = p.pitch * DEG;
+  const tv = Math.tan((p.fov * DEG) / 2);
+  const sin = Math.sin(pitch);
+  const cos = Math.cos(pitch);
+  const back = p.height / Math.tan(pitch) - (p.lead ?? 0); // camera z minus subject z
+  // Bottom-edge ray: forward (0, -sin, -cos) minus tv * up (0, cos, -sin).
+  const t = p.height / (sin + tv * cos);
+  const south = back + t * (-cos + tv * sin);
+  // View depth of the subject point: (subject - camera) . forward.
+  const depth = p.height * sin + back * cos;
+  return { south, halfW: depth * tv * aspect };
+}
+
+// The subject for a hero standing at pos inside rect {x0, z0, x1, z1}.
+export function subjectFor(pos, rect, p = CAMERA_PRESETS[presetName]) {
+  const cx = (rect.x0 + rect.x1) / 2;
+  const cz = (rect.z0 + rect.z1) / 2;
+  if (p.fixed) return new THREE.Vector3(cx, 0, cz);
+  const { south, halfW } = cameraFootprint(p);
+  const x = rect.x1 - rect.x0 >= 2 * halfW ? THREE.MathUtils.clamp(pos.x, rect.x0 + halfW, rect.x1 - halfW) : cx;
+  const zMax = rect.z1 - south;
+  const z = zMax >= rect.z0 ? THREE.MathUtils.clamp(pos.z, rect.z0, zMax) : zMax;
+  return new THREE.Vector3(x, 0, z);
+}
+
+// Follow the hero within the current screen (skipped while a slide runs).
+export function followSubject(pos, rect) {
+  if (tween) return;
+  camTarget.copy(subjectFor(pos, rect));
+}
+
 export function placeCamera() {
-  const pitch = CAMERA_PRESETS[presetName].pitch * DEG;
-  camera.position.set(camTarget.x, camTarget.y + Math.sin(pitch) * dist, camTarget.z + Math.cos(pitch) * dist);
-  camera.lookAt(camTarget);
+  poseCamera(camera, CAMERA_PRESETS[presetName], camTarget);
+  camera.userData.subject = camTarget;
   followSun(camTarget);
 }
 

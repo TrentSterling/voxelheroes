@@ -3,13 +3,14 @@
 import './style.css';
 import './content.js';
 import { scene, mountRenderer, renderScene } from './core/renderer.js';
-import { initCamera, placeCamera } from './core/camera.js';
+import { initCamera, placeCamera, followSubject } from './core/camera.js';
 import { initInput, input } from './core/input.js';
 import { initAudio } from './core/audio.js';
 import { startLoop } from './core/loop.js';
 import { setMode, updateMode } from './core/modes.js';
 import { state, serializeState, loadState } from './core/state.js';
 import { world, currentScreen } from './world/world.js';
+import { screenRect } from './world/grid.js';
 import { allAreas } from './world/areas.js';
 import { player } from './entities/player.js';
 import { initParticles, updateParticles } from './systems/particles.js';
@@ -42,6 +43,7 @@ function update(dt) {
   updateMode(dt);
   updateParticles(dt);
   world.flush();
+  followSubject(player, screenRect(state.sx, state.sy));
   placeCamera();
   input.endFrame();
 }
