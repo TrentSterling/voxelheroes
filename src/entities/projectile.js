@@ -61,9 +61,10 @@ export const DUST = [0xb4a894, 0x8a7e6c];
 
 let shots = 0;
 
-// Does something at world point (x, z) stop a shot? (feat/world counts room
-// side walls from their visible face.)
-export const shotBlocked = (x, z) => (world.shotBlockedAt ? world.shotBlockedAt(x, z) : world.blocksShot(Math.floor(x), Math.floor(z)));
+// Does something at world point (x, z) stop a shot? Room side walls count
+// from their visible face, half a tile in (world.shotBlockerAt names the
+// tile that stops it).
+export const shotBlocked = (x, z) => world.shotBlockedAt(x, z);
 
 export class Projectile extends Entity {
   constructor(opts = {}, def = {}) {
@@ -140,9 +141,11 @@ export class Projectile extends Entity {
       this.fizzle();
       return;
     }
-    if (!this.passWalls && shotBlocked(this.x, this.z)) {
-      const tx = Math.floor(this.x);
-      const tz = Math.floor(this.z);
+    const wall = this.passWalls ? null : world.shotBlockerAt(this.x, this.z);
+    if (wall) {
+      // the tile that stops it: by a room's side wall that is the wall, not
+      // the floor tile the shot is over
+      const [tx, tz] = wall;
       const hit = { damage: this.damage, fromX: this.x - dx, fromZ: this.z - dz, source: this.source, projectile: this };
       world.trigger(tx, tz, 'onShot', { projectile: this, hit });
       if (this.onHitWall(tx, tz) !== false) this.shatter(DUST);

@@ -134,7 +134,7 @@ function sameScreen(s) {
 }
 
 // Does something high (a wall, a tree: anything that stops shots) stand at world point (x, z)?
-const highAt = (x, z) => (world.shotBlockedAt ? world.shotBlockedAt(x, z) : world.blocksShot(Math.floor(x), Math.floor(z)));
+const highAt = (x, z) => world.shotBlockedAt(x, z);
 
 function endPull(result) {
   if (!pulling) return;
