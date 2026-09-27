@@ -141,6 +141,7 @@ export function installTestHook({ update, render }) {
       ROOM_STEP: transitions.ROOM_STEP,
       FADE_OUT: transitions.FADE_OUT,
       FADE_IN: transitions.FADE_IN,
+      WARP_FADE: transitions.WARP_FADE,
       WARP_HOLD: transitions.WARP_HOLD,
       AREA_HOLD: transitions.AREA_HOLD,
       shown: (key) => transitions.screenShown(world.screen(key)),

@@ -4,8 +4,9 @@
 // another area fades to black, fires 'area-enter', holds the black for the
 // loading card and fades in. Every crossing is walked with the arrow keys and
 // checked for its events, timing and where the hero lands. A cave door leads
-// into Hedge Burrow, a 12 x 9 room placed by tile, and its stairs lead out.
-export const description = "Walking between areas: slides inside an area in all four directions, fades with 'area-enter' and the loading-card hold into another area in all four directions, landing spots and edge links, and a door into a 12 x 9 interior and out.";
+// into Hedge Burrow, a 12 x 9 room placed by tile, and its stairs lead out;
+// a tunnel warps between two screens of one area without a loading card.
+export const description = "Walking between areas: slides inside an area in all four directions, fades with 'area-enter' and the loading-card hold into another area in all four directions, landing spots and edge links, a door into a 12 x 9 interior and out, and a warp inside one area.";
 
 const near = (a, b, eps = 0.02) => Math.abs(a - b) <= eps;
 const TICK = 1 / 60;
@@ -154,6 +155,22 @@ export default async function areasScenario(t) {
   // ---------------------------------------------------------------- slides inside Hedgerows
   await cross(t, tr, 'east', 'Hedge Gate', 'Hedgerows', 'slide');
   await cross(t, tr, 'south', 'Hedge Crossing', 'Hedgerows', 'slide');
+  await cross(t, tr, 'west', 'Hedge Hollow', 'Hedgerows', 'slide');
+
+  // A tunnel from Hedge Hollow to Hedge Crossing, a warp inside one area:
+  // it fades out and back in (WARP_FADE each) with no card and no 'area-enter'.
+  const areasBefore = (await t.events('area-enter')).length;
+  await t.walkTo(3.5, 5.7);
+  await pushUntilMoving(t, 'ArrowUp');
+  t.expect((await t.state()).mode === 'warp', 'Hedge Hollow: the tunnel starts a fade');
+  await t.waitFor((st) => st.mode === 'play', { seconds: 3 });
+  s = await t.state();
+  const tunnel = (await t.events('warp')).at(-1);
+  const out = (await t.events('room-enter')).at(-1);
+  const blink = out.time - tunnel.time;
+  t.expect(s.screenName === 'Hedge Crossing' && near(s.lx, 8) && near(s.lz, 5.5), `  out in Hedge Crossing at ${s.lx}, ${s.lz}`);
+  t.expect((await t.events('area-enter')).length === areasBefore && out.via === 'warp', "  no 'area-enter' (no loading card) inside one area; 'room-enter' via warp");
+  t.expect(Math.abs(blink - (2 * tr.WARP_FADE + tr.WARP_HOLD)) <= 2 * TICK, `  the blink takes ${blink.toFixed(3)} s (WARP_FADE ${tr.WARP_FADE} out and in)`);
   await cross(t, tr, 'west', 'Hedge Hollow', 'Hedgerows', 'slide');
   await cross(t, tr, 'north', 'Hedge Corner', 'Hedgerows', 'slide');
 

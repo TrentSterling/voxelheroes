@@ -2,14 +2,18 @@
 //
 //   slide  The hero walks off an edge into another screen of the same area:
 //          the camera slides over (SLIDE_TIME, ease in-out) while the hero
-//          walks about a tile in (SLIDE_STEP from the edge; in a room,
+//          is carried a tile in (SLIDE_STEP from the edge; in a room,
 //          ROOM_STEP past the wall the doorway is in). Mode 'scroll'.
 //   fade   The hero walks off an edge into another area, or takes a warp
 //          (doorway, stairs): fade to black, move, fade back in. Mode 'warp'.
-//          Arriving in another area holds the black for AREA_HOLD seconds, the
-//          time a loading card shows ('area-enter' starts it); a warp inside
-//          one area only blinks (WARP_HOLD).
-// Gameplay pauses in both modes; only the hero's walk animates.
+//          Arriving in another area is a load: FADE_OUT, AREA_HOLD seconds
+//          of black while the loading card shows ('area-enter' starts it),
+//          FADE_IN. A warp inside one area (stairs between the floors of a
+//          dungeon, warp tiles) fades out and in over WARP_FADE each, with
+//          no card.
+// Gameplay pauses in both modes; only the hero's walk animates. The times
+// are the gameplay spec's (sections 4.3 and 4.4), themselves guesses until
+// footage measures them.
 //
 // Events
 //   'screen-leave' { screen }            before a screen's entities are cleared
@@ -52,13 +56,14 @@ import { setFade } from '../ui/overlay.js';
 import { clearDistance } from './physics.js';
 import { spawnScreen } from './spawner.js';
 
-export const SLIDE_TIME = 0.5; // seconds for the slide to the next screen (a guess until the gameplay spec)
-export const SLIDE_STEP = 1.1; // tiles the hero walks in from the edge of the next screen or area
-export const ROOM_STEP = 1; // in a room: tiles past the inside face of the doorway's wall
-export const FADE_OUT = 0.35; // seconds to black
-export const FADE_IN = 0.35; // seconds back from black
-export const WARP_HOLD = 0.15; // seconds of black for a warp inside one area
-export const AREA_HOLD = 0.6; // seconds of black on entering another area: the loading card
+export const SLIDE_TIME = 0.8; // seconds for the slide to the next screen or room (48 ticks)
+export const SLIDE_STEP = 1; // tiles the hero ends up inside the next screen or area
+export const ROOM_STEP = 1; // in a room: tiles inside the floor, past the doorway's wall
+export const FADE_OUT = 0.25; // a load (into another area): seconds to black
+export const AREA_HOLD = 1; // a load: seconds of black for the loading card
+export const FADE_IN = 0.25; // a load: seconds back from black (1.5 s, 90 ticks, in all)
+export const WARP_FADE = 0.3; // a warp inside one area: seconds to black, and again back
+export const WARP_HOLD = 0; // a warp inside one area: seconds of black in between
 
 // The preset a screen is seen with: its own (dungeons fix one) or the player's.
 export const presetNameFor = (screen) => screen.camera ?? state.settings.camera;
@@ -246,7 +251,9 @@ export function startFade(dest, { via = 'warp', walkTo = null } = {}) {
     via,
     from,
     areaChange,
+    out: areaChange ? FADE_OUT : WARP_FADE,
     hold: areaChange ? AREA_HOLD : WARP_HOLD,
+    in: areaChange ? FADE_IN : WARP_FADE,
     walk: walkTo ? { x0: player.x, z0: player.z, x1: walkTo.x, z1: walkTo.z } : null,
     moved: false,
   };
@@ -269,15 +276,15 @@ export function enterWarp(ctx) {
 registerMode('warp', {
   update(dt) {
     const f = fade;
-    f.t += dt + 1e-9; // (a hair of slack, so 21 ticks of 1/60 s reach FADE_OUT)
-    const inAt = FADE_OUT + f.hold; // the fade-in starts
-    setFade(f.t < FADE_OUT ? f.t / FADE_OUT : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / FADE_IN));
+    f.t += dt + 1e-9; // (a hair of slack, so 15 ticks of 1/60 s reach 0.25 s)
+    const inAt = f.out + f.hold; // the fade-in starts
+    setFade(f.t < f.out ? f.t / f.out : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / f.in));
     if (!f.moved && f.walk) {
-      const k = Math.min(1, f.t / FADE_OUT);
+      const k = Math.min(1, f.t / f.out);
       player.x = f.walk.x0 + (f.walk.x1 - f.walk.x0) * k;
       player.z = f.walk.z0 + (f.walk.z1 - f.walk.z0) * k;
     }
-    if (!f.moved && f.t >= FADE_OUT) {
+    if (!f.moved && f.t >= f.out) {
       f.moved = true;
       clearScreen();
       const d = f.dest;
@@ -288,7 +295,7 @@ registerMode('warp', {
       if (f.areaChange) emit('area-enter', { area: d.screen.area, from: f.from?.area ?? null, via: f.via });
     }
     player.animate(dt, !f.moved && !!f.walk);
-    if (f.t >= inAt + FADE_IN) {
+    if (f.t >= inAt + f.in) {
       setFade(0);
       fade = null;
       setMode('play');

@@ -18,6 +18,8 @@
 // A cave door in Hedge Corner leads down into Hedge Burrow, one room of
 // 12 x 9 tiles: an interior whose screens are not 16 wide, so it is placed
 // by tile (`at`, the corner of screen column 474) instead of by `origin`.
+// A tunnel in Hedge Hollow comes out in Hedge Crossing: a warp inside one
+// area, so it blinks without a loading card.
 import { registerArea } from '../areas.js';
 
 // A 16 x 11 field ringed by trees, open on the named sides ('n', 's', 'e',
@@ -58,7 +60,11 @@ registerArea({
       rows: field('es', { '3,2': 'B', '11,3': ',', '4,7': 'R', '12,8': 'B', '7,1': '#', '8,1': 'D', '9,1': '#' }),
     },
     '1,0': { name: 'Hedge Gate', rows: field('wes', { '2,2': ',', '12,2': 'R', '4,8': 'B', '11,8': ',' }) },
-    '0,1': { name: 'Hedge Hollow', rows: field('nes', { '3,3': 'R', '12,2': 'B', '3,8': ',', '12,7': ',' }) },
+    '0,1': {
+      name: 'Hedge Hollow',
+      rows: field('nes', { '3,3': 'R', '12,2': 'B', '3,8': ',', '12,7': ',', '2,4': '#', '3,4': 'D', '4,4': '#' }),
+      warps: { D: { screen: [1, 1], x: 8, z: 5.5, yaw: 0 } }, // the tunnel, overriding the area's D
+    },
     '1,1': { name: 'Hedge Crossing', rows: field('nwes', { '3,2': 'B', '12,2': 'B', '3,8': 'R', '12,8': 'R' }) },
   },
 });
