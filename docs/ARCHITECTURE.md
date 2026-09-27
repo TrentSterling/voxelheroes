@@ -658,11 +658,14 @@ the room.
 **Backdrops.** `registerBackdrop(tileset, { charAt(tx, tz, info), north,
 south, side, spread })` fills the tiles around every area of that tileset with
 ordinary tiles, so the camera sees the world go on (section 8, "The far
-distance"). They are meshed in chunks of 8 x 8 tiles, and a chunk touching
-the play area in quarters of 4 x 4. Only the quarters touching the play area
-(the first one to four tiles out) are at full resolution; the rest is meshed
-at half resolution (1/4 tile blocks), without north faces and without casting
-shadows, which keeps the band cheap to draw. `cellAt` returns backdrop
+distance"). Each band tile is filled for the nearest area of its tileset
+(`charAt` gets its distances and edge cell), so areas that touch share one
+band that continues each area's own edge. They are meshed in chunks of 8 x 8
+tiles, and a chunk touching a play area in quarters of 4 x 4. Only the
+quarters touching a play area (the first one to four tiles out) are at full
+resolution; the rest is meshed at half resolution (1/4 tile blocks), without
+north faces and without casting shadows, which keeps the band cheap to draw.
+`cellAt` returns backdrop
 tiles too, so a screen's edge tiles blend into them. The overworld's band
 (`farband.js`) continues the edge tiles for a tile, then forest, then plateaus
 of one, two and four levels fronted by tree lines, up to 19 tiles north: the
