@@ -121,4 +121,9 @@ export class FloorMirror {
     u.tint.value.setRGB(...tint);
     if (!m.parent) this.scene.add(this.holes, m);
   }
+
+  // Approximate GPU memory of the reflection target (4x MSAA half float + depth, resolved colour).
+  memory() {
+    return this.mesh?.parent ? this.size[0] * this.size[1] * (8 * 4 + 4 * 4 + 8) : 0;
+  }
 }

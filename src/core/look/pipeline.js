@@ -470,13 +470,17 @@ export class LookPipeline {
     this.copyQ.render(this.renderer);
   }
 
-  // Render targets in bytes (for the frame-cost notes in the test hook).
-  memory() {
+  // Approximate GPU memory of the render targets in bytes (for the frame-cost notes in the test
+  // hook): 4x MSAA storage counted in full, half-float colour at 8 bytes a pixel.
+  memory({ ao = !!this.gtao, bloom = true, glare = true } = {}) {
     const px = this.w * this.h;
-    const hp = 8; // RGBA half float
-    let bytes = px * hp * 4 /* 4x MSAA colour */ + px * 4 * 4 /* MSAA depth */ + px * hp /* resolved */ + px * 4 /* depth texture */;
-    bytes += px * hp * 3; // ao, prepare, dof
-    bytes += (px / 4) * hp * 7; // glare
+    const hf = 8;
+    let bytes = px * (hf * 4 + 4 * 4) + px * (hf + 4); // MSAA colour + depth-stencil, resolved colour + depth
+    bytes += px * hf * 2; // DOF prepare + result
+    bytes += Math.ceil(px / (DOF_TILE * DOF_TILE)) * hf * 2; // tile CoC maps
+    if (ao) bytes += px * hf * 3; // AO result, GTAO + denoise targets
+    if (bloom) bytes += (px / 4) * hf * (1 + 2 * 1.33); // bright pass + blur mips
+    if (glare) bytes += (px / 4) * hf * 7;
     return bytes;
   }
 }

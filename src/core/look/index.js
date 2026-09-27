@@ -149,7 +149,8 @@ export function createLook({ renderer, scene, camera }) {
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => (watchdog.last = 0));
 
   // ---------------------------------------------------------------- per frame
-  // The screens around the camera subject: the current room, or two rooms during a slide.
+  // The screens around the camera subject: the current room, or two rooms during a slide. Areas
+  // whose screens are not SCREEN_W x SCREEN_H need a bound `roomRect` getter instead.
   function roomRect() {
     const x0 = Math.floor((subject.x - SCREEN_W / 2 + 0.01) / SCREEN_W) * SCREEN_W;
     const x1 = (Math.floor((subject.x + SCREEN_W / 2 - 0.01) / SCREEN_W) + 1) * SCREEN_W;
@@ -189,7 +190,7 @@ export function createLook({ renderer, scene, camera }) {
     camera.updateMatrixWorld();
     const hero = bound.hero;
     rig.place(hero ? { x: hero.x, z: hero.z } : subject, subject);
-    const rect = roomRect();
+    const rect = bound.roomRect?.() ?? roomRect();
     rig.cullLamps(rect);
     mirror.update({
       enabled: (L.reflect ?? 0) > 0 && Q.reflect,
@@ -247,6 +248,8 @@ export function createLook({ renderer, scene, camera }) {
     followSun(target) {
       subject.set(target.x, 0, target.z);
     },
+    // hero, cameraPreset(), cameraPresetName(); optional roomRect() -> { x0, x1, z0, z1 } (world
+    // x / z of the room or rooms the camera shows: polished floor and lamp culling)
     bind(opts) {
       Object.assign(bound, opts);
     },
@@ -282,6 +285,8 @@ export function createLook({ renderer, scene, camera }) {
         shadowMap: rig.sun.shadow.mapSize.x,
         lamps: rig.lamps.filter((l) => l.parent && l.layers.isEnabled(0)).length,
         passes: Q.post ? pipeline.stats.passes : 1,
+        // render targets of the look (approximate MB): post stack + polished floor
+        targetsMB: +(((Q.post ? pipeline.memory({ ao: Q.ao, bloom: Q.bloom, glare: Q.glare }) : 0) + mirror.memory()) / 1048576).toFixed(1),
         drops: [...watchdog.drops],
         watchdog: { frames: watchdog.frames, lastFrameMs: +watchdog.lastDt.toFixed(1), samples: watchdog.samples.length, hold: Math.max(0, Math.round(watchdog.hold)) },
         materials: materialValues(),
