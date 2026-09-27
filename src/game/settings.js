@@ -56,7 +56,18 @@ export function registerSettingApplier(key, fn) {
   if (!SETTINGS[key]) throw new Error(`registerSettingApplier: unknown setting "${key}"`);
   if (!appliers.has(key)) appliers.set(key, []);
   appliers.get(key).push(fn);
-  fn(state.settings[key]);
+  run(key, fn);
+}
+
+// An applier that throws (say, a camera preset another branch renamed) must
+// not stop the game from starting or an option from being stored, so the
+// error becomes a warning.
+function run(key, fn) {
+  try {
+    fn(state.settings[key]);
+  } catch (e) {
+    console.warn(`Setting "${key}": applying ${JSON.stringify(state.settings[key])} failed: ${e.message}`);
+  }
 }
 
 const allowed = (key, value) => !!SETTINGS[key] && SETTINGS[key].check(value);
@@ -72,7 +83,7 @@ function persist() {
 }
 
 function apply(key) {
-  for (const fn of appliers.get(key) ?? []) fn(state.settings[key]);
+  for (const fn of appliers.get(key) ?? []) run(key, fn);
 }
 
 // Change one option. Unknown keys throw (a typo is a bug); a value the key

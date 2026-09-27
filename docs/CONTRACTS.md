@@ -5,7 +5,7 @@ Seven streams build M2 at the same time: **hero**, **items**,
 This file fixes everything more than one of them touches: who owns each file,
 the units, the shared state, the events, the input actions and the APIs. All
 of it already exists in code on `feat/contracts`, and
-`scripts/scenarios/contracts-m2.mjs` checks it (139 checks). A stream builds
+`scripts/scenarios/contracts-m2.mjs` checks it (140 checks). A stream builds
 behind these names and changes none of them on its own; section 13 says how
 to ask for a change.
 
@@ -49,8 +49,9 @@ merges them all.
 - Talk to other streams through events, ids and the APIs in section 8. Code
   against a contract even when its real implementation is another stream's
   work: until that lands, the stand-in behind the name answers (the M1 sword,
-  the dialog menus, the banner item get, silent music). A marker, chest or
-  shop entry that names another stream's id warns and is skipped until merge.
+  the dialog menus, the banner item get, silent music). A marker, chest,
+  shop entry or warp that names another stream's id warns and is skipped
+  until merge.
 - Every number goes in your `TUNING` section (section 4), with the spec's
   Appendix A changed in the same step when it is a spec number.
 - Gameplay randomness comes from `random()` in `core/random.js` (seeded);
@@ -787,7 +788,8 @@ life and magic (`classStats`), starts play and emits `new-game`. `CLASSES`
 
 `setSetting(key, value)` (unknown keys throw; values not allowed return
 false), `getSetting`, `registerSettingApplier(key, fn)` (runs now and on each
-change), `resetSettings`, `textSpeed()`. Stored in localStorage for the
+change; one that throws logs a warning and the value is still stored),
+`resetSettings`, `textSpeed()`. Stored in localStorage for the
 browser, not per slot; defaults in `TUNING.options`.
 
 | Key | Values (default) | Applied by |
@@ -892,7 +894,7 @@ between rooms and outdoor areas (their far band of scenery).
 |---|---|---|
 | 0-99 | the overworld: 7 x 5 areas edge to edge from `[0, 0]`; with W x H screens per area, area (c, r) (spec 3, 1-based) at `[(c - 1) W, (r - 1) H]`. Today's 3 x 2 `overworld` sits at `[0, 0]` | overworld |
 | 100-199 | towns and other outdoor areas reached by warps: town t at `[100 + 10 t, 0]`, up to 8 x 10 screens | overworld |
-| 200-299 | dungeons, 16 x 12 rooms: dungeon d at `[200 + 10 d, 0]`, floor f in local rows `11 f` to `11 f + 9`; boss arenas (22 x 16) as areas of their own placed by tile in the dungeon's free columns. The crypt is dungeon 0 at `[200, 0]`, D1 at `[210, 0]` | dungeon |
+| 200-299 | dungeons, 16 x 12 rooms: dungeon d at `[200 + 10 d, 0]`, floor f in local rows `11 f` to `11 f + 9`; boss arenas (22 x 16) as areas of their own placed by tile in the dungeon's free columns. The crypt is dungeon 0 at `[200, 0]` once feat/world is merged (on main it is still at `[0, 10]`), D1 at `[210, 0]` | dungeon |
 | 300-399 | interiors (houses, shops, inns, caves): building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`; smaller rooms by tile at `[(300 + 2 (k % 50)) 16, 24 floor(k / 50)]` | overworld |
 | 400-409 | sword yard | hero |
 | 410-419 | overworld enemy field | foes-overworld |
@@ -996,3 +998,35 @@ dies (`player-revived`). The rest:
 | `index.html`, `style.css` | touch buttons for dash, guard, map, inventory and pause; the title's controls |
 | `README.md` | the controls table |
 | `scripts/scenarios/contracts.mjs` | the sword is J now that Space dashes |
+
+### Merging the M1.5 branches
+
+`feat/world`, `feat/look-kits` and `feat/look-render` branch from `a00fb70`,
+before main's M1 review fixes (`3f86c4d`), so merging any of them with main
+conflicts in world and look files (`core/camera.js`,
+`systems/transitions.js`, `debug/testhook.js`, `world/world.js`, ...)
+whatever this branch does. This branch adds no conflict of its own: the one
+file it shares with them is `core/state.js` (feat/world), in separate hunks.
+Trial merges of this branch with each of them, with those conflicts settled
+as below, build and pass `contracts-m2`, and the feat/world one passes
+feat/world's `default` scenario too. When settling main against feat/world,
+keep main's:
+
+- `CARRY` and the `carry` of the scroll and warp modes
+  (`systems/transitions.js`), and `playerCameraPresets` (`core/camera.js`);
+- `selectable: true` on presets A-D: feat/world's presets drop the flag, and
+  main's `chooseCameraPreset` then refuses every preset (the camera option
+  only warns);
+- the warp check that warns about an unknown area instead of throwing
+  (`world.js`, `checkWarp`): M2 streams warp into areas other streams add;
+- `spawnsAt` and the spawn marker checks (`world.js`): NPCs are placed with
+  it (8.12);
+- the test hook's imports (`activeSlot`, `registerPlayHook`,
+  `registerHudWidget`, `registerMode`, `playerCameraPresets`, ...), and in
+  `scripts/lib/bot.js` the `occupied` helper and `async function exit` (its
+  body awaits).
+
+The look trials took main's side of the `camera.js` conflicts
+(`debug/testhook.js` imports `playerCameraPresets` from it). The coin and
+magic pickups find their models by name (M1's `gemGeometry`, or look-kits'
+`coinModel` and `gemModel`), so they build before and after feat/look-kits.

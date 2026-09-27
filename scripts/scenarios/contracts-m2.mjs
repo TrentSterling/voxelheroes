@@ -970,6 +970,14 @@ export default async function contractsM2(t) {
     S.setSetting('camera', 'B');
     out.camera = h.camera.get();
     S.setSetting('camera', 'A');
+    // An applier that throws only warns (expected warning below); the option is still stored.
+    let calls = 0;
+    S.registerSettingApplier('autosave', (on) => {
+      calls++;
+      if (on) throw new Error('probe applier refuses');
+    });
+    out.throwing = [S.setSetting('autosave', true), h.state.settings.autosave, calls];
+    S.setSetting('autosave', false);
     out.stored = JSON.parse(localStorage.getItem('voxel-heroes:settings')).textSpeed;
     localStorage.setItem('voxel-heroes:settings', JSON.stringify({ ...JSON.parse(localStorage.getItem('voxel-heroes:settings')), textSpeed: 'slow', camera: 'Q' }));
     S.loadSettings();
@@ -980,6 +988,7 @@ export default async function contractsM2(t) {
   });
   t.expect(r.fast && r.cps === 90 && r.bad === false && /unknown setting/.test(r.unknown), 'setSetting checks keys and values');
   t.expect(r.camera === 'B', 'the camera option picks the camera preset');
+  t.expect(r.throwing[0] === true && r.throwing[1] === true && r.throwing[2] === 2, `an applier that throws only warns, and the option is stored (${r.throwing})`);
   t.expect(r.stored === 'fast' && r.reloaded[0] === 'slow' && r.reloaded[1] === 'A', 'options persist in localStorage; a stored value that is not allowed is ignored');
   t.expect((await t.events('settings-changed')).some((e) => e.key === 'textSpeed' && e.value === 'fast'), "'settings-changed' fires");
   await t.eval(() => {
