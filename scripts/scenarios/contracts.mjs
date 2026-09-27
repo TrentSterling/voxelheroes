@@ -32,7 +32,7 @@ export default async function contracts(t) {
   await kb.up('ArrowRight');
   await t.step(20 * DT);
   let n = await swings();
-  await t.press('Space');
+  await t.press('KeyJ');
   t.expect((await t.state()).mode === 'scroll' && (await swings()) === n, 'a sword press during the slide does not swing mid-slide');
   await t.waitFor((st) => st.mode === 'play', { seconds: 2 });
   await t.step(5 * DT);
@@ -44,7 +44,7 @@ export default async function contracts(t) {
   await t.step(0.5);
   n = await swings();
   await t.press('Escape');
-  await t.press('Space');
+  await t.press('KeyJ');
   await t.press('Escape');
   await t.step(0.2);
   s = await t.state();
@@ -56,7 +56,7 @@ export default async function contracts(t) {
   await kb.up('ArrowUp');
   await t.step(10 * DT);
   n = await swings();
-  await t.press('Space');
+  await t.press('KeyJ');
   await t.waitFor((st) => st.mode === 'play' && st.area === 'crypt', { seconds: 2 });
   await t.step(5 * DT);
   t.expect((await swings()) === n + 1, 'a sword press during the doorway warp swings on arrival in the Sunken Gate');
@@ -91,7 +91,7 @@ export default async function contracts(t) {
   // Bodies stop on the last step that keeps them apart (radii 0.34 + 0.3), like walls.
   t.expect(s.lx >= 8.5 + 0.64 - 1e-6 && s.lx < 8.5 + 0.64 + 0.075 && near(s.lz, 4.5, 0.01), `the hero stops against the NPC instead of walking through (lx ${s.lx})`);
   await t.shot('01-npc-blocks');
-  await t.press('Space');
+  await t.press('KeyJ');
   s = await t.state();
   const npcYaw = await t.eval(() => window.__voxelHeroes.entities.find((e) => e.type === 'npc').yaw);
   t.expect(s.mode === 'dialog' && s.dialog && !s.attacking, 'A beside the NPC opens its dialog instead of swinging');
