@@ -12,18 +12,22 @@
 //   }
 //   registerEntity('bat', (opts) => new Bat(opts));
 //
-// Stats: hp, r, speed, colors (death burst), geometry, contactDamage (1),
-// drops (drop table name, 'enemy'). Set countsForClear = false for enemies a
-// room can be cleared without killing.
+// Stats: hp, r, speed, colors (death burst; default: the model's colours),
+// the look: model (src/models, one frame), poses ({ name: model }, frames
+// swapped with this.mesh.setPose(name)) or geometry, contactDamage (1), drops
+// (drop table name, 'enemy'). Set countsForClear = false for enemies a room
+// can be cleared without killing. Enemies appear and vanish in white smoke,
+// stand on a soft contact shadow and burst into cubes of their own colours.
 import * as THREE from 'three';
-import { voxelMaterial } from '../core/voxel.js';
+import { makeCharacterMaterial } from '../core/materials.js';
 import { GROUND_Y } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { random } from '../core/random.js';
 import { lerpAngle } from '../core/math.js';
-import { burst } from '../systems/particles.js';
+import { burst, sparks, smoke } from '../systems/particles.js';
+import { PoseMesh, contactShadow, settleShadow } from '../models/kit.js';
 import { moveBody } from '../systems/physics.js';
 import { rollDrop } from '../systems/drops.js';
 import { hurtPlayer, checkRoomCleared } from '../systems/combat.js';
@@ -40,14 +44,18 @@ export class Enemy extends Entity {
     this.hp = def.hp;
     this.maxHp = def.hp;
     this.speed = def.speed;
-    this.colors = def.colors;
+    this.colors = def.colors ?? (def.poses ? Object.values(def.poses)[0] : def.model)?.colors ?? [0xffffff];
     this.contactDamage = def.contactDamage ?? 1;
     this.drops = def.drops ?? 'enemy';
-    this.mat = voxelMaterial.clone(); // own material so the hit flash is per enemy
-    this.mesh = new THREE.Mesh(def.geometry, this.mat);
+    this.mat = makeCharacterMaterial(); // own material so the hit flash is per enemy
+    this.mesh = def.poses ? new PoseMesh(def.poses, this.mat) : new THREE.Mesh(def.geometry ?? def.model.geometry, this.mat);
     this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
     this.holder = new THREE.Group();
     this.holder.add(this.mesh);
+    this.shadowR = def.shadow ?? def.r * 1.15;
+    this.shadow = contactShadow(this.shadowR);
+    this.holder.add(this.shadow);
     this.holder.scale.setScalar(0.001);
     this.holder.position.set(this.x, GROUND_Y, this.z);
     this.object = this.holder;
@@ -75,7 +83,7 @@ export class Enemy extends Entity {
       if (this.spawnT <= 0) {
         this.spawned = true;
         this.growT = 0;
-        burst(this.x, GROUND_Y + 0.3, this.z, [0xffffff, 0xdddddd, 0xbbbbbb], 12, { speed: 2, up: 2, size: 0.09, life: 0.5 });
+        smoke(this.x, GROUND_Y + 0.1, this.z, 8);
       }
       return;
     }
@@ -99,6 +107,7 @@ export class Enemy extends Entity {
 
     this.holder.position.set(this.x, GROUND_Y, this.z);
     this.holder.rotation.y = lerpAngle(this.holder.rotation.y, this.yaw, Math.min(1, dt * 12));
+    settleShadow(this.shadow, this.mesh.position.y, this.shadowR);
 
     if (this.flashT > 0) {
       this.flashT -= dt;
@@ -123,7 +132,8 @@ export class Enemy extends Entity {
     const d = Math.hypot(dx, dz) || 1;
     this.kx = (dx / d) * (hit.knockback ?? 9);
     this.kz = (dz / d) * (hit.knockback ?? 9);
-    burst(this.x, GROUND_Y + 0.35, this.z, [0xffffff, 0xfff3b0], 6, { speed: 2.5, size: 0.06, life: 0.35, up: 3 });
+    sparks(this.x, GROUND_Y + 0.35, this.z, [0xffffff, 0xfff3b0], 8, { speed: 3, size: 0.05, life: 0.3, up: 3 });
+    burst(this.x, GROUND_Y + 0.35, this.z, this.colors, 4, { speed: 2.5, size: 0.07, life: 0.35, up: 3 });
     if (this.hp <= 0) this.die(hit);
     else sfx.hit();
     return true;
@@ -132,6 +142,7 @@ export class Enemy extends Entity {
   die(hit = null) {
     this.remove();
     burst(this.x, GROUND_Y + 0.35, this.z, this.colors, 34, { speed: 3.5, size: 0.12, up: 5, life: 1.1 });
+    smoke(this.x, GROUND_Y + 0.15, this.z, 5, { radius: 0.13 });
     sfx.kill();
     rollDrop(this.drops, this.x, this.z);
     this.markDone();
