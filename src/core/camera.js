@@ -273,7 +273,9 @@ export function snapCamera(target) {
 }
 
 // ---------------------------------------------------------------- slide
-// A tween moves camTarget from where it is to `to` over `dur` seconds.
+// startCameraTween(to, dur, { ease, preset, rect, anchor }) moves camTarget
+// from where it is to `to` over `dur` seconds (a function in place of the
+// options is the ease, as in M1's startCameraTween(to, dur, ease)).
 // stepCameraTween(dt) advances it and returns the linear progress 0..1 so the
 // caller can move other things (the hero) in step with the camera. Given a
 // preset (and the rect it is fitted to), the tween also switches to it,
@@ -290,7 +292,8 @@ export const easeInOutQuad = (k) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k +
 
 let tween = null;
 
-export function startCameraTween(to, dur, { ease = easeInOutQuad, preset = null, rect = null, anchor = null } = {}) {
+export function startCameraTween(to, dur, opts = {}) {
+  const { ease = easeInOutQuad, preset = null, rect = null, anchor = null } = typeof opts === 'function' ? { ease: opts } : opts;
   const before = currentLens();
   if (preset && !CAMERA_PRESETS[preset]) throw new Error(`Unknown camera preset "${preset}"`);
   if (preset) presetName = preset;
