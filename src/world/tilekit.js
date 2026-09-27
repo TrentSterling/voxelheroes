@@ -86,10 +86,12 @@ export function doorProp(ctx) {
 }
 
 // A flickering flame on a brazier: two glowing frames swapped at ~7 fps, gently breathing.
+// Glow 1.3: bright enough to bloom, low enough that the tone curve keeps it saturated yellow and
+// orange (at 2.2 it rolled off to a pale cream blob; the references' flames never burn to white).
 let flameMat = null;
 function flameMaterial() {
   if (!flameMat) {
-    flameMat = makeGlowMaterial(0xffffff, 2.2);
+    flameMat = makeGlowMaterial(0xffffff, 1.3);
     flameMat.vertexColors = true; // the flame model carries its own colours
   }
   return flameMat;

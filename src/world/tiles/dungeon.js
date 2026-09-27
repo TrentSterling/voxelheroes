@@ -280,6 +280,11 @@ registerTile('dungeon', '~', {
   },
 });
 
+// Statues and braziers are stone props at character resolution: a layer of their own with the
+// prop material kind (the room's faint seams at roughness 0.7, art bible section 6), not the
+// detail layer's character seams, which turn them into a dense bright grid under the lamps.
+registerLayer('stone-props', { res: FPT, kind: 'prop' });
+
 const statueGrid = statue();
 registerTile('dungeon', 'S', {
   name: 'statue',
@@ -287,7 +292,7 @@ registerTile('dungeon', 'S', {
   detailHeight: statueGrid.sy,
   build(ctx) {
     fineFloor(ctx);
-    ctx.D.stamp(statueGrid, ctx.FX0 + (FPT - statueGrid.sx) / 2, 1, ctx.FZ0 + (FPT - statueGrid.sz) / 2);
+    ctx.voxelLayer('stone-props').stamp(statueGrid, ctx.FX0 + (FPT - statueGrid.sx) / 2, 1, ctx.FZ0 + (FPT - statueGrid.sz) / 2);
   },
 });
 
@@ -298,7 +303,7 @@ registerTile('dungeon', 'F', {
   detailHeight: brazierGrid.sy,
   build(ctx) {
     fineFloor(ctx);
-    ctx.D.stamp(brazierGrid, ctx.FX0 + (FPT - brazierGrid.sx) / 2, 1, ctx.FZ0 + (FPT - brazierGrid.sz) / 2);
+    ctx.voxelLayer('stone-props').stamp(brazierGrid, ctx.FX0 + (FPT - brazierGrid.sx) / 2, 1, ctx.FZ0 + (FPT - brazierGrid.sz) / 2);
   },
   prop: flameProp,
 });

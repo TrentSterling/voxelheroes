@@ -38,6 +38,10 @@ export const LOOK_DAY = {
   charMaterial: { grid: { width: 0.06, dark: 0.62 } },
   // fine kind (dungeon floors at 1/16): the golden-dungeon material values in every look
   fineMaterial: { roughness: 0.42, bevel: 0.16, bevelTilt: 0.75, edgeLight: 0.05, grid: { width: 0.06, dark: 0.85 } },
+  // prop kind (statues, braziers at 1/16), merged over `material`: the lab's statues are the room
+  // material at roughness 0.7 (art bible section 6: "statues and drums use the voxel material at
+  // roughness 0.7"), so they read as matte stone instead of a dense grid of character seams
+  propMaterial: { roughness: 0.7 },
   // water (ref 28): grey-blue with darker diagonal wave troughs, round soft glints 1.5 to 2 blocks across
   // riding the crests, far water paler (sky sheen at grazing angles) with glints that stay bright
   // through the depth-of-field blur
@@ -106,19 +110,21 @@ export const LOOK_CRYPT = {
   material: { roughness: 0.42, bevel: 0.16, bevelTilt: 0.75, edgeLight: 0.05, grid: { width: 0.06, dark: 0.85 } },
   charMaterial: { grid: { width: 0.06, dark: 0.62 } },
   fineMaterial: { roughness: 0.42, bevel: 0.16, bevelTilt: 0.75, edgeLight: 0.05, grid: { width: 0.06, dark: 0.85 } },
-  // the lab's golden room inherits its first-pass water: bright blue, stronger ripples, dense small
-  // glints, no troughs or sheen
+  propMaterial: { roughness: 0.7 },
+  // dark still water (the bible has no dungeon water yet; the lab room's first-pass water blew out
+  // to white under the lamps and bloom): deep blue-black, faint ripples and troughs, a few dim
+  // glints, no sky sheen
   water: {
-    color: 0x1f78d8,
-    opacity: 0.9,
-    roughness: 0.12,
-    ripple: 0.16,
-    sparkle: 2.5,
-    glintSize: 1.0,
-    glintDensity: 1.0,
+    color: 0x1c2c4a,
+    opacity: 0.95,
+    roughness: 0.35,
+    ripple: 0.05,
+    sparkle: 0.3,
+    glintSize: 1.2,
+    glintDensity: 0.22,
     glintFar: 0,
     glintGrow: 0,
-    trough: 0,
+    trough: 0.35,
     troughDir: [0.8, 0.6],
     troughFreq: 1.6,
     sheen: 0,

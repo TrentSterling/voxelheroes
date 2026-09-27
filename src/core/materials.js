@@ -4,6 +4,8 @@
 //   getMaterial('terrain')    terrain blocks (1/8 tile): faint seams (x0.88)
 //   getMaterial('character')  characters, props and pickups (1/16 tile): clear seams (x0.62)
 //   getMaterial('fine')       fine floors built at character resolution (dungeon floors, 1/16 tile)
+//   getMaterial('prop')       static stone props at character resolution (statues, braziers): the
+//                             room's faint seams at roughness 0.7, not the characters' clear seams
 //   makeCharacterMaterial()   a new unshared character material (per-entity hit flash); it keeps the
 //                             bevel and seam shader and follows look changes like the shared one
 //   makeGlowMaterial(color, intensity)  emissive-only (unlit, HDR) so bloom and glare catch it;
@@ -20,7 +22,7 @@
 //   seam       a thin line of half-width `grid.width` darkens to `grid.dark` around every face
 import * as THREE from 'three';
 
-export const MATERIAL_KINDS = ['terrain', 'character', 'fine'];
+export const MATERIAL_KINDS = ['terrain', 'character', 'fine', 'prop'];
 
 // ---------------------------------------------------------------- shared uniforms
 // One seam switch for every kind (the reference has a menu option to hide seam lines).
@@ -41,7 +43,7 @@ function uniformBag() {
   };
 }
 
-const BAGS = { terrain: uniformBag(), character: uniformBag(), fine: uniformBag() };
+const BAGS = { terrain: uniformBag(), character: uniformBag(), fine: uniformBag(), prop: uniformBag() };
 
 // ---------------------------------------------------------------- voxel material
 const VOXEL_VERTEX_PARS = /* glsl */ `
@@ -131,6 +133,7 @@ const SHARED = {
   terrain: new VoxelMaterial({}, 'terrain'),
   character: new VoxelMaterial({}, 'character'),
   fine: new VoxelMaterial({}, 'fine'),
+  prop: new VoxelMaterial({}, 'prop'),
 };
 
 export function getMaterial(kind = 'terrain') {
@@ -321,13 +324,15 @@ function applyBag(U, M = {}) {
 }
 
 // Switch every kind to a look's values: `material` is the terrain kind, `charMaterial` and
-// `fineMaterial` are merged over it for the other kinds (as the lab does), `water` sets the water.
+// `propMaterial` are merged over it (as the lab does), `fineMaterial` replaces it for the fine kind,
+// `water` sets the water.
 export function applyMaterialLook(look) {
   const base = look.material ?? {};
   const merge = (over = {}) => ({ ...base, ...over, grid: { ...base.grid, ...over.grid } });
   applyBag(BAGS.terrain, base);
   applyBag(BAGS.character, merge(look.charMaterial));
   applyBag(BAGS.fine, look.fineMaterial ?? base);
+  applyBag(BAGS.prop, merge(look.propMaterial));
   for (const kind of MATERIAL_KINDS) SHARED[kind].roughness = BAGS[kind].voxRoughness.value;
   applyWater({ ...WATER_DEFAULTS, ...(look.water ?? {}) });
 }
