@@ -1,0 +1,34 @@
+.item-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-slot-button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font: 700 12px var(--pixel);
+  color: #1c1405;
+  background: var(--gold);
+}
+
+.item-slot-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.item-slot-icon svg {
+  width: 100%;
+  height: 100%;
+  shape-rendering: crispEdges;
+}

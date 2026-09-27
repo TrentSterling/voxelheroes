@@ -1,5 +1,9 @@
 // Tiny WebAudio synth for retro sound effects. Nothing plays until the
-// player presses a key or taps, which is when init() runs.
+// player presses a key or taps, which is when initAudio() runs.
+//
+// Play a sound with sfx.name(). A feature adds its own sounds from its own
+// file with registerSfx('bomb', () => { noise(...); tone(...); }), built from
+// the exported tone() and noise() voices.
 let ctx = null;
 let master = null;
 export let muted = false;
@@ -24,7 +28,9 @@ export function toggleMute() {
   return muted;
 }
 
-function tone(freq, dur, { type = 'square', vol = 0.12, to = null, delay = 0 } = {}) {
+export const isMuted = () => muted;
+
+export function tone(freq, dur, { type = 'square', vol = 0.12, to = null, delay = 0 } = {}) {
   if (!ctx) return;
   const t = ctx.currentTime + delay;
   const o = ctx.createOscillator();
@@ -39,7 +45,7 @@ function tone(freq, dur, { type = 'square', vol = 0.12, to = null, delay = 0 } =
   o.stop(t + dur + 0.02);
 }
 
-function noise(dur, { vol = 0.2, freq = 2000, q = 1, delay = 0 } = {}) {
+export function noise(dur, { vol = 0.2, freq = 2000, q = 1, delay = 0 } = {}) {
   if (!ctx) return;
   const t = ctx.currentTime + delay;
   const len = Math.floor(ctx.sampleRate * dur);
@@ -85,3 +91,8 @@ export const sfx = {
   start: () => [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, { vol: 0.07, delay: i * 0.08 })),
   over: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.3, { vol: 0.09, delay: i * 0.18, type: 'triangle' })),
 };
+
+export function registerSfx(name, fn) {
+  if (sfx[name]) throw new Error(`Sound "${name}" is already registered`);
+  sfx[name] = fn;
+}
