@@ -46,8 +46,8 @@ src/
     math.js             lerpAngle, clamp, dist2d, yawDir
   world/
     tiles.js            TILE REGISTRY: defineTileset, registerTile, getTile
-    tiles/overworld.js  overworld kit (1/8 tile blocks): ground kinds, trees, rocks, raised ground and cliffs, caves, stairs, water, bridge, fence, bush, sign, grave, pot, chest
-    tiles/dungeon.js    dungeon kit: walls by room position, fine floors, statues, braziers, lamps, dark water, stairs, pits, plates, doors, chests; the room ring
+    tiles/overworld.js  overworld kit (1/8 tile blocks): ground, trees, rocks, cliffs, caves, water, bridge, fence, props
+    tiles/dungeon.js    dungeon kit: walls by room position, fine floors, lamps, doors, room pieces, the room ring
     tiles/farband.js    the far distance: a backdrop of forest and plateaus around overworld areas
     terrain.js          terrain builder: layers (terrain 1/8, fine and detail 1/16), margins, room rings, backdrops
     tilekit.js          shared tile behaviour: bush/door/chest/flame props, cutPlant, unlockDoor, openChest
@@ -566,9 +566,9 @@ voxel. Every mesh is a `DenseGrid` meshed by `meshVoxels` (`core/vox.js`) and
 drawn with the material kinds of `core/materials.js` (see Look). Content makes
 no materials of its own beyond the contract: `getMaterial('terrain' |
 'character' | 'fine')`, `makeCharacterMaterial()` (an enemy's own hit flash),
-`makeGlowMaterial(color, intensity)` (flames, lamp strips, sparks; pass
-`0xffffff` and set `vertexColors` for models that carry their own colours) and
-`makeWaterMaterial()`.
+`makeGlowMaterial(color, intensity)` (flames, lamp strips, sparks, and black for
+the unlit south wall; pass `0xffffff` and set `vertexColors` for models that
+carry their own colours) and `makeWaterMaterial()`.
 
 | What | Where |
 |------|-------|
@@ -619,9 +619,11 @@ The rest of `ctx`: `x, z` (local) and `tx, tz` (global) tile coordinates,
 `tileAt(dx, dz)` and `defAt(dx, dz)` (neighbours, across screen edges and into
 the backdrop), `screen` (the screen being built; null for a backdrop chunk),
 `owner` (the screen the tile belongs to), `own` (false while the tile is only
-built as another screen's margin), `world`, `area`. M1 builders still work:
-`ctx.g` and `ctx.layer(name)` write terrain blocks counted from the screen's
-corner (`ctx.bx`, `ctx.bz`).
+built as another screen's margin), `world`, `area`, and
+`voxelLayer(name)`: a layer added with `registerLayer(name, { material,
+castShadow, receiveShadow })` (terrain resolution, its own material), written
+like `ctx.T`. M1 builders still work: `ctx.g` and `ctx.layer(name)` write
+terrain blocks counted from the screen's corner (`ctx.bx`, `ctx.bz`).
 
 Rules:
 
@@ -708,15 +710,16 @@ tier set back one block and a lit ledge 5 blocks deep, then black
 (`wallColor(along, h, depth)`). A `W` takes its look from its place in the
 room that owns it: row 0 is the north wall with its inner face between rows 0
 and 1 and two lamps at +-4.4 tiles from the room centre; the last row is the
-south wall, one tile tall and pure black (a screen with `southWall: false`
-shows floor there instead); the first and last columns are side walls, drawn
-half a tile inward in room areas (13 tiles of floor show); a `W` anywhere else
-is a full block of wall. So the same maps work in 16 x 11 screens and in the
-16 x 12 room layout. Doorways are gaps in a wall; a locked door is a pair of
-leaves one tile wide each and the full wall height, flush with the wall's
-inner face (`doorProp`). Floors are fine voxels (`fineFloor(ctx)`,
-`floorColor(X, Z)`): rounded-square tiles with a grout line, a lighter ring and
-a darker centre.
+south wall, one tile tall, pure black and unlit like the lab's (the
+`'unlit-black'` layer, `makeGlowMaterial(0x000000)`, no shadow; a screen with
+`southWall: false` shows floor there instead); the first and last columns
+are side walls, drawn half a tile inward in room areas (13 tiles of floor
+show); a `W` anywhere else is a full block of wall. So the same maps work in
+16 x 11 screens and in the 16 x 12 room layout. Doorways are gaps in a wall; a
+locked door is a pair of leaves one tile wide each and the full wall height,
+flush with the wall's inner face (`doorProp`). Floors are fine voxels
+(`fineFloor(ctx)`, `floorColor(X, Z)`): rounded-square tiles with a grout
+line, a lighter ring and a darker centre.
 
 A lamp is a small dark sconce on the wall, a glow strip on it and a warm point
 light, all fixtures of the screen. The light comes from `makeLampLight()` in

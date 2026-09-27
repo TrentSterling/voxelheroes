@@ -12,8 +12,8 @@
 // takes its look from its place in the room that owns it:
 //   row 0            north wall, inner face on the grid line between rows 0 and 1; lamps (sconces
 //                    with a glow strip and a warm point light) at +-4.4 tiles from the room centre
-//   last row         south wall, 1 tile tall and pure black (a room with `southWall: false` shows
-//                    floor there instead)
+//   last row         south wall, 1 tile tall, pure black and unlit (a room with `southWall: false`
+//                    shows floor there instead)
 //   first/last col   side walls; in room areas (area.rooms) drawn half a tile inward, so the
 //                    visible floor is 13 tiles wide
 //   anywhere else    a full block of wall
@@ -30,7 +30,7 @@ import { makeGlowMaterial } from '../../core/materials.js';
 import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile, getTile } from '../tiles.js';
 import { GOLD } from '../palette.js';
-import { BPT, FPT, registerRing, screenBox } from '../terrain.js';
+import { BPT, FPT, registerRing, registerLayer, screenBox } from '../terrain.js';
 import { doorProp, chestProp, flameProp, spikeBallProp, pushBlockProp, unlockDoor, openChest } from '../tilekit.js';
 import { statue, brazier } from '../../models/props.js';
 
@@ -106,9 +106,12 @@ function sideWall(ctx, west, inset, za = ctx.Z0, zb = ctx.Z0 + BPT) {
   wallBox(ctx, xa, za, xb, zb, (X, Z) => Z, (X) => Math.abs(X - xin));
 }
 
-// South wall: a black band one tile tall over [xa, xb).
+// South wall: a band one tile tall over [xa, xb), pure black. It is unlit (as the lab draws it), so
+// it goes into a layer of its own with an unlit black material and casts no shadow.
+registerLayer('unlit-black', { material: makeGlowMaterial(0x000000, 1), castShadow: false, receiveShadow: false });
+
 function southWall(ctx, xa, xb) {
-  ctx.T.box(xa, 1, ctx.Z0, xb, 1 + SOUTH, ctx.Z0 + BPT, GOLD.south);
+  ctx.voxelLayer('unlit-black').box(xa, 1, ctx.Z0, xb, 1 + SOUTH, ctx.Z0 + BPT, GOLD.south);
 }
 
 // Where the tile stands in the room that owns it (null for tiles outside every screen).

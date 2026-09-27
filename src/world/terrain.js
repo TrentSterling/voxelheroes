@@ -6,7 +6,8 @@
 //   ctx.F  fine     1/16 tile voxels     getMaterial('fine')       dungeon floors
 //   ctx.D  detail   1/16 tile voxels     getMaterial('character')  small static things (flowers)
 // plus flat water planes (ctx.water(), makeWaterMaterial) and fixtures (ctx.fixture(obj): lamp
-// lights, glow strips), which the screen owns like its meshes.
+// lights, glow strips), which the screen owns like its meshes. Layers added with registerLayer
+// (a terrain-resolution grid with its own material) are written through ctx.voxelLayer(name).
 //
 // Coordinates are global, so a tile looks the same whichever screen builds it:
 //   terrain block X = tx * 8 + i (i = 0..7, east), Z = tz * 8 + k (k = 0..7, south); Y = 0 is the
@@ -361,6 +362,8 @@ function buildRect(world, env) {
         if (own) fixtures.push(obj);
         return obj;
       },
+      // A registered layer (registerLayer) as a writer in global block coordinates, like ctx.T.
+      voxelLayer: (name) => layerFor(name),
       // M1 interface: ctx.g / ctx.layer(name) take blocks from the screen's corner.
       get g() {
         return (legacy ??= legacyGrid(T, x0 * BPT, z0 * BPT, rand));
