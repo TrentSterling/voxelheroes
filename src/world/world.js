@@ -11,13 +11,37 @@
 //   world.setTile(tx, tz, '.', { persist: true })   // also remembered in save data
 // Rebuilds keep every other tile's colours: each tile replays the random
 // stream it used on the first build.
+//
+// Addressing: screens have per-area sizes (areas.js), so a screen is looked
+// up by area and local position (world.screen('crypt', 0, 1), or its key
+// 'crypt:0,1'), or from a global tile (world.locate(tx, tz)) through a coarse
+// spatial index. Each screen carries its footprint: w, h, x0, z0, x1, z1.
 import * as THREE from 'three';
 import { VoxelGrid, buildGeometry, voxelMaterial, rng } from '../core/voxel.js';
-import { SCREEN_W, SCREEN_H, R, TV } from '../core/constants.js';
+import { R, TV } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { getTile, tilesetFloor, isSolidDef } from './tiles.js';
+import { areaScreenSize } from './areas.js';
 import { screenKey, tileKey } from './grid.js';
+
+// The spatial index: square cells of CELL tiles, each listing the screens
+// that overlap it.
+const CELL = 32;
+const cellKey = (cx, cz) => `${cx},${cz}`;
+
+// Room side walls (area.rooms) are drawn half a tile inward, so their
+// collision reaches that far past their own column.
+export const WALL_INSET = 0.5;
+
+// The solid box [x0, z0, x1, z1] of a solid tile located by locate().
+function solidExtent(at, tx, tz) {
+  if (at.screen.area.rooms) {
+    if (at.lx === 0) return [tx, tz, tx + 1 + WALL_INSET, tz + 1];
+    if (at.lx === at.screen.w - 1) return [tx - WALL_INSET, tz, tx + 1, tz + 1];
+  }
+  return [tx, tz, tx + 1, tz + 1];
+}
 
 const waterMaterial = new THREE.MeshLambertMaterial({
   vertexColors: true,
@@ -47,8 +71,10 @@ export function registerLayer(name, def) {
 export class World {
   constructor() {
     this.scene = null;
-    this.screens = new Map(); // 'sx,sy' -> screen
+    this.screens = new Map(); // 'area:i,j' -> screen
     this.areas = new Map(); // id -> area def
+    this.cells = new Map(); // spatial index: 'cx,cz' -> screens overlapping that cell
+    this.lastHit = null; // the screen the last tile lookup found
     this.ticking = new Set(); // props with userData.tick(t, dt)
     this.dirty = new Set(); // screens waiting to be re-meshed
   }
@@ -75,14 +101,14 @@ export class World {
   addArea(area) {
     this.areas.set(area.id, area);
     const [ox, oy] = area.origin ?? [0, 0];
+    const [w, h] = areaScreenSize(area);
     const areaTileset = area.tileset ?? 'overworld';
     for (const [key, def] of Object.entries(area.screens)) {
       const [lx, ly] = key.split(',').map(Number);
-      const sx = ox + lx;
+      const sx = ox + lx; // global screen, counted in this area's screen size
       const sy = oy + ly;
-      const gkey = screenKey(sx, sy);
-      const clash = this.screens.get(gkey);
-      if (clash) throw new Error(`Screen ${gkey} belongs to both area "${clash.area.id}" and area "${area.id}"`);
+      const x0 = sx * w; // north-west corner, global tiles
+      const z0 = sy * h;
       const tileset = def.tileset ?? areaTileset;
       const markers = { ...area.spawns, ...def.spawns };
       const floor = def.floor ?? area.floor ?? tilesetFloor(tileset);
@@ -92,18 +118,24 @@ export class World {
           const m = markers[ch];
           if (!m) return ch;
           const { type, tile, once, ...opts } = typeof m === 'string' ? { type: m } : m;
-          const tx = sx * SCREEN_W + x;
-          const tz = sy * SCREEN_H + z;
+          const tx = x0 + x;
+          const tz = z0 + z;
           spawns.push({ type, x, z, opts, flag: once ? `taken:${tx},${tz}` : null });
           return tile ?? floor;
         })
       );
-      this.screens.set(gkey, {
-        key: gkey,
+      const screen = {
+        key: screenKey(area.id, lx, ly),
         sx,
         sy,
         lx,
         ly,
+        w, // tiles, west to east
+        h, // tiles, north to south
+        x0,
+        z0,
+        x1: x0 + w,
+        z1: z0 + h,
         area,
         def,
         name: def.name,
@@ -117,8 +149,27 @@ export class World {
         meshes: [], // { name, mesh, layer }
         rngStates: null, // per-tile random state from the first build
         built: null, // tiles as last meshed, to skip needless rebuilds
-      });
+      };
+      this.index(screen);
+      this.screens.set(screen.key, screen);
     }
+  }
+
+  // Add a screen to the spatial index; two screens may never share a tile.
+  index(screen) {
+    for (let cx = Math.floor(screen.x0 / CELL); cx <= Math.floor((screen.x1 - 1) / CELL); cx++)
+      for (let cz = Math.floor(screen.z0 / CELL); cz <= Math.floor((screen.z1 - 1) / CELL); cz++) {
+        const k = cellKey(cx, cz);
+        let list = this.cells.get(k);
+        if (!list) this.cells.set(k, (list = []));
+        for (const o of list)
+          if (o.x0 < screen.x1 && screen.x0 < o.x1 && o.z0 < screen.z1 && screen.z0 < o.z1)
+            throw new Error(
+              `Screen ${screen.key} (tiles x ${screen.x0}-${screen.x1 - 1}, z ${screen.z0}-${screen.z1 - 1}) overlaps ` +
+                `screen ${o.key} (x ${o.x0}-${o.x1 - 1}, z ${o.z0}-${o.z1 - 1}): give one of the areas another origin`
+            );
+        list.push(screen);
+      }
   }
 
   // Catch map typos and bad warp targets at startup, with a readable message.
@@ -130,22 +181,44 @@ export class World {
             throw new Error(`Unknown tile "${ch}" in area "${s.area.id}" screen ${s.lx},${s.ly} ("${s.name}") at ${x},${z} (tileset "${s.tileset}")`);
         })
       );
-      for (const spec of Object.values(s.def.warps ?? {})) this.resolveWarp(s.area, spec);
+      for (const [ch, spec] of Object.entries(s.def.warps ?? {})) this.checkSpot(`Warp "${ch}" of ${s.key}`, this.resolveWarp(s.area, spec));
     }
-    for (const area of this.areas.values()) for (const spec of Object.values(area.warps ?? {})) this.resolveWarp(area, spec);
+    for (const area of this.areas.values())
+      for (const [ch, spec] of Object.entries(area.warps ?? {})) this.checkSpot(`Warp "${ch}" of area "${area.id}"`, this.resolveWarp(area, spec));
+  }
+
+  // A destination must be inside its screen and on a tile the hero can stand on.
+  checkSpot(what, { screen, x, z }) {
+    if (!(x >= 0 && x < screen.w && z >= 0 && z < screen.h))
+      throw new Error(`${what} lands at ${x},${z}, outside screen ${screen.key} (${screen.w} x ${screen.h} tiles)`);
+    if (this.isSolid(screen.x0 + Math.floor(x), screen.z0 + Math.floor(z)))
+      throw new Error(`${what} lands on a solid tile at ${x},${z} of ${screen.key} ("${screen.name}")`);
   }
 
   // ---------------------------------------------------------------- queries
-  screen(sx, sy) {
-    return this.screens.get(screenKey(sx, sy)) || null;
+  // A screen by area and local position, world.screen('crypt', 0, 1), or by
+  // key, world.screen('crypt:0,1'). null if there is none.
+  screen(areaOrKey, lx, ly) {
+    if (typeof areaOrKey !== 'string')
+      throw new Error(
+        'world.screen(sx, sy) is gone (screens have per-area sizes): use world.screen(areaId, lx, ly), world.screen(key) or world.locate(tx, tz)'
+      );
+    return this.screens.get(lx === undefined ? areaOrKey : screenKey(areaOrKey, lx, ly)) ?? null;
+  }
+
+  // The screen whose footprint holds world point or tile (x, z), or null.
+  screenAt(x, z) {
+    const last = this.lastHit;
+    if (last && x >= last.x0 && x < last.x1 && z >= last.z0 && z < last.z1) return last;
+    const list = this.cells.get(cellKey(Math.floor(x / CELL), Math.floor(z / CELL)));
+    if (list) for (const s of list) if (x >= s.x0 && x < s.x1 && z >= s.z0 && z < s.z1) return (this.lastHit = s);
+    return null;
   }
 
   // The screen holding global tile (tx, tz) and the tile's local coordinates.
   locate(tx, tz) {
-    const sx = Math.floor(tx / SCREEN_W);
-    const sy = Math.floor(tz / SCREEN_H);
-    const screen = this.screens.get(screenKey(sx, sy));
-    return screen ? { screen, lx: tx - sx * SCREEN_W, lz: tz - sy * SCREEN_H } : null;
+    const screen = this.screenAt(tx, tz);
+    return screen ? { screen, lx: tx - screen.x0, lz: tz - screen.z0 } : null;
   }
 
   tileDef(screen, ch) {
@@ -170,10 +243,24 @@ export class World {
     return def === null || isSolidDef(def, body);
   }
 
-  // Does a circle at (x, z) with radius r overlap a solid tile?
+  // The solid part of global tile (tx, tz) for a body as [x0, z0, x1, z1], or
+  // null when the tile does not stop it. Outside every screen is solid. Room
+  // side walls reach their visible face (see WALL_INSET).
+  solidBox(tx, tz, body = null) {
+    const at = this.locate(tx, tz);
+    if (!at) return [tx, tz, tx + 1, tz + 1];
+    if (!isSolidDef(getTile(at.screen.tileset, at.screen.tiles[at.lz][at.lx]), body)) return null;
+    return solidExtent(at, tx, tz);
+  }
+
+  // Does a body at (x, z) with radius r (a square of half-size r) overlap
+  // anything solid? Touching an edge does not count.
   blocked(x, z, r, body = null) {
-    for (let tx = Math.floor(x - r); tx <= Math.floor(x + r); tx++)
-      for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) if (this.isSolid(tx, tz, body)) return true;
+    for (let tx = Math.floor(x - r - WALL_INSET); tx <= Math.floor(x + r + WALL_INSET); tx++)
+      for (let tz = Math.floor(z - r); tz <= Math.floor(z + r); tz++) {
+        const b = this.solidBox(tx, tz, body);
+        if (b && x + r > b[0] && x - r < b[2] && z + r > b[1] && z - r < b[3]) return true;
+      }
     return false;
   }
 
@@ -182,6 +269,21 @@ export class World {
     const def = this.tileDefAt(tx, tz);
     if (def === null) return true;
     return def.blocksShots ?? isSolidDef(def, null);
+  }
+
+  // Does something at world point (x, z) stop a projectile? Like blocksShot,
+  // but room side walls count from their visible face.
+  shotBlockedAt(x, z) {
+    const tx = Math.floor(x);
+    const tz = Math.floor(z);
+    if (this.blocksShot(tx, tz)) return true;
+    for (const nx of [tx - 1, tx + 1]) {
+      const at = this.locate(nx, tz);
+      if (!at?.screen.area.rooms || !this.blocksShot(nx, tz)) continue;
+      const b = solidExtent(at, nx, tz);
+      if (x >= b[0] && x < b[2]) return true;
+    }
+    return false;
   }
 
   // Global tiles whose centre lies within radius of (x, z).
@@ -202,15 +304,23 @@ export class World {
     return spec ? this.resolveWarp(at.screen.area, spec) : null;
   }
 
-  // { area?, screen: [x, y] (area-local), x, z, yaw } -> global { sx, sy, x, z, yaw }
+  // A spot names a place the way content does: { area, screen: [i, j], x, z,
+  // yaw }, with the area's local screen and tile coordinates inside it (x and
+  // z default to the middle of the screen; area defaults to fromArea).
+  // Returns { screen, x, z, yaw }, x and z still local to that screen.
+  resolveSpot(spot, fromArea = null) {
+    const area = spot.area ? this.areas.get(spot.area) : fromArea;
+    const from = fromArea ? ` from "${fromArea.id}"` : '';
+    if (!area) throw new Error(`A spot${from} points at unknown area "${spot.area}"`);
+    const [i, j] = spot.screen ?? area.start ?? [0, 0];
+    const screen = this.screen(area.id, i, j);
+    if (!screen) throw new Error(`A spot${from} points at missing screen ${i},${j} of "${area.id}"`);
+    return { screen, x: spot.x ?? screen.w / 2, z: spot.z ?? screen.h / 2, yaw: spot.yaw ?? 0 };
+  }
+
+  // Warp specs are spots; kept under this name for older callers.
   resolveWarp(fromArea, spec) {
-    const area = spec.area ? this.areas.get(spec.area) : fromArea;
-    if (!area) throw new Error(`Warp from "${fromArea.id}" points at unknown area "${spec.area}"`);
-    const [ox, oy] = area.origin ?? [0, 0];
-    const sx = ox + spec.screen[0];
-    const sy = oy + spec.screen[1];
-    if (!this.screen(sx, sy)) throw new Error(`Warp from "${fromArea.id}" points at missing screen ${spec.screen} of "${area.id}"`);
-    return { sx, sy, x: spec.x, z: spec.z, yaw: spec.yaw ?? 0 };
+    return this.resolveSpot(spec, fromArea);
   }
 
   // ---------------------------------------------------------------- hooks
@@ -245,11 +355,11 @@ export class World {
 
   // Tiles marked `regrow` (bushes) come back each time a screen is entered.
   regrow(screen) {
-    for (let z = 0; z < SCREEN_H; z++)
-      for (let x = 0; x < SCREEN_W; x++) {
+    for (let z = 0; z < screen.h; z++)
+      for (let x = 0; x < screen.w; x++) {
         const base = screen.base[z][x];
         if (screen.tiles[z][x] !== base && getTile(screen.tileset, base).regrow)
-          this.setTile(screen.sx * SCREEN_W + x, screen.sy * SCREEN_H + z, base, { rebuild: false, reason: 'regrow' });
+          this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: false, reason: 'regrow' });
       }
   }
 
@@ -263,7 +373,7 @@ export class World {
   // Props are rebuilt too so they pick up flags (opened chests).
   reset() {
     for (const screen of this.screens.values())
-      for (let z = 0; z < SCREEN_H; z++) screen.tiles[z] = [...screen.base[z]];
+      for (let z = 0; z < screen.h; z++) screen.tiles[z] = [...screen.base[z]];
     for (const [key, ch] of Object.entries(state.tileEdits)) {
       const [tx, tz] = key.split(',').map(Number);
       const at = this.locate(tx, tz);
@@ -302,11 +412,11 @@ export class World {
     const g = layer('terrain');
     const pick = (arr) => arr[Math.floor(rand() * arr.length)];
     const first = !screen.rngStates;
-    if (first) screen.rngStates = new Array(SCREEN_W * SCREEN_H);
+    if (first) screen.rngStates = new Array(screen.w * screen.h);
 
-    for (let z = 0; z < SCREEN_H; z++) {
-      for (let x = 0; x < SCREEN_W; x++) {
-        const i = z * SCREEN_W + x;
+    for (let z = 0; z < screen.h; z++) {
+      for (let x = 0; x < screen.w; x++) {
+        const i = z * screen.w + x;
         if (first) screen.rngStates[i] = rand.getState();
         else rand.setState(screen.rngStates[i]);
         const ch = screen.tiles[z][x];
@@ -318,8 +428,8 @@ export class World {
           area: screen.area,
           x,
           z,
-          tx: screen.sx * SCREEN_W + x,
-          tz: screen.sy * SCREEN_H + z,
+          tx: screen.x0 + x,
+          tz: screen.z0 + z,
           bx: x * R,
           bz: z * R,
           ch,
@@ -333,8 +443,8 @@ export class World {
       }
     }
 
-    const ox = screen.sx * SCREEN_W;
-    const oz = screen.sy * SCREEN_H;
+    const ox = screen.x0;
+    const oz = screen.z0;
     for (const [name, grid] of grids) {
       if (name !== 'terrain' && !grid.map.size) continue;
       const L = LAYERS[name];
@@ -349,15 +459,15 @@ export class World {
   }
 
   buildProps(screen) {
-    for (let z = 0; z < SCREEN_H; z++)
-      for (let x = 0; x < SCREEN_W; x++) if (getTile(screen.tileset, screen.tiles[z][x]).prop) this.addProp(screen, x, z);
+    for (let z = 0; z < screen.h; z++)
+      for (let x = 0; x < screen.w; x++) if (getTile(screen.tileset, screen.tiles[z][x]).prop) this.addProp(screen, x, z);
   }
 
   addProp(screen, x, z) {
     const ch = screen.tiles[z][x];
     const def = getTile(screen.tileset, ch);
-    const tx = screen.sx * SCREEN_W + x;
-    const tz = screen.sy * SCREEN_H + z;
+    const tx = screen.x0 + x;
+    const tz = screen.z0 + z;
     const obj = def.prop({ world: this, screen, area: screen.area, x, z, tx, tz, cx: tx + 0.5, cz: tz + 0.5, ch, def });
     if (!obj) return null;
     obj.castShadow = true;
@@ -392,5 +502,5 @@ export class World {
 
 export const world = new World();
 
-// The screen the hero is on (or scrolling into).
-export const currentScreen = () => world.screen(state.sx, state.sy);
+// The screen the hero is on (or sliding into): its key is state.screenKey.
+export const currentScreen = () => (state.screenKey ? world.screens.get(state.screenKey) ?? null : null);

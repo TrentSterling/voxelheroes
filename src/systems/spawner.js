@@ -3,7 +3,6 @@
 // A marker may name an entity type that another feature branch provides. If
 // that type is not registered (yet), the marker is skipped with one warning
 // instead of stopping the game.
-import { SCREEN_W, SCREEN_H } from '../core/constants.js';
 import { hasFlag } from '../core/state.js';
 import { spawn } from '../entities/manager.js';
 import { hasEntityType } from '../entities/registry.js';
@@ -11,8 +10,8 @@ import { hasEntityType } from '../entities/registry.js';
 const warned = new Set();
 
 export function spawnScreen(screen) {
-  const ox = screen.sx * SCREEN_W;
-  const oz = screen.sy * SCREEN_H;
+  const ox = screen.x0;
+  const oz = screen.z0;
   let enemyIndex = 0; // staggers enemy appearances
   for (const sp of screen.spawns) {
     if (sp.flag && hasFlag(sp.flag)) continue;

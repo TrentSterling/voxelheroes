@@ -4,10 +4,9 @@ import { GROUND_Y } from '../../core/constants.js';
 import { state } from '../../core/state.js';
 import { input } from '../../core/input.js';
 import { registerMode } from '../../core/modes.js';
-import { world } from '../../world/world.js';
 import { entitiesOfKind } from '../../entities/manager.js';
 import { player } from '../../entities/player.js';
-import { startGame, respawnPoint } from '../../systems/flow.js';
+import { startGame, respawnScreen } from '../../systems/flow.js';
 import { showOverlay, overlayVisible } from '../overlay.js';
 
 const PANEL_DELAY = 1.2; // seconds before the panel appears and input counts
@@ -23,8 +22,7 @@ registerMode('dead', {
     for (const e of entitiesOfKind('enemy')) e.object.rotation.y += dt * 2;
     if (state.deadT <= PANEL_DELAY) return;
     if (!overlayVisible()) {
-      const p = respawnPoint();
-      const where = world.screen(p.sx, p.sy)?.name ?? 'the start';
+      const where = respawnScreen()?.name ?? 'the start';
       const gems = state.gems;
       showOverlay({
         title: 'You fell',

@@ -6,9 +6,20 @@ export const description =
 
 const near = (a, b, eps = 0.1) => Math.abs(a - b) <= eps;
 
+// Global tile key 'tx,tz' of local tile (x, z) in a screen ('crypt:0,0'), as
+// flags and tile edits name tiles.
+const tileOf = (t, key, x, z) =>
+  t.eval(([k, x, z]) => {
+    const s = window.__voxelHeroes.world.screen(k);
+    return `${s.x0 + x},${s.z0 + z}`;
+  }, [key, x, z]);
+
 export default async function defaultScenario(t) {
-  await t.track('screen-enter', 'enemy-killed', 'room-cleared', 'pickup', 'door-opened', 'chest-opened', 'warp', 'player-hurt');
+  await t.track('screen-enter', 'room-enter', 'area-enter', 'enemy-killed', 'room-cleared', 'pickup', 'door-opened', 'chest-opened', 'warp', 'player-hurt');
   let s;
+  const keyTile = await tileOf(t, 'crypt:0,0', 7, 5); // the small key in the Key Vault
+  const doorTiles = [await tileOf(t, 'crypt:1,1', 7, 0), await tileOf(t, 'crypt:1,1', 8, 0)]; // the Pillar Hall's locked door
+  const chestTile = await tileOf(t, 'crypt:1,0', 7, 5); // the chest in the Treasure Chamber
 
   // ---------------------------------------------------------------- title
   await t.step(0.5);
@@ -62,11 +73,14 @@ export default async function defaultScenario(t) {
   await t.waitFor((st) => st.mode === 'play' && st.area === 'crypt', { seconds: 3 });
   s = await t.state();
   t.expect(
-    s.screenName === 'Sunken Gate' && near(s.lx, 8) && near(s.lz, 8.4),
-    'the doorway in the cliffs leads down into the Sunken Gate'
+    s.screenName === 'Sunken Gate' && near(s.lx, 8) && near(s.lz, 10.4),
+    'the doorway in the cliffs leads down into the Sunken Gate, just inside its south doorway'
   );
+  t.expect(s.size[0] === 16 && s.size[1] === 12 && s.cam.preset === 'dungeon' && near(s.cam.x, 8, 0.01) && near(s.cam.z, 6, 0.01), 'the crypt is 16 x 12 rooms, seen from the dungeon camera on the room centre');
   const warps = await t.events('warp');
   t.expect(warps.length === 1, "entering the doorway fires one 'warp'");
+  let areas = await t.events('area-enter');
+  t.expect(areas.length === 1 && areas[0].area === 'Cairn Crypt' && areas[0].from === 'Overworld' && areas[0].via === 'warp', "the warp into the crypt fires 'area-enter' (Overworld to Cairn Crypt)");
 
   // ---------------------------------------------------------------- the crypt
   await t.step(0.6);
@@ -81,7 +95,7 @@ export default async function defaultScenario(t) {
   await t.waitFor((st) => st.keys === 1, { seconds: 1 });
   s = await t.state();
   t.expect(s.keys === 1 && s.keysByGroup.crypt === 1, 'the small key is picked up (1 crypt key)');
-  t.expect(s.flags.includes('taken:7,115'), 'the key is remembered as taken');
+  t.expect(s.flags.includes(`taken:${keyTile}`), `the key is remembered as taken (taken:${keyTile})`);
   await t.step(0.3);
   await t.shot('08-key');
 
@@ -95,7 +109,7 @@ export default async function defaultScenario(t) {
   await t.hold('ArrowUp', 0.1); // a short push: the door opens on the first frame
   s = await t.state();
   t.expect(s.keys === 0, 'walking into the locked door uses the key');
-  t.expect(s.flags.includes('door:23,121') && s.flags.includes('door:24,121'), 'both halves of the door are open');
+  t.expect(doorTiles.every((d) => s.flags.includes(`door:${d}`)), `both halves of the door are open (door:${doorTiles.join(', door:')})`);
   t.expect((await t.events('door-opened')).length === 1, "the door fires 'door-opened'");
   await t.step(0.4);
   await t.shot('09-door-open');
@@ -108,7 +122,7 @@ export default async function defaultScenario(t) {
   await t.walkTo(7.5, 6.5);
   await t.hold('ArrowUp', 0.3);
   s = await t.state();
-  t.expect(s.flags.includes('chest:23,115'), 'walking into the chest opens it');
+  t.expect(s.flags.includes(`chest:${chestTile}`), `walking into the chest opens it (chest:${chestTile})`);
   t.expect(s.maxHp === 8 && s.hp === 8, 'the chest holds a heart container: 4 hearts, all full');
   const chests = await t.events('chest-opened');
   t.expect(chests.length === 1 && chests[0].contents === 'heart-container', "'chest-opened' reports the contents");
@@ -119,11 +133,19 @@ export default async function defaultScenario(t) {
   await t.exit('west');
   s = await t.state();
   t.expect(s.screenName === 'Sunken Gate', 'back through the Pillar Hall to the Sunken Gate');
-  await t.walkTo(7.5, 8.5);
+  await t.walkTo(7.5, 10.5);
   await t.hold('ArrowDown', 0.3);
   await t.waitFor((st) => st.mode === 'play' && st.area === 'overworld', { seconds: 3 });
   s = await t.state();
-  t.expect(s.screenName === 'Cairn Ridge' && near(s.lx, 8) && near(s.lz, 1.7), 'the stairs lead back up to the doorway on Cairn Ridge');
+  t.expect(s.screenName === 'Cairn Ridge' && near(s.lx, 8) && near(s.lz, 1.7), 'the stairs in the south doorway lead back up to the doorway on Cairn Ridge');
+  areas = await t.events('area-enter');
+  t.expect(areas.length === 2 && areas[1].area === 'Overworld' && areas[1].from === 'Cairn Crypt', "climbing out fires 'area-enter' again (Cairn Crypt to Overworld)");
+  const rooms = await t.events('room-enter');
+  const cryptRooms = rooms.filter((r) => r.area === 'Cairn Crypt').map((r) => r.screen);
+  t.expect(
+    cryptRooms.join(' > ') === 'Sunken Gate > Key Vault > Sunken Gate > Pillar Hall > Treasure Chamber > Pillar Hall > Sunken Gate',
+    `'room-enter' follows the route through the crypt: ${cryptRooms.join(' > ')}`
+  );
   t.expect(s.keys === 0 && s.maxHp === 8, 'the heart container stays after leaving the crypt');
   await t.step(0.8);
   await t.shot('11-back-outside');
@@ -178,8 +200,8 @@ export default async function defaultScenario(t) {
     s.screenName === 'Cairn Ridge' && near(s.lx, saved.lx) && near(s.lz, saved.lz) && s.hp === saved.hp && s.maxHp === 8,
     'loading puts the hero back where the save was made, with the same health and 4 heart containers'
   );
-  t.expect(['taken:7,115', 'door:23,121', 'chest:23,115'].every((k) => s.flags.includes(k)), 'loading keeps the key, door and chest flags');
-  t.expect((await t.eval(() => window.__voxelHeroes.world.tile(23, 121))) === '.', 'the opened door is still open after loading');
+  t.expect([`taken:${keyTile}`, `door:${doorTiles[0]}`, `chest:${chestTile}`].every((k) => s.flags.includes(k)), 'loading keeps the key, door and chest flags');
+  t.expect((await t.eval((d) => window.__voxelHeroes.world.tile(...d.split(',').map(Number)), doorTiles[0])) === '.', 'the opened door is still open after loading');
   t.expect(await t.eval(() => window.__voxelHeroes.saveToSlot(2)), 'the game saves into localStorage slot 2');
   await t.teleport('Mirror Lake');
   t.expect(await t.eval(() => window.__voxelHeroes.loadFromSlot(2)), 'slot 2 loads back');
@@ -201,5 +223,5 @@ export default async function defaultScenario(t) {
 
   const hurt = await t.events('player-hurt');
   const kills = await t.events('enemy-killed');
-  t.note(`${kills.length} enemies defeated, hero hit ${hurt.length} times, ${(await t.events('screen-enter')).length} screens entered`);
+  t.note(`${kills.length} enemies defeated, hero hit ${hurt.length} times, ${(await t.events('room-enter')).length} screens entered`);
 }

@@ -1,5 +1,15 @@
 // Cairn Crypt: four dim rooms behind the doorway in the Cairn Ridge cliffs.
-// It sits far south of the overworld in the global grid (origin [0, 10]).
+// Rooms follow art bible section 9 (see areas.js, "Rooms"): 16 x 12 tiles,
+// walls on rows 0 and 11 and columns 0 and 15, doors two tiles wide in the
+// middle of a wall (columns 7-8, rows 5-6), lined up between neighbours.
+//
+//   Key Vault (0,0)      Treasure Chamber (1,0)
+//        | door                | locked door
+//   Sunken Gate (0,1) -- Pillar Hall (1,1)
+//        | stairs out to Cairn Ridge
+//
+// It sits in the dungeon columns of the global grid (origin [200, 0], see
+// "Global regions" in docs/ARCHITECTURE.md).
 // Tiles: see world/tiles/dungeon.js. Markers: e = blue slime, o = spitter,
 // K = the small key (taken once).
 import { registerArea } from '../areas.js';
@@ -10,7 +20,9 @@ export default registerArea({
   tileset: 'dungeon',
   lighting: 'crypt',
   camera: 'dungeon',
-  origin: [0, 10],
+  screen: [16, 12],
+  rooms: true,
+  origin: [200, 0],
   start: [0, 1],
   keyGroup: 'crypt',
   spawns: {
@@ -19,7 +31,8 @@ export default registerArea({
     K: { type: 'key', once: true },
   },
   warps: {
-    // The stairs lead back out to the doorway on Cairn Ridge.
+    // The stairs in the Sunken Gate's south doorway lead back out to the
+    // doorway on Cairn Ridge.
     X: { area: 'overworld', screen: [1, 0], x: 8, z: 1.7, yaw: 0 },
   },
   screens: {
@@ -27,31 +40,33 @@ export default registerArea({
       name: 'Sunken Gate',
       rows: [
         'WWWWWWW..WWWWWWW',
-        'WF............FW',
+        'W.F..........F.W',
         'W..S........S..W',
         'W..............W',
         'W.....e........W',
         'W...............',
-        'W........e.....W',
+        'W........e......',
+        'W..............W',
         'W..............W',
         'W..S........S..W',
-        'W......XX......W',
-        'WWWWWWWWWWWWWWWW',
+        'W..............W',
+        'WWWWWWWXXWWWWWWW',
       ],
     },
     '1,1': {
       name: 'Pillar Hall',
       rows: [
         'WWWWWWWLLWWWWWWW',
-        'WF............FW',
+        'W.F..........F.W',
         'W..............W',
         'W..SS......SS..W',
         'W....o.........W',
         '...............W',
+        '...............W',
         'W.........o....W',
         'W..SS......SS..W',
         'W..............W',
-        'WF............FW',
+        'W.F..........F.W',
         'WWWWWWWWWWWWWWWW',
       ],
     },
@@ -59,7 +74,7 @@ export default registerArea({
       name: 'Key Vault',
       rows: [
         'WWWWWWWWWWWWWWWW',
-        'WF............FW',
+        'W.F..........F.W',
         'W..~~~~..~~~~..W',
         'W..~........~..W',
         'W..~.e....e.~..W',
@@ -67,6 +82,7 @@ export default registerArea({
         'W..~........~..W',
         'W..~~~~..~~~~..W',
         'W......o.......W',
+        'W..............W',
         'W..............W',
         'WWWWWWW..WWWWWWW',
       ],
@@ -76,15 +92,16 @@ export default registerArea({
       chest: 'heart-container',
       rows: [
         'WWWWWWWWWWWWWWWW',
-        'WF............FW',
+        'W.F..........F.W',
         'W....e....e....W',
         'W...S......S...W',
         'W..............W',
         'W......C.......W',
         'W..............W',
+        'W..............W',
         'W...S......S...W',
         'W..............W',
-        'WF............FW',
+        'W.F..........F.W',
         'WWWWWWW..WWWWWWW',
       ],
     },

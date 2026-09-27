@@ -3,15 +3,15 @@
 // (virtual stick, button taps, hook.update), so a whole walk or fight runs
 // inside one page.evaluate: fast, and deterministic for a given seed.
 //
-// All coordinates are local tile coordinates of the current screen
-// (0..16 x 0..11). Every helper returns { ok, reason?, t, ... }.
+// All coordinates are local tile coordinates of the current screen (0..w x
+// 0..h: 16 x 11 outdoors, 16 x 12 in dungeon rooms). Every helper returns
+// { ok, reason?, t, ... }.
 (() => {
   const DT = 1 / 60;
-  const W = 16;
-  const H = 11;
   const hook = () => window.__voxelHeroes;
-  const screenKey = () => `${hook().state.sx},${hook().state.sy}`;
-  const origin = () => ({ x: hook().state.sx * W, z: hook().state.sy * H });
+  const scr = () => hook().screen();
+  const screenKey = () => hook().state.screenKey;
+  const origin = () => ({ x: scr().x0, z: scr().z0 });
   const local = (e) => {
     const o = origin();
     return { x: e.x - o.x, z: e.z - o.z };
@@ -24,20 +24,23 @@
   };
   const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
 
-  // Can the hero stand on local tile (x, z)? Tiles with an onEnter hook
-  // (warps, pits) are avoided unless allowed.
+  // Can the hero stand in the middle of local tile (x, z)? This is the real
+  // collision test, so tiles half covered by a room's side wall are out.
+  // Tiles with an onEnter hook (warps, pits) are avoided unless allowed.
   function walkable(x, z, allowHooks) {
-    if (x < 0 || z < 0 || x >= W || z >= H) return false;
-    const o = origin();
+    const s = scr();
+    if (x < 0 || z < 0 || x >= s.w || z >= s.h) return false;
     const w = hook().world;
-    if (w.isSolid(o.x + x, o.z + z, hook().player)) return false;
-    const def = w.tileDefAt(o.x + x, o.z + z);
+    const p = hook().player;
+    if (w.blocked(s.x0 + x + 0.5, s.z0 + z + 0.5, p.r, p)) return false;
+    const def = w.tileDefAt(s.x0 + x, s.z0 + z);
     return allowHooks || !def?.onEnter;
   }
 
   // Breadth-first search over the screen's tiles. Returns the tiles to visit
   // after `start`, ending at the first tile where goal(x, z) is true.
   function bfs(start, goal, { allowHooks = false } = {}) {
+    const W = scr().w;
     const k = (x, z) => z * W + x;
     const prev = new Map([[k(start[0], start[1]), null]]);
     const queue = [start];
@@ -126,12 +129,14 @@
     }
   }
 
-  // Walk to the nearest open tile on one edge and keep going until the
-  // camera has slid to the next screen.
+  // Walk to the nearest open tile on one edge and keep going until the hero
+  // is on the next screen and play has resumed (after a slide, or after the
+  // fade into another area).
   function exit(dir, { timeout = 20 } = {}) {
     const g = hook();
     const [ex, ez] = DIRS[dir];
     const from = screenKey();
+    const { w: W, h: H } = scr();
     const onEdge = (x, z) => (ex === 1 && x === W - 1) || (ex === -1 && x === 0) || (ez === 1 && z === H - 1) || (ez === -1 && z === 0);
     const L = local(g.player);
     const cur = [Math.floor(L.x), Math.floor(L.z)];

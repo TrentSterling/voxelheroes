@@ -25,8 +25,7 @@ export const state = {
   modeStack: [],
   time: 0, // seconds of simulation since load
   deadT: 0,
-  sx: 0, // current screen, global grid coordinates
-  sy: 0,
+  screenKey: null, // the current screen: 'area:i,j' (world/world.js currentScreen())
   // Player preferences. Not part of a save slot; the options UI owns them.
   settings: { camera: 'A' },
 };

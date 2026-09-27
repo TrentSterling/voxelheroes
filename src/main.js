@@ -10,12 +10,11 @@ import { startLoop } from './core/loop.js';
 import { setMode, updateMode } from './core/modes.js';
 import { state, serializeState, loadState } from './core/state.js';
 import { world, currentScreen } from './world/world.js';
-import { screenRect } from './world/grid.js';
 import { allAreas } from './world/areas.js';
 import { player } from './entities/player.js';
 import { initParticles, updateParticles } from './systems/particles.js';
 import { placeAtStart, loadGame } from './systems/flow.js';
-import { applyScreenAmbience } from './systems/transitions.js';
+import { applyScreenAmbience, syncScreenVisibility } from './systems/transitions.js';
 import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
 import { initOverlay } from './ui/overlay.js';
 import { installTestHook } from './debug/testhook.js';
@@ -43,7 +42,8 @@ function update(dt) {
   updateMode(dt);
   updateParticles(dt);
   world.flush();
-  followSubject(player, screenRect(state.sx, state.sy));
+  syncScreenVisibility();
+  followSubject(player, currentScreen());
   placeCamera();
   input.endFrame();
 }
@@ -71,7 +71,7 @@ function start(data = {}) {
 const hot = window.claude?.hot;
 try {
   hot?.snapshot?.(() => ({
-    mode: state.mode === 'scroll' || state.mode === 'dead' ? 'title' : state.mode,
+    mode: ['scroll', 'warp', 'dead'].includes(state.mode) ? 'title' : state.mode,
     save: serializeState(),
   }));
 } catch {
