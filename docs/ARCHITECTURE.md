@@ -33,7 +33,7 @@ src/
   core/                 engine pieces with no game content
     constants.js        SCREEN_W 16, SCREEN_H 11 (the default screen), R 8 (terrain voxels per tile), TV, GROUND_Y, DEG
     renderer.js         WebGL renderer, scene, lights; LIGHTING presets + registerLighting
-    camera.js           CAMERA_PRESETS (pitch/fov/height/lead/fixed) + registerCameraPreset, subjectFor (framing rules), slide tween
+    camera.js           CAMERA_PRESETS (pitch/fov/height/lead/fixed/fitWidth; A-D selectable) + registerCameraPreset, HERO_OUTLINE, subjectFor (framing rules: southReach, sideReach), slide tween
     input.js            actions (sword, item, menu, confirm, ...): held / pressed / released, touch
     loop.js             requestAnimationFrame loop; setManual() for tests
     events.js           on / once / off / emit bus
@@ -50,13 +50,13 @@ src/
     tiles/dungeon.js    dungeon tileset: floor, wall, dark water, pillar, brazier, stairs, locked door, chest
     tilekit.js          shared tile behaviour: bush/door/chest/flame props, cutPlant, unlockDoor, openChest
     palette.js          terrain colours
-    areas.js            AREA REGISTRY: registerArea, getArea, START, screen sizes (addressing and rooms: header comment)
+    areas.js            AREA REGISTRY: registerArea, getArea, START, screen sizes, areaStart, room('J-3') (addressing and rooms: header comment)
     areas/overworld.js  the six overworld screens (16 x 11)
     areas/crypt.js      the four crypt rooms (16 x 12)
     areas/test-borders.js  three small areas that touch, for the 'areas' scenario
-    world.js            builds every screen, the screen index (screenAt, locate), spots, collision, props, tile hooks, setTile, terrain LAYERS
+    world.js            builds every screen, startup checks, the screen index (screenAt, locate), spots (resolveSpot, freeSpot), places (placeKey), collision, props, tile hooks, setTile, terrain LAYERS
     grid.js             screen keys and screen-object helpers (screenRect, screenCenter, insideScreen, toLocal, toWorld, DIRS)
-    links.js            areaGroups (areas joined by touching screens), edgeReport (links, mismatched edges)
+    links.js            areaGroups (areas joined by touching screens), edgeReport (links, mismatched edges, dead ends)
   entities/
     registry.js         ENTITY REGISTRY: registerEntity, createEntity
     manager.js          live entity list: spawn, removeEntity, updateEntities, entitiesNear
@@ -94,7 +94,8 @@ src/
 scripts/
   build-artifact.mjs    dist/ -> one self-contained HTML page
   playtest.mjs          play-test library + CLI
-  lib/bot.js            in-page bot: walkTo, exit, fight, waitFor
+  lib/bot.js            in-page bot: walkTo, exit, enter, fight, waitFor
+  lib/helpers.mjs       scenario helpers: clearFoes, pushUntilMoving
   scenarios/            default.mjs (the M1 play-through), screens.mjs (gallery), rooms.mjs, areas.mjs, camera.mjs
 ```
 
@@ -248,8 +249,12 @@ entity type that is not registered is skipped with a console warning, so a
 map can name a type another branch provides. `warps` maps a tile character to
 a spot; tiles with `onEnter: enterWarp` use it. Screens can override
 `lighting`, `camera`, `tileset`, `spawns`, `warps`, and add `onEnter(screen)`.
-The world validates every tile character, row length and warp at startup
-(a warp must land inside its screen, off solid tiles).
+The world checks at startup, with a message that names the screen and the
+tile: every tile character and row length; every warp (it must land inside
+its screen, off solid tiles and off warp tiles, or the hero would warp
+straight on, back and forth); every warp tile (`onEnter: enterWarp`) has a
+destination in its screen's or its area's `warps`; the `camera` and
+`lighting` names are registered; and the edges (see Neighbours below).
 
 **Addressing.** Local screen `'i,j'` of an area with screens of w x h tiles
 covers global tiles x `(origin[0] + i) * w` to `(origin[0] + i + 1) * w - 1`
@@ -271,7 +276,11 @@ a rect.
 
 **Spots** name a place independently of where an area sits:
 `{ area, screen: [i, j], x, z, yaw }`, with x and z local tiles of that screen
-(default: its middle; `screen` defaults to the area's `start`). Warps, the
+(default: its middle; `screen` defaults to the area's `start`, else its first
+screen, `areaStart(area)`). Dungeon rooms can be named by the gameplay spec's
+labels (section 3: row A-J north to south, column 1-8, entrance on row J):
+`room('J-3')` from `world/areas.js` is `[2, 9]`, and `room('A-1', 1)` is on
+the second floor, `[0, 11]` (see Global regions). Warps, the
 start point, `state.respawn`, an area's `entrance`, the saved position and
 teleports are spots; `world.resolveSpot(spot)` turns one into
 `{ screen, x, z, yaw }`. A hero who falls in an area with an `entrance` (a
@@ -284,10 +293,13 @@ edge slides to the next one. Screens of different areas that touch are joined
 too, whatever their sizes, but walking across changes area: fade to black,
 `'area-enter'`, a hold for the loading card, fade in. `world/links.js` works
 both out: `areaGroups(world)` (the areas joined into one outdoors, drawn
-together) and `edgeReport(world)` (`{ links, mismatches }`: where areas touch,
-and edge tiles open on one side but a wall on the other). The `screens`
-scenario fails on a mismatch. To keep two areas apart, leave an empty screen
-between them.
+together) and `edgeReport(world)` (`{ links, mismatches, deadEnds }`: where
+areas touch, edge tiles open on one side but a wall on the other, and open
+edge tiles with no screen past them; warp tiles are left out). The world
+checks them at startup: a mismatch throws, and so does a doorway onto no room;
+an open outdoor edge onto nothing only warns (the hero stops there). A new
+neighbour must open matching gaps on both sides of the shared edge. To keep
+two areas apart, leave an empty screen between them.
 
 **Rooms** (`rooms: true`, art bible section 9). Each screen is one room, in
 a dungeon 16 x 12: row 0 is the north wall, rows 1-10 the floor, row 11 the
@@ -302,7 +314,8 @@ during a slide), so everything outside it is black, and the camera is the
 area's fixed preset, aimed at the floor centre (local 8, 6). Rooms of other
 sizes (house interiors, 10 x 8 to 16 x 12 in the gameplay spec; a boss arena,
 22 x 16) work the same way: the outer ring of tiles is the wall, the side
-walls stand half a tile in, and the camera centres on the room.
+walls stand half a tile in, and the camera centres on the room (`camera:
+'interior'` fits its height to the room's width).
 
 **Moving between screens** (`systems/transitions.js`; the times are the
 gameplay spec's, sections 4.3 and 4.4). Walking off an edge into a screen of
@@ -328,18 +341,35 @@ screen's meshes and props every frame. `shownRect()` gives the world rect
 around what is drawn (in a dungeon the room, or both rooms mid-slide), for
 the look's polished floor and lamp culling: `look.bind({ roomRect: shownRect })`.
 
-**Camera.** The subject is the hero, clamped to the current screen's rect:
-the ground at the frame's bottom edge never lies south of the screen, and on
-the hero's row the frame's sides stay inside it where the frame is narrower
-than the screen (centred where it is wider), except for the few tenths of a
-tile it takes to keep all of the hero in frame at an east or west edge. The
-north is never clamped. Presets with `fixed: true` (the dungeon camera) aim at
-the rect's centre and move only to keep the hero's feet in frame; where the
-frame is less than half as wide as the rect (a phone held upright) they follow
-the hero across instead. In a room nothing past the walls is drawn, so there
-the bottom edge may show past the south wall: a room shorter than the frame
-stays centred. An area or screen can fix a preset (`camera`); other screens
-use the player's choice, `chooseCameraPreset(name)`, which is saved.
+**Camera** (`core/camera.js`). The subject is the hero, clamped to the
+current screen's rect: the ground at the frame's bottom edge never lies south
+of the screen, and on the hero's row the frame's sides stay inside it where
+the frame is narrower than the screen (centred where it is wider). The north
+is never clamped. Within that, all of the hero stays in frame, worked out
+from his outline (`HERO_OUTLINE`: `[reach, bottom, top]` slabs in tiles that
+cover the model with his shield out and his legs mid-stride, the sword left
+out; `setHeroOutline(slabs)` for a bigger hero):
+- by an east or west edge the frame's side may go past the screen by what it
+  takes to show all of him (about a tile at most);
+- at an open south edge he goes on to the next screen as soon as any of him
+  would drop below the frame: when his centre reaches the screen's south line,
+  `southReach(preset)` north of the edge (A 0.39 tile, B 0.55, C 0.62, D 0.36;
+  `southLine(screen)` in `systems/transitions.js`), and the slide or fade
+  carries him on from there;
+- presets with `fixed: true` (the dungeon and interior cameras) aim at the
+  room's centre and move only as far as it takes to keep all of him in frame:
+  under a tile sideways in an east or west doorway at 16:9, and down into the
+  south doorway. Where the frame is less than half as wide as the room (a
+  phone held upright) they follow him across instead. In a room nothing past
+  the walls is drawn, so there the bottom edge may show past the south wall,
+  and the south line is the edge itself.
+
+A preset with `fitWidth` scales its height with the room: `interior` (houses,
+shops, caves) is the dungeon camera at 12.7 x room width / 16, at least 8
+(gameplay spec 4.2), so a 12 x 9 room gets 9.5. An area or screen can fix a
+preset (`camera`); other screens use the player's choice,
+`chooseCameraPreset(name)`, one of the `selectable` presets A-D
+(`playerCameraPresets()`), which is saved.
 
 **Not built yet** (gameplay spec v1.0 sections 4 and 11, which landed after
 this framework):
@@ -351,8 +381,8 @@ this framework):
   today's M1 maps are 16 x 11).
 - Building only the current area and unloading it on each load; today every
   screen is meshed at startup and hidden when out of view.
-- The loading-art option (card 1.0 s or 0.3 s), the boss arena camera and
-  interior cameras scaled to the room's width.
+- The loading-art option (card 1.0 s or 0.3 s) and the boss arena camera
+  (17.5 high; a preset an arena area registers and names).
 - Section 11's load rule (a load resumes at the respawn point, or at a
   dungeon's `entrance` for a save made inside); today a load resumes where the
   save was made.
@@ -446,7 +476,7 @@ registerSaveField('pos', { save, load, reset });              // data kept outsi
 restores every registered field and resets fields the data lacks, so older
 saves keep loading when fields are added. Core fields: `hp`, `maxHp`, `gems`,
 `keys` (per key group), `flags` (a Set of strings), `tileEdits` (keyed by
-global tile), `inventory`, `respawn` (a spot, which an inn sets), `pos` (the
+global tile in play; see below), `inventory`, `respawn` (a spot, which an inn sets), `pos` (the
 hero's spot: `{ area, screen: [i, j], x, z, yaw }`; M1 saves with `{ sx, sy }`
 still load) and `camera` (the player's preset choice, which a new game keeps). Slots: `saveToSlot(n)`,
 `loadFromSlot(n)`, `activeSlot()` in `systems/flow.js` on top of
@@ -455,12 +485,24 @@ still load) and `camera` (the player's preset choice, which a new game keeps). S
 Flag names in use: `taken:tx,tz` (once-spawns), `door:tx,tz`,
 `chest:tx,tz`. Prefix new ones by feature (`boss:crypt`, `talked:smith`).
 
+A flag of the form `<name>:<tx>,<tz>` names a global tile, and so does every
+key of `tileEdits`. Save data names those tiles by place instead:
+`chest:crypt:1,0:7,5`, `crypt:1,1:7,0` (the area, its local screen, the
+local tile; `world.placeKey(tx, tz)` and back, `world.placeTile(key)`), so
+moving an area in the global grid leaves its chests, doors and keys as they
+were; a load puts them back on today's tiles (`setTileKeyCodec` in
+`core/state.js`). Keep flags that are not about a tile out of that form. An
+M1 save (its `pos` is `{ sx, sy }`) named the old crypt's tiles on the M1
+lattice (16 x 11 screens at `[0, 10]`); loading one moves those flags, tile
+edits and the hero into today's crypt. The save `version` stays 1: both
+forms load.
+
 ### Presets and small tables
 
 | What | Where | Add from your own file |
 |------|-------|------------------------|
 | Lighting | `core/renderer.js` `LIGHTING` | `registerLighting('cave', { background, sky, ground, hemi, sunColor, sun })` |
-| Camera | `core/camera.js` `CAMERA_PRESETS` (A default, B, C, D, dungeon) | `registerCameraPreset('boss', { pitch, fov, height, lead, fixed })`; player choice: `chooseCameraPreset(name)` |
+| Camera | `core/camera.js` `CAMERA_PRESETS` (A default, B, C, D: the player's choices; dungeon, interior) | `registerCameraPreset('boss', { pitch, fov, height, lead, fixed, fitWidth, minHeight })`: pitch, fov and height required; lead 0, not fixed and not a player choice unless given (`selectable: true`). Player choice: `chooseCameraPreset(name)` |
 | Terrain layers | `world/world.js` `LAYERS` | `registerLayer('lava', { material, castShadow, receiveShadow, tick })` |
 | Sounds | `core/audio.js` `sfx` | `registerSfx('bomb', () => noise(0.5, { freq: 300 }))` |
 | Key bindings | `core/input.js` `BINDINGS` | `input.bind('map', ['KeyG'])` |
@@ -632,16 +674,19 @@ in: a warp tile in another area
 or screens that touch another area's screens (walking across fades into it).
 New tiles go in `src/world/tiles/`. If the area needs its own tileset,
 `defineTileset('cave', { parent: 'dungeon' })`. For lighting or a fixed camera,
-register presets and name them in the area.
+register presets and name them in the area (`camera: 'dungeon'` for dungeon
+rooms, `camera: 'interior'` for a house or a cave of any size).
 
 Today's overworld is 3 x 2 screens at `[0, 0]`. A 2 x 2-screen area east of
 it, a dungeon of rooms reached by stairs from it, and a one-room hut of
 another size:
 
 ```js
+import { registerArea, room } from '../areas.js';
+
 registerArea({ id: 'fens', name: 'The Fens', tileset: 'overworld', lighting: 'day',
   origin: [3, 0],                          // columns 3-4, rows 0-1: touches the overworld's east edge
-  warps: { D: { area: 'mire-keep', screen: [2, 3], x: 8, z: 10, yaw: Math.PI } },  // a cave door
+  warps: { D: { area: 'mire-keep', screen: room('J-3'), x: 8, z: 10, yaw: Math.PI } },  // a cave door
   screens: {
     '0,0': {...}, '1,0': {...}, '1,1': {...},                          // rows: 11 strings of 16
     '0,1': { name: 'Reed Bank', rows: [...],                           // a second door, to the hut:
@@ -651,24 +696,31 @@ registerArea({ id: 'fens', name: 'The Fens', tileset: 'overworld', lighting: 'da
 registerArea({ id: 'mire-keep', name: 'Mire Keep', tileset: 'dungeon', lighting: 'crypt',
   camera: 'dungeon', rooms: true,          // 16 x 12 rooms, fixed dungeon camera
   origin: [210, 0],                        // dungeon 1 (see Global regions)
-  start: [2, 3],
-  entrance: { screen: [2, 3], x: 8, z: 10, yaw: Math.PI },               // get up here after falling
+  start: room('J-3'),                      // [2, 9]: the entrance is on row J
+  entrance: { screen: room('J-3'), x: 8, z: 10, yaw: Math.PI },          // get up here after falling
   warps: { X: { area: 'fens', screen: [1, 1], x: 8, z: 3, yaw: 0 } },     // stairs out
-  screens: { '2,3': { name: 'Entry', rows: [/* 12 strings of 16 */] }, '2,2': {...}, '3,2': {...} } });
+  screens: {
+    '2,9': { name: 'Entry', rows: [/* 12 strings of 16 */] },             // J-3
+    '2,8': {...}, '3,8': {...},                                           // I-3, I-4
+  } });
 
 registerArea({ id: 'reed-hut', name: 'Reed Hut', tileset: 'dungeon', lighting: 'crypt',
-  camera: 'dungeon', rooms: true, screen: [12, 9],                      // one 12 x 9 room
+  camera: 'interior', rooms: true, screen: [12, 9],                     // one 12 x 9 room
   at: [(300 + 2 * 3) * 16, 0],            // interior building 3, placed by tile (12 wide)
   warps: { X: { area: 'fens', screen: [0, 1], x: 8.5, z: 2.7, yaw: 0 } }, // back out the door
   screens: { '0,0': { name: 'Reed Hut', rows: [/* 9 strings of 12 */] } } });
 ```
 
-Walking east off Mirror Lake then fades into the fens with a loading card, and
-so does each door. The open tiles along a shared edge must line up (the
-`screens` scenario checks), and the rooms' door gaps must line up with their
+A new neighbour needs matching gaps on both sides of the shared edge, and
+Mirror Lake's east edge is closed today (column 15 of `overworld.js`'s
+`'2,0'` is trees on every row): open, say, rows 5-6 there and rows 5-6 of
+the west edge of the Fens' `'0,0'`. Walking east off Mirror Lake then fades
+into the fens with a loading card, and so does each door. Open tiles facing a
+wall across a shared edge, or a room's doorway onto no room, stop the game at
+startup with the tiles named; the rooms' door gaps must line up with their
 neighbours'. A dungeon's second floor goes in the same area, 11 rows further
-south (see [Global regions](#global-regions)), so its stairs are warps inside
-one area: they blink without a card. Hedge Burrow and the tunnel in
+south (see [Global regions](#global-regions); `room('A-1', 1)`), so its stairs
+are warps inside one area: they blink without a card. Hedge Burrow and the tunnel in
 `areas/test-borders.js` are working examples of a house placed by tile and a
 warp inside one area. Check an area with
 `node scripts/playtest.mjs --scenario screens`, which photographs every screen
@@ -739,7 +791,7 @@ ones. Bump `SAVE_VERSION` only for a change `loadState` cannot absorb.
 | `render()` | draw a frame now, HUD included |
 | `seed(n)` | reseed gameplay randomness |
 | `start()` | title or game over -> play |
-| `teleport(target, x, z, { yaw })` | `'crypt'` (its start screen), `'crypt:0,1'`, `{ area, screen: [0, 1] }`, a screen name (`'Key Vault'`), or M1 global screen numbers `[1, 0]` / `'1,0'` (read on the old 16 x 11 lattice); x, z local tiles (default the middle). Returns `{ area, screen, key, name }` |
+| `teleport(target, x, z, { yaw })` | `'crypt'` (its start screen, else its first), `'crypt:0,1'`, `{ area, screen: [0, 1] }`, a screen name (`'Key Vault'`), or M1 global screen numbers `[1, 0]` / `'1,0'` (read on the old 16 x 11 lattice); x, z local tiles (default the middle, or the free tile nearest it: never inside a chest or on a warp). Returns `{ area, screen, key, name }` |
 | `screen()` | the current screen object (live): `key`, `area`, `lx`, `ly`, `w`, `h`, `x0`, `z0`, `x1`, `z1`, `tiles`, ... |
 | `give(id, amount = 1)` | grant anything: `'key'`, `'gems'`, `'heart-container'`, an item id, an ammo id |
 | `setHp(n)` | set health (clamped to max); `0` or less kills the hero through the normal death path |
@@ -748,10 +800,10 @@ ones. Bump `SAVE_VERSION` only for a change `loadState` cannot absorb.
 | `save()`, `load(data)` | in-memory save data round trip |
 | `saveToSlot(n)`, `loadFromSlot(n)` | localStorage slots |
 | `showDialog(lines, opts)`, `dialogOpen()`, `overlayVisible()` | UI |
-| `camera.presets`, `camera.choose(name)`, `camera.set(name)`, `camera.get()`, `camera.target`, `camera.object` | camera presets (`choose` is the player's setting, saved; `set` lasts until the next screen), the subject point, the three.js camera |
-| `camera.expected()`, `camera.project(x, y, z)`, `camera.groundAt(nx, ny)`, `camera.rules` | where the framing rule wants the subject now; world point to normalised device coordinates `[x, y, depth]`; a device point to the ground it shows (or null); the framing constants |
+| `camera.presets`, `camera.choices()`, `camera.choose(name)`, `camera.set(name)`, `camera.get()`, `camera.lens()`, `camera.target`, `camera.object` | camera presets and the player's choices (A-D; `choose` is the player's setting, saved, and refuses other presets; `set` lasts until the next screen), the lens in use (a fitted `interior`, or a blend mid-slide), the subject point, the three.js camera |
+| `camera.expected()`, `camera.project(x, y, z)`, `camera.groundAt(nx, ny)`, `camera.heroInFrame()`, `camera.rules` | where the framing rule wants the subject now; world point to normalised device coordinates `[x, y, depth]`; a device point to the ground it shows (or null); every vertex of the hero model (sword and contact shadow left out) in device coordinates: `{ worst, out, total, side }`, worst over 1 when any of him is out of frame; `{ outline(), southReach(preset), southLine(screenKey) }` |
 | `transitions` | `SLIDE_TIME`, `SLIDE_STEP`, `ROOM_STEP`, `FADE_OUT`, `FADE_IN`, `AREA_HOLD`, `WARP_FADE`, `WARP_HOLD`, `shown(key)`: is that screen drawn, and `shownRect()`: the world rect `{ x0, z0, x1, z1 }` around the drawn screens |
-| `links()` | `edgeReport(world)`: `{ links, mismatches }` between areas |
+| `links()` | `edgeReport(world)`: `{ links, mismatches, deadEnds }` between areas |
 | `registries.tilesets()`, `.areas()`, `.entities()`, `.items()`, `.grants()` | what is registered |
 | `snapshot()` | JSON summary: mode, area, screen (`[i, j]`), key, size (`[w, h]`), screenName, hp, maxHp, gems, keys, keysByGroup, x, z (world), lx, lz (local), cam (`{ preset, x, z }`, local), yaw, invT, attacking, enemies, entities, flags, inventory, overlay, dialog, particles, time |
 
@@ -760,10 +812,11 @@ ones. Bump `SAVE_VERSION` only for a change `loadState` cannot absorb.
 ```sh
 npm run playtest                                   # build, run the default scenario, shots in playtest-out/
 node scripts/playtest.mjs --out <dir>              # screenshots into <dir>
-node scripts/playtest.mjs --scenario screens       # gallery of every screen, room and camera preset
+node scripts/playtest.mjs --scenario screens       # gallery of every screen, room and the player's camera presets
+SCREENS=crypt,test-burrow node scripts/playtest.mjs --scenario screens   # only those areas' screens
 node scripts/playtest.mjs --scenario rooms         # every crypt door both ways, the dungeon camera
 node scripts/playtest.mjs --scenario areas         # slides and area-to-area fades in all directions
-node scripts/playtest.mjs --scenario camera        # presets A-D + dungeon at 1280 x 720 and 390 x 844
+node scripts/playtest.mjs --scenario camera        # A-D, dungeon, interior at 1280 x 720 and 390 x 844: all of the hero model in frame
 node scripts/playtest.mjs --scenario all --no-build
 node scripts/playtest.mjs --list
 ```
@@ -804,9 +857,14 @@ bot, in local tiles of the current screen whatever its size: `walkTo(x, z)`
 (breadth-first path over the screen's tiles, using the real collision test,
 avoiding warp tiles), `exit('north' | 'south' | 'east' | 'west')` (walk off
 that edge and wait until play resumes on the next screen, after a slide or a
-fade), `fight({ maxKills, seconds })` (approach, face, swing; tops up
-health at 1 heart so a long fight cannot end the test), `waitFor(snapshot =>
-bool, { seconds })`. Bot helpers throw on failure unless given `{ soft: true }`.
+fade), `enter(x, z)` (walk onto a door or stairs and wait until play
+resumes past the warp; `{ ok, screen, moved }`), `fight({ maxKills, seconds
+})` (approach, face, swing; tops up health at 1 heart so a long fight cannot
+end the test), `waitFor(snapshot => bool, { seconds })`. Bot helpers throw on
+failure unless given `{ soft: true }`. `scripts/lib/helpers.mjs` has the
+scenario helpers more than one scenario needs: `clearFoes(t)` (take the
+enemies off the screen) and `pushUntilMoving(t, key)` (hold a key until a
+slide or a fade starts).
 
 Gotchas: HUD widgets redraw when a frame renders, so call
 `__voxelHeroes.render()` before reading HUD elements (`shot()` does). B is
@@ -842,7 +900,9 @@ Rules that keep merges clean:
   an item from another branch warn until merged.
 - Put styles next to the module (`import './thing.css'`) and colours in the
   file that uses them; `world/palette.js` is shared, so leave it alone.
-- New flags and state keys get a feature prefix.
+- New flags and state keys get a feature prefix. A flag about one tile is
+  `<prefix>:<tx>,<tz>` (save data stores it by place); no other flag may look
+  like that.
 - Test rooms go in their own area file with a reserved origin, never in
   someone else's map.
 
