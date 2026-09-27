@@ -10,7 +10,7 @@
 //   g  gravestone  i  signpost     v  clay pot     C  chest (walk into it)
 // Backdrop only (the far distance around an area, see farband.js):
 //   4  four levels   u / t / w  a tree on raised ground of level 1 / 2 / 4
-import { hash3, shadeHex } from '../../core/vox.js';
+import { hash3, shadeHex, mixHex } from '../../core/vox.js';
 import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile } from '../tiles.js';
 import { LEVEL } from '../terrain.js';
@@ -21,20 +21,33 @@ import { gravestone, signpost } from '../../models/props.js';
 defineTileset('overworld', { floor: '.' });
 
 // ---------------------------------------------------------------- ground
-// The 8 x 8 accent pattern of a ground tile: two-block dashes, dark (-1) and light (+1), staggered
-// by half a tile. Block offsets inside the tile: x east, z south.
-const ACCENT = new Int8Array(64);
-for (const [x, z, d] of [
-  [1, 1, -1], [2, 1, -1], [5, 5, -1], [6, 5, -1],
-  [5, 2, 1], [6, 2, 1], [1, 6, 1], [2, 6, 1],
-]) ACCENT[z * 8 + x] = d;
+// Accent layouts of a ground tile (art bible section 8, lab world8.js): 8 x 8 maps, block offsets
+// x east, z south; -1 dark, -0.6 weak dark, +1 light, +0.5 faint light. Our own layouts, built to
+// the statistics measured on the references:
+//   field  grass: 3 dark singles, 2 light singles, one 2 x 1 east-west light dash, 1 faint light
+//   dirt   dirt and paths: 10 singles (6 dark, 3 of them weak; 4 light), no dashes
+//   v1     the first-pass layout (four 2 x 1 dashes), which the lab still uses for sand
+const LAYOUTS = {
+  field: [[3, 0, -1], [6, 1, 1], [0, 3, 1], [1, 3, 1], [5, 3, -1], [3, 5, 1], [7, 6, -1], [5, 7, 0.5]],
+  dirt: [[2, 0, -1], [6, 1, 1], [0, 2, -0.6], [4, 3, -1], [7, 3, 0.5], [1, 5, 1], [5, 5, -0.6], [3, 6, -1], [7, 6, 1], [5, 7, -0.6]],
+  v1: [[1, 1, -1], [2, 1, -1], [5, 5, -1], [6, 5, -1], [5, 2, 1], [6, 2, 1], [1, 6, 1], [2, 6, 1]],
+};
+const ACCENTS = {};
+for (const [name, list] of Object.entries(LAYOUTS)) {
+  const m = (ACCENTS[name] = new Float32Array(64));
+  for (const [x, z, d] of list) m[z * 8 + x] = d;
+}
+const LAYOUT_OF = { grass: 'field', dirt: 'dirt', path: 'dirt', sand: 'v1' };
 
-// Top colour of a ground block of kind at global block (X, Z): base, dark or light accent, with
-// +-1.5% brightness jitter per block.
+// Accent value -> colour, from the kind's [base, dark, light].
+const tone = (pal, a) => (a <= -1 ? pal[1] : a < 0 ? mixHex(pal[0], pal[1], -a) : a >= 1 ? pal[2] : a > 0 ? mixHex(pal[0], pal[2], a) : pal[0]);
+
+// Top colour of a ground block of kind at global block (X, Z): base or accent, with +-1.5%
+// brightness jitter per block.
 export function surfaceColor(kind, X, Z) {
   const pal = GROUND[kind] ?? GROUND.grass;
-  const a = ACCENT[(Z & 7) * 8 + (X & 7)];
-  return shadeHex(a < 0 ? pal[1] : a > 0 ? pal[2] : pal[0], 1 + (hash3(X, 1, Z, 4) - 0.5) * 0.03);
+  const a = ACCENTS[LAYOUT_OF[kind] ?? 'field'][(Z & 7) * 8 + (X & 7)];
+  return shadeHex(tone(pal, a), 1 + (hash3(X, 1, Z, 4) - 0.5) * 0.03);
 }
 
 // Cliff face colour: tan with 20% darker and 14% lighter blocks, in two-block tall clumps.

@@ -13,6 +13,7 @@
 // the room drops one of its floor rows.
 import * as THREE from 'three';
 import { GROUND_Y } from '../../core/constants.js';
+import { getMaterial, makeGlowMaterial } from '../../core/materials.js';
 import { registerArea } from '../areas.js';
 import { defineTileset, registerTile, getTile } from '../tiles.js';
 import { modelMesh } from '../../models/kit.js';
@@ -82,7 +83,10 @@ function show(make, { lift = 0, yaw = 0 } = {}) {
     },
   };
 }
-const mesh = (m) => () => modelMesh(m());
+const mesh = (m, material) => () => modelMesh(m(), material);
+// as in the dungeon: statues and braziers in the stone prop kind, the flame glowing
+const stone = () => getMaterial('prop');
+let flameGlow = null;
 function heroWithSword() {
   const g = new THREE.Group();
   g.add(modelMesh(heroModel('swordOut')));
@@ -93,8 +97,10 @@ function heroWithSword() {
 }
 function brazierWithFlame() {
   const g = new THREE.Group();
-  g.add(modelMesh(brazierModel()));
-  const f = modelMesh(flameModel(0));
+  g.add(modelMesh(brazierModel(), stone()));
+  const f = modelMesh(flameModel(0), (flameGlow ??= makeGlowMaterial(0xffffff, 1.3)));
+  f.userData.noShadow = true;
+  f.castShadow = false;
   f.position.y = FLAME_Y / 16;
   g.add(f);
   return g;
@@ -119,7 +125,7 @@ const LINEUP_TILES = {
   K: show(mesh(() => heroModel('cheer'))),
   L: show(heroWithSword, { yaw: Math.PI / 5 }),
   M: show(mesh(() => heroModel('windUp'))),
-  3: show(mesh(statueModel)),
+  3: show(() => modelMesh(statueModel(), stone())),
   a: show(mesh(() => slimeModel(0, 'red'))),
   h: show(mesh(() => slimeModel(1, 'red'))),
   b: show(mesh(() => slimeModel(0, 'blue'))),
