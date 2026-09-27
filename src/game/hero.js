@@ -117,7 +117,7 @@ function pushAway(p, dist, time) {
   const d = Math.hypot(dx, dz) || 1;
   player.kx = (dx / d) * (dist / time);
   player.kz = (dz / d) * (dist / time);
-  player.knockT = time;
+  player.knockT = time - 1e-9; // time / TICK whole ticks, not one more from rounding
 }
 
 const ringCut = () => {

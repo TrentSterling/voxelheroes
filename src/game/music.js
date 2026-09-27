@@ -6,19 +6,22 @@
 //   playMusic('boss')        switch tracks; 'music-change' { id, from }. Unknown ids throw.
 //   stopMusic()              silence ('music-change' with id null)
 //   currentMusic()           the id that should be playing (null: none)
-//   playAreaMusic(area)      the area's track: area.music, else its dungeon's music, else none
+//   areaMusic(area)          the track an area (or area id) plays: area.music, else its
+//                            dungeon's music, else null
+//   playAreaMusic(area)      play it (null: stopMusic)
 //
 // The hero entering another area plays that area's track (bosses call
 // playMusic('boss') and playAreaMusic() after). An area or dungeon that
 // names a track nobody registered is silent, with one warning per id: each
 // stream registers its own tracks (a dungeon its 'dungeon-<n>' placeholder
-// in dungeons/<id>.js, the overworld its area tracks in music/*). play(out) gets the music bus
-// from core/audio.js (null until the first key press or tap) and returns a
-// stop function; a track without play() is silent. The fade between tracks
-// is TUNING.load.musicFade (for M6).
+// in dungeons/<id>.js, the overworld its area tracks in music/*). play(out)
+// gets the music bus from core/audio.js (null until the first key press or
+// tap) and returns a stop function; a track without play() is silent. The
+// fade between tracks is TUNING.load.musicFade (for M6).
 import { emit } from '../core/events.js';
 import { musicOutput } from '../core/audio.js';
 import { currentScreen } from '../world/world.js';
+import { getArea } from '../world/areas.js';
 import { onAreaChange } from './places.js';
 import { dungeonOfArea } from './dungeons.js';
 
@@ -75,11 +78,14 @@ export function stopMusic() {
 
 const warned = new Set();
 
+// The track an area plays (an area or its id): its music, else its
+// dungeon's, else null (silence).
 export function areaMusic(area) {
-  if (!area) return null;
-  const id = area.music ?? dungeonOfArea(area.id)?.music ?? null;
+  const a = typeof area === 'string' ? getArea(area) : area;
+  if (!a) return null;
+  const id = a.music ?? dungeonOfArea(a.id)?.music ?? null;
   if (id && !tracks.has(id)) {
-    if (!warned.has(id)) console.warn(`music: area "${area.id}" names track "${id}", which nobody registered; silent`);
+    if (!warned.has(id)) console.warn(`music: area "${a.id}" names track "${id}", which nobody registered; silent`);
     warned.add(id);
     return null;
   }

@@ -9,9 +9,16 @@
 // grants with the item get.
 //
 // Everything goes through window.__voxelHeroes.game (src/game/testapi.js).
-// Runtime content (a sword, spell, dungeon, shop, entity) is prefixed "probe".
+// Runtime content (a sword, spell, dungeon, shop, entity, card, place, menu)
+// is prefixed "probe": the enemies here are probe-foe and probe-rare, not a
+// stream's real types. The dialog box, the game-over panel and the Sound
+// button are read through the ui's views (dialogView, overlayView,
+// muteLabel), never the DOM, and the menus through their dialog fallbacks
+// ({ fallback: true }), so the ui can restyle and replace them. What this
+// still takes from M1 content (the Crossroads start, Cairn Ridge, the
+// crypt's four rooms) is frozen until M3 (docs/CONTRACTS.md, "Fixtures").
 export const description =
-  'M2 contracts: tuning, fixed step, events, input (keys, pad, touch), state and saves, vitals, classes, hero API, damage, projectiles, swords, spells, dungeons, shops, inns, slots, bestiary, music, cards, settings, prompts, pickups, grants.';
+  'M2 contracts: tuning, fixed step, events, input (keys, pad, touch, menus), state and saves, vitals, classes, hero API, damage, freeze and slow, projectiles, spawn groups and clears, swords, spells, dungeons, shops, inns, menus, places, slots, bestiary, music, cards, settings, prompts, pickups, grants, chests.';
 
 const DT = 1 / 60;
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -23,6 +30,9 @@ export default async function contractsM2(t) {
     const g = window.__voxelHeroes.game;
     window.__allEvents = new Set();
     g.events.onAny((name) => window.__allEvents.add(name));
+    // t.track keeps only flat fields; where a hit came from is kept here.
+    window.__heroHitFrom = [];
+    g.events.on('hero-hit', (p) => window.__heroHitFrom.push({ kind: p.kind, x: p.from ? p.from.x : null }));
   });
   await t.track(
     'life-changed',
@@ -55,7 +65,8 @@ export default async function contractsM2(t) {
     'settings-changed',
     'item-get',
     'pickup',
-    'screen-visited'
+    'screen-visited',
+    'chest-opened'
   );
   const count = async (name) => (await t.events(name)).length;
   const last = async (name) => (await t.events(name)).pop() ?? null;
@@ -123,8 +134,8 @@ export default async function contractsM2(t) {
   t.expect(r.acts === 'map,dash,inventory,next-item' && !r.muted, `M, Space, Tab and E press map, dash, inventory and next-item in play (${r.acts}), and M does not mute`);
   t.expect((await count('sword-swing')) === swings, 'Space no longer swings the sword');
   await t.press('KeyN');
-  r = await t.eval(() => ({ muted: window.__voxelHeroes.state.settings.muted, audio: window.__voxelHeroes.game.audio.isMuted(), label: document.getElementById('mute').textContent }));
-  t.expect(r.muted && r.audio && r.label === 'Sound off', 'N mutes (the muted setting, the audio and the Sound button agree)');
+  r = await t.eval(() => ({ muted: window.__voxelHeroes.state.settings.muted, audio: window.__voxelHeroes.game.audio.isMuted(), label: window.__voxelHeroes.game.hud.muteLabel() }));
+  t.expect(r.muted && r.audio && r.label === 'Sound off', 'N mutes (the muted setting, the audio and the Sound label agree)');
   await t.press('KeyN');
   t.expect(!(await t.eval(() => window.__voxelHeroes.state.settings.muted)), 'N again unmutes');
   swings = await count('sword-swing');
@@ -210,6 +221,33 @@ export default async function contractsM2(t) {
     document.getElementById('touch').hidden = true;
   });
   t.expect(r.every((b) => b.left >= 0 && b.right <= 390), `the touch controls fit a 390 px phone (${r.map((b) => `${b.id} ${Math.round(b.left)}-${Math.round(b.right)}`).join(', ')})`);
+
+  // Menus read directions with input.menuDir(): a press at once, a held
+  // stick again after TUNING.menu.repeatDelay, then every repeatEvery.
+  // (endFrame stands in for the tick boundary, so the hero does not walk.)
+  r = await t.eval(() => {
+    const { input: inp } = window.__voxelHeroes.game.input;
+    const { TUNING } = window.__voxelHeroes.game.tuning;
+    const seq = [];
+    const read = () => seq.push(inp.menuDir() ?? '-');
+    inp.tap('left');
+    read();
+    read(); // the same answer all tick
+    inp.endFrame();
+    read();
+    inp.endFrame();
+    inp.setStick(0, 0.9);
+    for (let i = 0; i < 36; i++) {
+      read();
+      inp.endFrame();
+    }
+    inp.setStick(0, 0);
+    read();
+    inp.endFrame();
+    return { seq: seq.join(','), repeat: [TUNING.menu.repeatDelay, TUNING.menu.repeatEvery] };
+  });
+  const menuWant = ['left', 'left', '-', ...Array.from({ length: 36 }, (_, i) => ([0, 21, 27, 33].includes(i) ? 'down' : '-')), '-'].join(',');
+  t.expect(r.repeat.join(',') === '0.35,0.1' && r.seq === menuWant, `menuDir: a tap moves a menu cursor once; a held stick moves it, then again after 0.35 s and every 0.1 s (${r.seq.replace(/(-,)+/g, '..,')})`);
 
   // ---------------------------------------------------------------- state fields and saving
   r = await t.eval(() => {
@@ -343,16 +381,27 @@ export default async function contractsM2(t) {
     const p = window.__voxelHeroes.player;
     const out = {};
     out.yaws = [0, Math.PI / 2, Math.PI, -Math.PI / 2].map(facingFromYaw).join(',');
-    p.yaw = Math.PI / 2;
+    out.set = hero.setFacing('east');
     out.facing = hero.facing();
     out.vec = hero.facingVector();
-    p.yaw = 0;
+    out.toward = hero.faceToward(p.x + 0.3, p.z - 4); // a point to the north, a little east
+    out.towardFacing = hero.facing();
+    try {
+      hero.setFacing('up');
+      out.bad = 'accepted';
+    } catch (e) {
+      out.bad = e.message;
+    }
+    hero.setFacing('south');
+    out.south = hero.facing();
     const pos = hero.position();
     out.local = [pos.lx, pos.lz];
     out.full = hero.isFullLife();
     return out;
   });
-  t.expect(r.yaws === 'south,east,north,west' && r.facing === 'east' && r.vec.x === 1 && r.vec.z === 0, 'facing: the cardinal nearest the yaw (0 faces south)');
+  t.expect(r.yaws === 'south,east,north,west', 'facingFromYaw: the cardinal nearest a yaw (0 faces south)');
+  t.expect(r.set === 'east' && r.facing === 'east' && r.vec.x === 1 && r.vec.z === 0 && r.south === 'south', 'setFacing turns the attack facing (east: +x)');
+  t.expect(r.toward === 'north' && r.towardFacing === 'north' && /setFacing: north, east, south, west/.test(r.bad), 'faceToward faces the cardinal nearest a point; setFacing takes only the four');
   t.expect(near(r.local[0], 8, 0.01) && near(r.local[1], 5.5, 0.01) && r.full, `position() gives local tiles (${r.local})`);
 
   await kb.down('Shift');
@@ -388,8 +437,54 @@ export default async function contractsM2(t) {
   t.expect(r.blink === 'ignored', 'hits while blinking are ignored');
   t.expect(r.hazard === 'hit' && r.behind === 'hit' && r.hp === 5, 'hazards and hits from behind get through the guard');
   t.expect(/kind must be/.test(r.badKind), 'an unknown hit kind is refused');
-  const hits = (await t.events('hero-hit')).map((e) => e.result).join(',');
+  const heroHits = await t.events('hero-hit');
+  const hits = heroHits.map((e) => e.result).join(',');
   t.expect(hits === 'blocked,hit,hit,hit', `'hero-hit' reports every hit that is not ignored (${hits})`);
+  const froms = await t.eval(() => window.__heroHitFrom.slice(0, 4));
+  t.expect(froms.length === 4 && froms.every((e) => (e.kind === 'hazard' ? e.x === null : Number.isFinite(e.x))), "'hero-hit' says where the hit came from (null for hazards), so the caller can recoil");
+
+  await kb.down('Shift');
+  await t.step(DT);
+  r = await t.eval(() => {
+    const { hero } = window.__voxelHeroes.game.hero;
+    const h = window.__voxelHeroes;
+    const p = h.player;
+    const front = { x: p.x, z: p.z + 1 };
+    p.invT = 0;
+    const out = { guarding: hero.isGuarding(), shield: h.state.gear.shield };
+    out.basic = hero.receiveHit({ damage: 1, from: front, kind: 'projectile' });
+    out.tier1 = hero.receiveHit({ damage: 1, from: front, kind: 'projectile', tier: 1, ignoreIframes: true });
+    return out;
+  });
+  await kb.up('Shift');
+  t.expect(r.guarding && r.shield === 1 && r.basic === 'hit' && r.tier1 === 'blocked', 'a shot is tier 2 unless it says otherwise: shield 1 blocks only tier-1 shots');
+
+  await t.step(0.5);
+  r = await t.eval(async () => {
+    const { hero } = window.__voxelHeroes.game.hero;
+    const h = window.__voxelHeroes;
+    const { TUNING } = h.game.tuning;
+    const p = h.player;
+    const out = { iframes: TUNING.damage.iframes };
+    hero.place(8, 5.5, 0);
+    p.invT = 0;
+    const x0 = p.x;
+    out.push = hero.receiveHit({ damage: 1, from: { x: p.x - 1, z: p.z }, kind: 'contact', knockback: 2 });
+    out.blink = p.invT;
+    out.locked = hero.inputLocked();
+    await h.step(0.4);
+    out.moved = p.x - x0;
+    p.invT = 0;
+    await h.step(0.3); // the lock runs out
+    const swamp = () => hero.receiveHit({ damage: 1, kind: 'hazard', knockback: false, iframes: false, lock: false });
+    out.swamp = [swamp(), swamp()];
+    out.after = [p.invT, hero.inputLocked()];
+    h.game.vitals.setLife(5, 'probe');
+    hero.place(8, 5.5, 0);
+    return out;
+  });
+  t.expect(r.push === 'hit' && near(r.blink, r.iframes) && r.locked && near(r.moved, 2, 0.1), `receiveHit({ knockback: 2 }) pushes him 2 tiles (${r.moved.toFixed(2)}); he blinks TUNING.damage.iframes s with input locked`);
+  t.expect(r.swamp.join(',') === 'hit,hit' && r.after[0] === 0 && !r.after[1], 'with iframes: false and lock: false, damage over time neither blinks nor locks (a swamp lands every tick it is called)');
 
   swings = await count('sword-swing');
   await t.eval(() => window.__voxelHeroes.game.hero.hero.lockInput(0.3));
@@ -426,6 +521,24 @@ export default async function contractsM2(t) {
     return { result, lost: hp - h.state.hp, at: [pos.lx, pos.lz] };
   });
   t.expect(r.result === 'hit' && r.lost === 2 && near(r.at[0], 8, 0.01) && near(r.at[1], 5.5, 0.01), `a pit costs 2 units and puts the hero back where he entered (${r.at})`);
+  r = await t.eval(async () => {
+    const { hero } = window.__voxelHeroes.game.hero;
+    const h = window.__voxelHeroes;
+    const out = {};
+    hero.place(4, 5.5);
+    await h.tick(); // he stands on a safe tile
+    hero.place(6, 5.5); // and steps into (say) lava
+    out.safe = hero.fall({ to: 'safe', damage: 1 });
+    let pos = hero.position();
+    out.safeAt = [pos.lx, pos.lz];
+    out.spot = hero.fall({ to: { area: 'overworld', screen: [1, 1], x: 12, z: 5.5 }, damage: 1 });
+    pos = hero.position();
+    out.spotAt = [pos.lx, pos.lz];
+    hero.place(8, 5.5, 0);
+    return out;
+  });
+  t.expect(r.safe === 'hit' && near(r.safeAt[0], 4, 0.01) && near(r.safeAt[1], 5.5, 0.01), `fall({ to: 'safe' }) puts him back on the last safe tile he stood on (${r.safeAt})`);
+  t.expect(r.spot === 'hit' && near(r.spotAt[0], 12, 0.01) && near(r.spotAt[1], 5.5, 0.01), `fall({ to: spot }) on this screen puts him on the spot (${r.spotAt})`);
 
   r = await t.eval(() => {
     const g = window.__voxelHeroes.game;
@@ -451,20 +564,44 @@ export default async function contractsM2(t) {
   await t.teleport('overworld:1,1', 8, 5.5, { yaw: 0 });
 
   // ---------------------------------------------------------------- damage to enemies
+  // Probe enemies: the least an enemy is (kind 'enemy', hp, hurt, die with
+  // 'enemy-killed' and the room-clear check), so no stream's enemy is pinned.
+  await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    class ProbeFoe extends g.entity.Entity {
+      constructor(o = {}) {
+        super(o);
+        this.kind = 'enemy';
+        this.swordable = true;
+        this.hp = o.hp ?? 10;
+        this.boss = !!o.boss;
+        this.rare = !!o.rare;
+        this.hitSwing = undefined;
+      }
+      canBeHit(hit) {
+        return hit.swingId === undefined || hit.swingId !== this.hitSwing;
+      }
+      hurt(hit) {
+        if (hit.swingId !== undefined) this.hitSwing = hit.swingId;
+        this.hp -= hit.damage;
+        if (this.hp <= 0) this.die(hit);
+        return true;
+      }
+      die(hit = null) {
+        this.remove();
+        g.events.emit('enemy-killed', { entity: this, hit });
+        g.combat.checkRoomCleared();
+      }
+    }
+    for (const type of ['probe-foe', 'probe-rare']) g.registry.registerEntity(type, (o) => new ProbeFoe(o));
+  });
   r = await t.eval(() => {
     const h = window.__voxelHeroes;
     const { dealDamage, damageAt } = h.game.damage;
-    const mk = (x, z) => {
-      const e = h.spawn('slime', x, z);
-      e.spawned = true;
-      e.growT = 1;
-      e.think = () => {};
-      return e;
-    };
-    const a = mk(3, 3);
-    const b = mk(13, 3);
+    const a = h.spawn('probe-foe', 3, 3, { hp: 10 });
+    const b = h.spawn('probe-foe', 13, 3, { hp: 10 });
     const out = {};
-    a.hp = 10;
     out.hit = dealDamage(a, { amount: 1, source: 'sword', from: { x: a.x - 1, z: a.z }, swingId: 'probe-1' });
     out.again = dealDamage(a, { amount: 1, source: 'sword', swingId: 'probe-1' });
     a.immune = ['arrow'];
@@ -485,6 +622,10 @@ export default async function contractsM2(t) {
     b.boss = false;
     b.hp = 10;
     out.area = damageAt(b.x, b.z, 1.5, { amount: 2, source: 'bomb' }).map((x) => `${x.entity.type}:${x.result}:${x.damage}`);
+    let seen = null;
+    const stop = h.game.events.on('enemy-hit', (p) => (seen = p));
+    out.crit = [dealDamage(b, { amount: 1, source: 'sword', crit: true }).result, seen?.hit?.crit === true];
+    stop();
     b.remove();
     return out;
   });
@@ -493,9 +634,36 @@ export default async function contractsM2(t) {
   t.expect(r.weak.damage === 3 && r.hp === 6, 'weak spots multiply it');
   t.expect(r.freeze.result === 'hit' && r.frozen === 1 && r.shatter.result === 'killed' && r.gone, 'a frozen enemy dies to the next hit');
   t.expect(r.bossFrozen === 0, 'bosses never freeze');
-  t.expect(r.area.join(' ') === 'slime:hit:2', `damageAt hits what is in the radius (${r.area})`);
-  const hitResults = (await t.events('enemy-hit')).map((e) => e.result).join(',');
+  t.expect(r.area.join(' ') === 'probe-foe:hit:2', `damageAt hits what is in the radius (${r.area})`);
+  let enemyHits = await t.events('enemy-hit');
+  const hitResults = enemyHits.map((e) => e.result).join(',');
   t.expect(hitResults.startsWith('hit,immune,blocked,hit,hit,killed'), `'enemy-hit' reports each result (${hitResults})`);
+  t.expect(r.crit[0] === 'hit' && r.crit[1], "a critical hit says so in 'enemy-hit' (hit.crit, for the red word)");
+
+  // The freeze spell's path: freezeAt freezes without hurting, never a boss.
+  const hitsBefore = enemyHits.length;
+  r = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const { freezeAt, dealDamage } = h.game.damage;
+    const b = h.spawn('probe-foe', 12, 3, { hp: 10 });
+    const c = h.spawn('probe-foe', 13, 4, { hp: 4 });
+    const boss = h.spawn('probe-foe', 11, 4, { hp: 10, boss: true });
+    const far = h.spawn('probe-foe', 3, 8, { hp: 10 });
+    const name = (e) => (e === b ? 'b' : e === c ? 'c' : e === boss ? 'boss' : 'far');
+    const out = {};
+    out.frozen = freezeAt(b.x, b.z, 2, 3).map(name).sort().join(',');
+    out.times = [b.frozenT, c.frozenT, boss.frozenT ?? 0, far.frozenT ?? 0];
+    out.unhurt = b.hp === 10 && c.hp === 4 && !b.removed && !c.removed;
+    out.again = freezeAt(b.x, b.z, 2, 5).length;
+    out.renewed = [b.frozenT, b.removed, b.hp];
+    out.shatter = dealDamage(c, { amount: 1 }).result;
+    for (const e of [b, boss, far]) e.remove();
+    return out;
+  });
+  enemyHits = (await t.events('enemy-hit')).slice(hitsBefore);
+  t.expect(r.frozen === 'b,c' && r.times.join(',') === '3,3,0,0' && r.unhurt, `freezeAt freezes the enemies in reach for its time, not bosses, with no damage (${r.frozen}; ${r.times})`);
+  t.expect(r.again === 2 && r.renewed.join(',') === '5,false,10' && r.shatter === 'killed', 'freezing again only renews the time; the next real hit shatters');
+  t.expect(enemyHits.slice(0, 2).every((e) => e.result === 'frozen' && e.damage === 0), "'enemy-hit' reports freezeAt as 'frozen' with no damage");
 
   // ---------------------------------------------------------------- spawn groups
   r = await t.eval(() => {
@@ -504,7 +672,7 @@ export default async function contractsM2(t) {
     const st = h.state;
     const out = {};
     const rect = g.places.currentRect();
-    const grp = h.spawn('group', 8, 5, { of: ['slime'], count: [3, 3], minDist: 3 });
+    const grp = h.spawn('group', 8, 5, { of: ['probe-foe'], count: [3, 3], minDist: 3 });
     const kids = grp.children;
     out.n = kids.length;
     out.gone = grp.removed;
@@ -515,7 +683,7 @@ export default async function contractsM2(t) {
     for (const e of kids) e.remove();
     const was = st.profile.difficulty;
     st.profile.difficulty = 'hard';
-    const hard = h.spawn('group', 8, 5, { of: ['slime'], count: 4 });
+    const hard = h.spawn('group', 8, 5, { of: ['probe-foe'], count: 4 });
     out.hard = hard.children.length;
     for (const e of hard.children) e.remove();
     st.profile.difficulty = was;
@@ -524,6 +692,41 @@ export default async function contractsM2(t) {
   t.expect(r.n === 3 && r.gone && r.spread === 3, "a 'group' marker places its enemies on separate tiles and leaves");
   t.expect(r.far && r.inside && r.floor, 'group enemies stand on free floor of the screen, away from the hero');
   t.expect(r.hard === 6, `hard mode brings 50% more (${r.hard} for 4)`);
+
+  // Remembered clears (game/clears.js) and rare spawns.
+  r = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const { TUNING } = g.tuning;
+    const C = g.clears;
+    const here = g.places.spotHere();
+    const key = `${here.area}:${here.screen.join(',')}`;
+    const out = { key };
+    C.markCleared(key);
+    const skipped = h.spawn('group', 8, 5, { of: ['probe-foe'], count: 3 });
+    out.skipped = skipped.children.length === 0 && skipped.removed;
+    C.forgetCleared((k) => k === key);
+    out.forgot = !C.isCleared(key);
+    out.noRule = C.remembersClear();
+    window.__probeClears = true;
+    C.registerClearRule('probe-rule', (ctx) => (window.__probeClears && ctx.key === key ? !ctx.rare : undefined));
+    out.rule = C.remembersClear();
+    const foe = h.spawn('probe-foe', 3, 3, { hp: 1 });
+    g.damage.dealDamage(foe, { amount: 1 });
+    out.cleared = C.isCleared(key) && C.clearedScreens().includes(key);
+    C.forgetCleared((k) => k === key);
+    TUNING.enemy.rare['probe-rare'] = 1;
+    const rg = h.spawn('group', 8, 5, { of: ['probe-foe'], count: 3, rare: ['probe-rare'] });
+    out.rare = rg.children.map((e) => `${e.type}${e.rare ? '*' : ''}`).sort().join(',');
+    for (const e of rg.children) e.remove();
+    delete TUNING.enemy.rare['probe-rare'];
+    out.rareVisit = C.remembersClear();
+    window.__probeClears = false;
+    return out;
+  });
+  t.expect(r.skipped && r.forgot, `a screen remembered as cleared (${r.key}) gets no group enemies until it is forgotten`);
+  t.expect(!r.noRule && r.rule && r.cleared, "with a clear rule that says yes, 'room-cleared' remembers the screen");
+  t.expect(r.rare === 'probe-foe,probe-foe,probe-rare*' && !r.rareVisit, `a group's rare roll replaces a member and marks it rare; a screen with a rare spawn is not remembered (${r.rare})`);
 
   // ---------------------------------------------------------------- projectiles
   await t.eval(() => {
@@ -566,32 +769,46 @@ export default async function contractsM2(t) {
     const b1 = window.__shoot(8, 9.5, { x: 0, z: -1 });
     await h.step(0.7);
     out.blocked = b1.removed && st.hp === out.hp0;
-    const slime = h.spawn('slime', 8, 8.7);
-    slime.spawned = true;
-    slime.growT = 1;
-    slime.think = () => {};
-    slime.hp = 10;
+    const foe = h.spawn('probe-foe', 8, 8.7, { hp: 10 });
     g.effects.startEffect('reflect', 10);
     const b2 = window.__shoot(8, 9.5, { x: 0, z: -1 });
     await h.step(0.55);
     out.reflected = b2.reflected && b2.owner === 'hero' && b2.vz > 0 && Math.abs(Math.hypot(b2.vx, b2.vz) - 12) < 1e-6;
     await h.step(0.4);
-    out.slimeHp = slime.hp;
+    out.foeHp = foe.hp;
     out.b2gone = b2.removed;
     g.effects.clearEffect('reflect');
     const b3 = window.__shoot(8, 9.5, { x: 0, z: -1 }, { tier: 3 });
     await h.step(0.7);
     out.tier3 = st.hp;
     out.b3gone = b3.removed;
-    slime.remove();
+    foe.remove();
     st.gear.shield = 1;
     return out;
   });
   await kb.up('Shift');
   t.expect(r.blocked, 'a guarded shot of a tier the shield covers is blocked');
-  t.expect(r.reflected && r.b2gone && r.slimeHp === 8, `under the reflect spell a blocked shot flies back at 1.5x and hurts an enemy (hp 10 -> ${r.slimeHp})`);
+  t.expect(r.reflected && r.b2gone && r.foeHp === 8, `under the reflect spell a blocked shot flies back at 1.5x and hurts an enemy (hp 10 -> ${r.foeHp})`);
   t.expect(r.tier3 === r.hp0 - 2 && r.b3gone, 'a shot above the shield tier gets through the guard');
   await t.step(1.2);
+
+  // The slow spell: everything but the hero and his shots runs at
+  // TUNING.spells.slow.factor (movers scale dt by effects.worldScale).
+  r = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const out = {};
+    g.effects.startEffect('slow', 5);
+    const bolt = window.__shoot(1.5, 4.5, { x: 1, z: 0 });
+    out.scales = [g.effects.worldScale(bolt), g.effects.worldScale(h.player), g.effects.worldScale({ kind: 'projectile', owner: 'hero' })].join(',');
+    await h.step(0.1);
+    out.travelled = bolt.travelled;
+    bolt.remove();
+    g.effects.clearEffect('slow');
+    out.after = g.effects.worldScale(bolt);
+    return out;
+  });
+  t.expect(r.scales === '0.5,1,1' && near(r.travelled, 0.4, 0.02) && r.after === 1, `the slow spell halves what is not the hero's: an enemy bolt flies ${r.travelled.toFixed(2)} of 0.8 tiles in 0.1 s`);
 
   // ---------------------------------------------------------------- swords and the smith
   r = await t.eval(() => {
@@ -754,7 +971,8 @@ export default async function contractsM2(t) {
   await t.setHp(0);
   await t.step(1.4);
   s = await t.state();
-  t.expect(s.mode === 'dead' && /Sunken Gate/.test(await t.eval(() => document.getElementById('overlay-msg').textContent)), 'falling in the Pillar Hall: the game-over panel names the Sunken Gate');
+  r = await t.eval(() => window.__voxelHeroes.game.overlay.overlayView());
+  t.expect(s.mode === 'dead' && r.visible && /Sunken Gate/.test(r.message), `falling in the Pillar Hall: the game-over panel names the Sunken Gate ("${r.message}")`);
   await t.press('Enter');
   await t.step(0.2);
   s = await t.state();
@@ -777,6 +995,7 @@ export default async function contractsM2(t) {
     g.grants.grant('orb-2');
     out.orbs = D.orbs().join(',');
     out.music = g.music.currentMusic();
+    out.areaTrack = g.music.areaMusic(g.places.spotHere().area);
     return out;
   });
   t.expect(r.first.heartContainer && r.first.coins === 250 && !r.second.heartContainer && r.second.coins === 250, 'the first boss kill pays a heart container and 250 coins; a re-fight pays coins only');
@@ -784,7 +1003,7 @@ export default async function contractsM2(t) {
   t.expect(r.complete && !r.twice && r.orbs === '1,2', `taking the orb completes the dungeon once (orbs ${r.orbs})`);
   const bossEvents = (await t.events('boss-defeated')).map((e) => `${e.id}:${e.refight}`).join(' ');
   t.expect(bossEvents === 'probe-boss:false probe-boss:true' && (await last('dungeon-complete'))?.orb === 1, `boss and orb events (${bossEvents})`);
-  t.expect(r.music === null && (await last('music-change'))?.id === null, 'the overworld has no track yet, so the music stops');
+  t.expect(r.music === r.areaTrack && (await last('music-change'))?.id === r.areaTrack, `leaving the crypt plays the overworld's own track (${r.areaTrack ?? 'none yet: the music stops'})`);
 
   // ---------------------------------------------------------------- shops and inns
   r = await t.eval(() => {
@@ -827,15 +1046,18 @@ export default async function contractsM2(t) {
   t.expect((await last('inn-rest'))?.inn === 'probe-inn', "'inn-rest' fires");
 
   // ---------------------------------------------------------------- menus (the dialog fallbacks)
-  // Shopkeepers, the smith and innkeepers open menus by id; until the ui
-  // registers its screens, dialogs answer. Text shows at once here.
-  const choicesNow = () => t.eval(() => [...document.querySelectorAll('#dialog .dialog-choices li')].map((li) => li.textContent).join('|'));
+  // Shopkeepers, counters, the smith, innkeepers and the warp feather open
+  // menus by id. The ui registers the real screens in M2; each id keeps a
+  // dialog fallback, which { fallback: true } reaches whatever is
+  // registered. The choices are read from dialogView(). Text shows at once.
+  const choicesNow = () => t.eval(() => window.__voxelHeroes.game.dialog.dialogView()?.choices?.join('|') ?? '');
   const pick = async (n) => {
     for (let i = 0; i < n; i++) await t.press('ArrowRight');
     await t.press('KeyJ');
     await t.step(DT * 2);
   };
-  await t.eval(() => {
+  const FALLBACK = { fallback: true };
+  await t.eval((fb) => {
     const g = window.__voxelHeroes.game;
     const st = window.__voxelHeroes.state;
     g.settings.setSetting('textSpeed', 'instant');
@@ -843,8 +1065,8 @@ export default async function contractsM2(t) {
     g.shops.registerShop({ id: 'probe-stall', name: 'Probe Stall', entries: [{ id: 'hearty', grant: 'heart', price: 5 }, { id: 'tok', grant: 'token', price: 40 }] });
     window.__menu = 'open';
     window.__tokens = st.tokens;
-    g.menus.openMenu('shop', { shop: 'probe-stall', speaker: 'Probe' }).then(() => (window.__menu = 'closed'));
-  });
+    g.menus.openMenu('shop', { shop: 'probe-stall', speaker: 'Probe' }, fb).then(() => (window.__menu = 'closed'));
+  }, FALLBACK);
   await t.step(DT * 2);
   const shelf = await choicesNow();
   await t.shot('03-shop-menu');
@@ -855,11 +1077,11 @@ export default async function contractsM2(t) {
   t.expect(shelf === 'Heart 5|Sword Token 40|Leave' && again === shelf, `the shop fallback lists the shelf as dialog choices (${shelf})`);
   t.expect(r.tokens === 1 && r.coins === 460 && r.menu === 'closed' && r.mode === 'play', `choosing buys through shops.js; Leave closes the menu (${r.coins} coins)`);
 
-  await t.eval(() => {
+  await t.eval((fb) => {
     const g = window.__voxelHeroes.game;
     window.__menu = 'open';
-    g.menus.openMenu('smith', { sword: 'probe-blade' }).then(() => (window.__menu = 'closed'));
-  });
+    g.menus.openMenu('smith', { sword: 'probe-blade' }, fb).then(() => (window.__menu = 'closed'));
+  }, FALLBACK);
   await t.step(DT * 2);
   const smith = await choicesNow();
   await pick(0); // a level of length
@@ -869,12 +1091,12 @@ export default async function contractsM2(t) {
   t.expect(smith === 'length 10/12: 100|strength 2/3: 300|Reset|Leave' && smithAfter.startsWith('length 11/12'), `the smith fallback sells the sword's levels (${smith})`);
   t.expect(r.length === 11 && r.coins === 360 && r.menu === 'closed', 'buying a level at the smith pays and adds it');
 
-  await t.eval(() => {
+  await t.eval((fb) => {
     const g = window.__voxelHeroes.game;
     window.__voxelHeroes.state.hp = 1;
     window.__menu = 'open';
-    g.menus.openMenu('inn', { inn: 'probe-inn' }).then((stayed) => (window.__menu = stayed));
-  });
+    g.menus.openMenu('inn', { inn: 'probe-inn' }, fb).then((stayed) => (window.__menu = stayed));
+  }, FALLBACK);
   await t.step(DT * 2);
   const inn = await choicesNow();
   await pick(0); // Stay
@@ -885,20 +1107,78 @@ export default async function contractsM2(t) {
     const st = window.__voxelHeroes.state;
     const out = { menu: window.__menu, full: st.hp === st.maxHp, coins: st.coins, respawn: g.places.respawnSpot('death').screen.join(',') };
     st.respawn = null;
-    out.registered = [];
-    g.menus.registerMenu('probe-menu', async ({ n }) => n * 2);
-    g.menus.registerMenu('inn', async () => 'screen');
-    try {
-      g.menus.registerMenu('inn', async () => 'again');
-    } catch (e) {
-      out.twice = e.message;
-    }
-    out.fallback = g.menus.usesFallback('shop') && !g.menus.usesFallback('inn');
     return out;
   });
-  const own = await t.eval(() => Promise.all([window.__voxelHeroes.game.menus.openMenu('probe-menu', { n: 21 }), window.__voxelHeroes.game.menus.openMenu('inn', {})]));
   t.expect(inn === 'Stay|Leave' && r.menu === true && r.full && r.coins === 350 && r.respawn === '0,1', 'the inn fallback: a night refills, pays and moves the respawn point');
-  t.expect(own.join(',') === '42,screen' && /already registered/.test(r.twice) && r.fallback, 'registerMenu adds menus and replaces a fallback once');
+
+  // One thing on a shop counter: yes or no.
+  await t.eval((fb) => {
+    window.__menu = 'open';
+    window.__voxelHeroes.game.menus.openMenu('counter', { shop: 'probe-stall', entry: 'hearty', speaker: 'Probe' }, fb).then((bought) => (window.__menu = bought));
+  }, FALLBACK);
+  await t.step(DT * 2);
+  const counter = await choicesNow();
+  await pick(0); // Buy
+  r = await t.eval(() => ({ menu: window.__menu, coins: window.__voxelHeroes.state.coins }));
+  t.expect(counter === 'Buy|No' && r.menu === true && r.coins === 345, `the counter fallback asks once and buys (${counter})`);
+
+  // Named places and the warp feather's list.
+  r = await t.eval(() => {
+    const P = window.__voxelHeroes.game.places;
+    const out = {};
+    P.registerPlace({ id: 'probe-camp', name: 'Probe Camp', kind: 'other', order: -1, spot: { area: 'overworld', screen: [0, 1], x: 8, z: 5.5, yaw: 0 } });
+    try {
+      P.registerPlace({ id: 'probe-moon', kind: 'moon', spot: { area: 'overworld' } });
+      out.bad = 'accepted';
+    } catch (e) {
+      out.bad = e.message;
+    }
+    out.visited = P.placeVisited('probe-camp');
+    out.listed = P.warpPlaces(['other'])[0]?.id;
+    out.kinds = [P.areaKind('overworld'), P.areaKind('crypt')].join(',');
+    return out;
+  });
+  t.expect(/kind must be one of/.test(r.bad) && r.visited && r.listed === 'probe-camp', 'registerPlace checks the kind; a place in a visited area is on the warp list');
+  t.expect(r.kinds === 'overworld,dungeon', `areaKind: the overworld and a dungeon (${r.kinds})`);
+  await t.eval((fb) => {
+    window.__menu = 'open';
+    window.__voxelHeroes.game.menus.openMenu('warp', { kinds: ['other'] }, fb).then((place) => (window.__menu = place?.id ?? 'none'));
+  }, FALLBACK);
+  await t.step(DT * 2);
+  const warpList = await choicesNow();
+  await pick(0);
+  r = await t.eval(() => window.__menu);
+  t.expect(warpList.startsWith('Probe Camp|') && warpList.endsWith('|Stay') && r === 'probe-camp', `the warp fallback lists visited places and returns the one picked (${warpList})`);
+
+  // A screen replaces a fallback; { fallback: true } still reaches it.
+  r = await t.eval(() => {
+    const M = window.__voxelHeroes.game.menus;
+    const out = { builtIn: ['shop', 'counter', 'smith', 'inn', 'warp'].every((id) => M.hasFallback(id)) };
+    M.registerFallback('probe-menu', async ({ n }) => `fallback ${n}`);
+    out.before = M.usesFallback('probe-menu');
+    M.registerMenu('probe-menu', async ({ n }) => n * 2);
+    out.after = M.usesFallback('probe-menu');
+    for (const [k, fn] of [
+      ['twice', () => M.registerMenu('probe-menu', async () => 'again')],
+      ['twiceFallback', () => M.registerFallback('probe-menu', async () => 'again')],
+      ['noFallback', () => M.openMenu('probe-none', {}, { fallback: true })],
+    ]) {
+      try {
+        fn();
+        out[k] = 'accepted';
+      } catch (e) {
+        out[k] = e.message;
+      }
+    }
+    return out;
+  });
+  const own = await t.eval(() => {
+    const M = window.__voxelHeroes.game.menus;
+    return Promise.all([M.openMenu('probe-menu', { n: 21 }), M.openMenu('probe-menu', { n: 21 }, { fallback: true })]);
+  });
+  t.expect(r.builtIn && r.before && !r.after, 'shop, counter, smith, inn and warp have fallbacks; usesFallback is true until a screen is registered');
+  t.expect(own.join(',') === '42,fallback 21', `openMenu opens the screen, and the fallback with { fallback: true } (${own})`);
+  t.expect(/already registered/.test(r.twice) && /already has a fallback/.test(r.twiceFallback) && /Unknown menu|has no fallback/.test(r.noFallback), 'one screen and one fallback per id');
   await t.eval(() => window.__voxelHeroes.game.settings.setSetting('textSpeed', 'normal'));
 
   // ---------------------------------------------------------------- save slots
@@ -924,12 +1204,11 @@ export default async function contractsM2(t) {
   r = await t.eval(() => {
     const h = window.__voxelHeroes;
     const g = h.game;
-    g.bestiary.registerBestiary({ id: 'slime', name: 'Slime', band: 1, hp: 2 });
-    const before = g.bestiary.bestiaryEntries().find((e) => e.id === 'slime');
-    const e = h.spawn('slime', 3, 3);
-    e.spawned = true;
+    g.bestiary.registerBestiary({ id: 'probe-foe', name: 'Probe Foe', band: 1, hp: 2 });
+    const before = g.bestiary.bestiaryEntries().find((e) => e.id === 'probe-foe');
+    const e = h.spawn('probe-foe', 3, 3, { hp: 2 });
     g.damage.dealDamage(e, { amount: 99 });
-    const after = g.bestiary.bestiaryEntries().find((x) => x.id === 'slime');
+    const after = g.bestiary.bestiaryEntries().find((x) => x.id === 'probe-foe');
     const out = { seen: after.seen - before.seen, defeated: after.defeated - before.defeated };
     out.boss = g.music.playMusic('boss');
     try {
@@ -939,11 +1218,21 @@ export default async function contractsM2(t) {
       out.unknown = err.message;
     }
     g.music.stopMusic();
-    out.card = g.cards.cardForArea('crypt')?.id;
-    out.fallback = g.cards.cardForArea('probe-nowhere')?.id;
-    g.cards.markCardSeen('card-crypt');
-    out.gallery = g.cards
-      .galleryCards()
+    const C = g.cards;
+    C.registerLoadingCard({ id: 'probe-card', title: 'Probe Card', areas: ['probe-area'], order: 5 });
+    try {
+      C.registerLoadingCard({ id: 'probe-bad-art', areas: ['probe-area'], art: 42 });
+      out.badArt = 'accepted';
+    } catch (err) {
+      out.badArt = err.message;
+    }
+    const card = C.cardForArea('probe-area');
+    out.card = [card?.id, card?.art];
+    const stars = C.galleryCards().filter((c) => c.areas === '*');
+    const lowest = stars.reduce((a, c) => (!a || c.order < a.order ? c : a), null);
+    out.fallback = [C.cardForArea('probe-nowhere')?.id ?? null, lowest?.id ?? null, stars.length];
+    C.markCardSeen('probe-card');
+    out.gallery = C.galleryCards()
       .map((c) => `${c.id}${c.seen ? '*' : ''}`)
       .join(' ');
     out.savedCards = h.save().fields.cardsSeen;
@@ -951,7 +1240,9 @@ export default async function contractsM2(t) {
   });
   t.expect(r.seen === 1 && r.defeated === 1, 'the bestiary counts sightings and wins');
   t.expect(r.boss === 'boss' && /Unknown music/.test(r.unknown), 'playMusic switches tracks and refuses unknown ones');
-  t.expect(r.card === 'card-crypt' && r.fallback === 'card-road' && r.gallery.includes('card-crypt*') && r.savedCards.includes('card-crypt'), 'loading cards: per area, a fallback, and a saved gallery');
+  t.expect(r.card[0] === 'probe-card' && r.card[1] === null && /art is an image URL/.test(r.badArt), 'a loading card per area; art is an image URL, a model function or null (the default)');
+  t.expect(r.fallback[0] === r.fallback[1] && r.fallback[2] === 1, `an area with no card gets the one '*' card (${r.fallback[0]})`);
+  t.expect(r.gallery.includes('probe-card*') && r.savedCards.includes('probe-card'), 'shown cards join the saved gallery');
 
   // ---------------------------------------------------------------- settings
   r = await t.eval(() => {
@@ -996,10 +1287,10 @@ export default async function contractsM2(t) {
     window.__voxelHeroes.showDialog('Well met, {hero}.').then(() => (window.__said = 'closed'));
   });
   await t.step(0.4);
-  r = await t.eval(() => ({ text: document.querySelector('#dialog .dialog-text').textContent, large: document.getElementById('dialog').classList.contains('large') }));
+  r = await t.eval(() => window.__voxelHeroes.game.dialog.dialogView());
   await t.shot('02-large-text');
   await t.press('Space');
-  t.expect(r.text === 'Well met, Ada.' && r.large, `dialogs: {hero} becomes the name, large text, fast typing ("${r.text}")`);
+  t.expect(r.text === 'Well met, Ada.' && r.shown === r.text && r.large, `dialogs: {hero} becomes the name, large text, fast typing ("${r.shown}")`);
   t.expect((await t.eval(() => window.__said)) === 'closed', 'Space confirms in a dialog');
   await t.eval(() => window.__voxelHeroes.game.settings.resetSettings());
 
@@ -1007,7 +1298,7 @@ export default async function contractsM2(t) {
   r = await t.eval(() => {
     const h = window.__voxelHeroes;
     const g = h.game;
-    h.player.yaw = 0;
+    g.hero.hero.setFacing('south');
     const at = g.hero.hero.position(); // lx, lz: local to the screen, as spawn() takes them
     const npc = h.spawn('npc', at.lx, at.lz + 1, { name: 'Probe' });
     const out = {};
@@ -1045,29 +1336,84 @@ export default async function contractsM2(t) {
   t.expect(r.collected && r.coins === 121 && r.magic === 1, `collectPickup and walking over coins and magic (+${r.coins} coins, magic ${r.magic})`);
   const pickups = await t.events('pickup');
   t.expect(pickups.filter((p) => p.by === 'blade').length === 3 && pickups.some((p) => p.type === 'coin-10' && p.by === undefined), "'pickup' says who collected it ('blade'; walked over: no by)");
+  r = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const at = g.hero.hero.position();
+    h.state.hp = h.state.maxHp;
+    g.pickups.collectPickup(h.spawn('heart', at.lx + 4, at.lz), { by: 'boomerang' });
+    h.state.hp = h.state.maxHp - 2;
+    g.pickups.collectPickup(h.spawn('heart', at.lx + 4, at.lz), { by: 'boomerang' });
+    return { hp: h.state.hp, max: h.state.maxHp, heart: g.tuning.TUNING.pickups.heart };
+  });
+  const hearts = (await t.events('pickup'))
+    .filter((p) => p.by === 'boomerang')
+    .map((p) => `${p.type}:${p.wasFull}`)
+    .join(' ');
+  t.expect(hearts === 'heart:true heart:false' && r.heart === 2 && r.hp === r.max, `'pickup' says whether life was already full (${hearts}); a heart heals TUNING.pickups.heart units`);
 
   r = await t.eval(() => {
     const h = window.__voxelHeroes;
     const g = h.game;
     const out = {};
     window.__gets = [];
-    g.grants.setItemGetPresenter((get) => window.__gets.push(`${get.id}:${get.text}`));
+    const models = {};
+    g.grants.setItemGetPresenter((get) => {
+      window.__gets.push(`${get.id}:${get.text}`);
+      models[get.id] = get.model;
+    });
     out.meta = g.grants.grantMeta('heart-container');
     g.grants.grant('heart-container');
     g.grants.grant('heart-container', 1, { fanfare: false });
     g.grants.grant('gems', 5);
-    g.items.registerItem({ id: 'probe-lamp', name: 'Probe Lamp', getText: 'A lamp! It lights dark rooms.', use: () => true });
+    const lampModel = () => null; // a real one returns a THREE.Object3D
+    g.items.registerItem({ id: 'probe-lamp', name: 'Probe Lamp', getText: 'A lamp! It lights dark rooms.', use: () => true, model: lampModel });
     g.grants.grant('probe-lamp');
     g.grants.grant('key');
     g.grants.setItemGetPresenter(null);
+    try {
+      g.items.registerItem({ id: 'probe-bad-lamp', use: () => true, model: 'lamp' });
+      out.badModel = 'accepted';
+    } catch (e) {
+      out.badModel = e.message;
+    }
+    out.models = [models['heart-container'] === null, models['probe-lamp'] === lampModel, g.grants.grantMeta('probe-lamp').model === lampModel];
     out.gets = window.__gets.join(' | ');
     out.maxHp = h.state.maxHp;
     return out;
   });
-  t.expect(r.meta.fanfare && r.meta.name === 'Heart Container', 'grantMeta describes a grant');
+  t.expect(r.meta.fanfare && r.meta.name === 'Heart Container' && r.meta.model === null, 'grantMeta describes a grant (model: null until its owner makes one)');
+  t.expect(r.models.every(Boolean) && /model must be a function/.test(r.badModel), 'an item get carries the prize model the hero holds overhead (registerItem model)');
   t.expect(r.gets === 'heart-container:Heart container! Max health up | probe-lamp:A lamp! It lights dark rooms.', `fanfare grants and new items go through the item-get presenter; quiet ones do not (${r.gets})`);
   t.expect((await last('keys-changed'))?.delta === 1, "a small key fires 'keys-changed'");
   t.expect((await t.events('hero-pose')).some((e) => e.pose === 'cheer'), 'an item get puts the hero in the cheer pose');
+
+  // ---------------------------------------------------------------- shared tile actions, presets, HUD regions
+  r = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const T = g.tileActions;
+    const out = {};
+    const coins = h.state.coins;
+    // A chest as a tile hook sees it (world tile 900,900; local 4,4 of a screen whose chests name its contents).
+    const ctx = { world: { propAt: () => null }, tx: 900, tz: 900, x: 4, z: 4, screen: { def: { chests: { '4,4': 'coins' } } } };
+    out.contents = T.chestContents(ctx);
+    out.first = T.openChest(ctx, { flag: 'probe:chest', source: 'probe-chest' });
+    out.second = T.openChest(ctx, { flag: 'probe:chest' });
+    out.open = T.isChestOpen(ctx, 'probe:chest');
+    out.coins = h.state.coins - coins;
+    h.state.flags.delete('probe:chest');
+    const P = h.camera.presets;
+    const { TUNING } = g.tuning;
+    out.presets = [!!P.boss && !!P['boss-intro'], P.boss?.selectable === false, P.boss?.height === TUNING.camera.bossHeight, P['boss-intro']?.height < P.boss?.height];
+    out.regions = ['vitals', 'counters', 'slots', 'minimap', 'prompts', 'toast'].filter((k) => !(k in g.hud.REGIONS));
+    return out;
+  });
+  const chest = await last('chest-opened');
+  t.expect(r.contents === 'coins' && r.first && !r.second && r.open && r.coins === 1, 'openChest opens once, by its flag, and grants what the screen lists');
+  t.expect(chest?.tx === 900 && chest?.contents === 'coins' && chest?.source === 'probe-chest', "'chest-opened' names the contents and the source");
+  t.expect(r.presets.every(Boolean), "the 'boss' and 'boss-intro' camera presets are registered once, for every stream");
+  t.expect(r.regions.length === 0, `the HUD regions of the art bible exist (missing: ${r.regions.join(', ') || 'none'})`);
 
   // ---------------------------------------------------------------- records and events
   r = await t.eval(() => {
@@ -1079,4 +1425,21 @@ export default async function contractsM2(t) {
   t.expect(r.playTime > 5, `play time counts (${r.playTime.toFixed(1)} s)`);
   t.expect(r.visited.includes('overworld:1,1') && r.visited.includes('crypt:1,1') && (await count('screen-visited')) >= 4, `visited screens are recorded (${r.visited})`);
   t.expect(r.unknown.length === 0, `every event fired is in the EVENTS catalogue (${r.fired} names; unknown: ${r.unknown.join(', ') || 'none'})`);
+
+  // ---------------------------------------------------------------- the prologue (last: a new game)
+  // Until the overworld registers one (registerPrologue), startNewGame warns
+  // once and starts at START (an expected warning).
+  r = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const st = h.state;
+    g.progress.startNewGame({ name: 'Bo', class: 'life', trait: 'might', prologue: true });
+    return { owned: st.swords.owned.length, equipped: st.swords.equipped, shield: st.gear.shield, none: g.swords.bladeStats().none === true, reach: g.hero.hero.blade().reach, mode: st.mode };
+  });
+  const started = await last('new-game');
+  swings = await count('sword-swing');
+  await t.tap('sword');
+  await t.step(0.3);
+  t.expect(r.owned === 0 && r.equipped === null && r.shield === 0 && r.none && r.reach === 0 && r.mode === 'play' && started?.prologue === true, "startNewGame({ prologue: true }): no sword and no shield until the king's grants ('new-game' says prologue)");
+  t.expect((await count('sword-swing')) === swings, 'with no sword, A swings nothing');
 }

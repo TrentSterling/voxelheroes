@@ -208,12 +208,13 @@ export const warpPlaces = (kinds = WARP_KINDS) => places().filter((p) => kinds.i
 
 // What kind of place an area is (the minimap shows in 'overworld' and
 // 'town' areas only, gameplay spec 4.6): the area's `kind` field, else
-// 'dungeon' for an area of rooms, else 'overworld'. New areas set `kind`.
+// 'dungeon' for an area of rooms (feat/world) or with its own key group
+// (the M1 crypt), else 'overworld'. New areas set `kind`.
 export const AREA_KINDS = ['overworld', 'town', 'castle', 'interior', 'cave', 'dungeon', 'arena', 'test'];
 export function areaKind(area = currentScreen()?.area) {
   const a = typeof area === 'string' ? getArea(area) : area;
   if (!a) return null;
-  return a.kind ?? (a.rooms ? 'dungeon' : 'overworld');
+  return a.kind ?? (a.rooms || a.keyGroup ? 'dungeon' : 'overworld');
 }
 
 // ---------------------------------------------------------------- visits
