@@ -9,9 +9,12 @@
 //   eraseSlot(2)
 //
 // Slots are localStorage entries (core/save.js); systems/flow.js applies
-// them. Where a loaded game resumes is flow's: the gameplay spec (11) wants
-// the respawn point, or the entrance of the dungeon it was saved in
-// (places.js respawnSpot('load', { area })); M1 resumes where it was saved.
+// them. Where a loaded game resumes is flow's: flow.loadGame(data) keeps
+// resuming where the save was made (the test hook's load and the default
+// play-test use it), and loadSlot applies the gameplay spec (11) through it:
+// loadGame(data, { at: respawnSpot('load'), refill: true }), the respawn
+// point or the entrance of the dungeon it was saved in, with full life and
+// magic (the ui adds those options in M2; docs/CONTRACTS.md, "Save slots").
 import { SAVE_VERSION } from '../core/state.js';
 import { emit } from '../core/events.js';
 import { readSlot, deleteSlot, SLOT_COUNT } from '../core/save.js';

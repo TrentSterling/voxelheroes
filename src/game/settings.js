@@ -5,7 +5,7 @@
 //
 //   setSetting('textSpeed', 'fast')    -> true, saved, 'settings-changed' { key, value, old }
 //   setSetting('camera', 'Z')          -> false (not an allowed value)
-//   registerSettingApplier('seams', (on) => setSeams(on));   // runs now and on every change
+//   registerSettingApplier('minimap', (on) => showMinimap(on));   // runs now and on every change
 //
 // Keys, allowed values and who applies them are in SETTINGS below and in
 // docs/CONTRACTS.md ("Settings"). Defaults come from TUNING.options. The
@@ -26,10 +26,10 @@ const range = (lo, hi) => ({ check: (v) => typeof v === 'number' && Number.isFin
 // key -> { check, values | range, by: who applies it }
 export const SETTINGS = {
   camera: { ...oneOf('A', 'B', 'C', 'D'), by: 'world: chooseCameraPreset (applied by game/places.js)' },
-  look: { ...oneOf('auto', 'high', 'medium', 'low', 'flat'), by: "look: reads state.settings.look ('auto' = the device default)" },
-  seams: { ...bool, by: 'look: setSeams (applied after returning to the title)' },
-  brightness: { ...range(0.5, 1.5), by: 'look' },
-  saturation: { ...range(0, 2), by: 'look' },
+  look: { ...oneOf('auto', 'high', 'medium', 'low', 'flat'), by: "look: reads state.settings each drawn frame ('auto' = the device default)" },
+  seams: { ...bool, by: "look: the voxel seams, live (the gameplay spec's grid option)" },
+  brightness: { ...range(0.5, 1.5), by: 'look: times the exposure' },
+  saturation: { ...range(0, 2), by: "look: times the grade's saturation (high and medium quality)" },
   minimap: { ...bool, by: 'ui: HUD minimap' },
   loadingArt: { ...bool, by: 'ui: loading cards (art on: at least TUNING.load.cardMin s)' },
   textSpeed: { ...oneOf('slow', 'normal', 'fast', 'instant'), by: 'ui: dialog.js typewriter (textSpeed())' },
