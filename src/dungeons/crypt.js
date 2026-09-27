@@ -8,8 +8,9 @@ registerDungeon({
   number: 0,
   name: 'Cairn Crypt',
   areas: ['crypt'],
-  // Where the doorway on Cairn Ridge brings the hero in (main's 16 x 11
-  // rooms). After feat/world the crypt area's own `entrance` is used.
+  // Where the doorway on Cairn Ridge brings the hero in, for M1's 16 x 11
+  // rooms. The crypt area's own `entrance` (world/areas/crypt.js, 16 x 12
+  // rooms) wins, so this is only the fallback.
   entrance: { area: 'crypt', screen: [0, 1], x: 8, z: 8.4, yaw: Math.PI },
   exit: { area: 'overworld', screen: [1, 0], x: 8, z: 1.7, yaw: 0 },
   keyGroup: 'crypt',

@@ -12,9 +12,9 @@
 //                 over bossIntro.in s and back to 'boss' over bossIntro.out s
 //                 (core/camera.js startCameraTween / stepCameraTween).
 //
-// Neither is a player choice (selectable: false). On main, presets fill
-// their missing fields from preset A; after feat/world they carry pitch,
-// fov, height, lead and fixed.
+// Neither is a player choice (selectable: false). registerCameraPreset
+// needs pitch, fov and height and fills in the rest (lead 0, not fixed, not
+// selectable); these give every field.
 import { TUNING } from '../core/tuning.js';
 import { registerCameraPreset } from '../core/camera.js';
 
