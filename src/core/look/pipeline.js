@@ -251,7 +251,11 @@ export class LookPipeline {
     this.h = 0;
     this.stats = { passes: 0 };
 
-    this.sceneRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) });
+    // depth + stencil: the depth feeds GTAO and the DOF, the stencil masks the polished floor
+    const depthTexture = new THREE.DepthTexture(1, 1);
+    depthTexture.format = THREE.DepthStencilFormat;
+    depthTexture.type = THREE.UnsignedInt248Type;
+    this.sceneRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, stencilBuffer: true, depthTexture });
     this.aoRT = halfTarget(1, 1);
     this.prepRT = halfTarget(1, 1);
     this.tileRT = halfTarget(1, 1, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
