@@ -1,10 +1,8 @@
 // window.__voxelHeroes: the handle play-tests and debugging use to drive the
 // game without real-time input. See docs/ARCHITECTURE.md ("Test hook").
 //
-// URL parameters: ?manual=1 starts in manual mode (the loop neither advances
-// the simulation nor draws the scene: render() draws a frame, shots call it);
-// ?seed=N seeds gameplay randomness; ?look=high|medium|low|flat picks the
-// look quality.
+// URL parameters: ?manual=1 starts in manual mode (the loop renders but does
+// not advance the simulation); ?seed=N seeds gameplay randomness.
 import { SCREEN_W, SCREEN_H } from '../core/constants.js';
 import { state, serializeState } from '../core/state.js';
 import { input } from '../core/input.js';
@@ -13,9 +11,6 @@ import { setManual, isManual } from '../core/loop.js';
 import { seedRandom } from '../core/random.js';
 import { setMode } from '../core/modes.js';
 import { CAMERA_PRESETS, setCameraPreset, cameraPreset, camTarget } from '../core/camera.js';
-import { look, LIGHTING, applyLighting, registerLighting, lightingName, camera as viewCamera } from '../core/renderer.js';
-import { QUALITY_ORDER, DOF_PRESETS } from '../core/look/index.js';
-import { getMaterial, makeWaterMaterial, makeGlowMaterial, setSeams, materialValues } from '../core/materials.js';
 import { world, currentScreen } from '../world/world.js';
 import { allAreas } from '../world/areas.js';
 import { listTilesets } from '../world/tiles.js';
@@ -31,6 +26,9 @@ import { startGame, teleport, loadGame, newGame, saveToSlot, loadFromSlot } from
 import { chooseCameraPreset } from '../systems/transitions.js';
 import { showDialog, dialogOpen } from '../ui/dialog.js';
 import { overlayVisible } from '../ui/overlay.js';
+import { look, LIGHTING, applyLighting, registerLighting, lightingName, camera as viewCamera } from '../core/renderer.js';
+import { QUALITY_ORDER, DOF_PRESETS } from '../core/look/index.js';
+import { getMaterial, makeWaterMaterial, makeGlowMaterial, setSeams, materialValues } from '../core/materials.js';
 
 export function installTestHook({ update, render }) {
   const hook = {
@@ -61,6 +59,30 @@ export function installTestHook({ update, render }) {
     // Draw a frame now (HUD included), e.g. right before a screenshot.
     render() {
       render();
+    },
+    // The look (docs/ARCHITECTURE.md, "Look"): quality level, lighting preset, frame info.
+    // In manual mode the loop does not draw at all (a look frame takes seconds in software
+    // GL): render() above draws, and shots call it. ?look=high|medium|low|flat pins a quality.
+    look: {
+      levels: QUALITY_ORDER,
+      set: (level, opts) => look.setQuality(level, opts), // opts: { pin: false } keeps the watchdog on
+      get: () => look.quality(),
+      lighting: () => lightingName(),
+      presets: () => Object.keys(LIGHTING),
+      applyLighting,
+      registerLighting,
+      dof: DOF_PRESETS,
+      info: () => look.info(),
+      // the three.js camera (project points to find pixels in a frame)
+      camera: viewCamera,
+      setSeams,
+      materials: materialValues,
+      // for previews of content the look-kits port has not switched over yet
+      getMaterial,
+      makeWaterMaterial,
+      makeGlowMaterial,
+      makeLampLight: (overrides) => look.makeLampLight(overrides),
+      setMirrorRect: (rect) => look.setMirrorRect(rect),
     },
     seed(n) {
       seedRandom(n);
@@ -109,28 +131,6 @@ export function installTestHook({ update, render }) {
       set: setCameraPreset,
       get: cameraPreset,
       target: camTarget,
-    },
-    // The look (docs/ARCHITECTURE.md, "Look"): quality level, lighting preset, frame info.
-    look: {
-      levels: QUALITY_ORDER,
-      set: (level, opts) => look.setQuality(level, opts), // opts: { pin: false } keeps the watchdog on
-      get: () => look.quality(),
-      lighting: () => lightingName(),
-      presets: () => Object.keys(LIGHTING),
-      applyLighting,
-      registerLighting,
-      dof: DOF_PRESETS,
-      info: () => look.info(),
-      // the three.js camera (project points to find pixels in a frame)
-      camera: viewCamera,
-      setSeams,
-      materials: materialValues,
-      // for previews of content the look-kits port has not switched over yet
-      getMaterial,
-      makeWaterMaterial,
-      makeGlowMaterial,
-      makeLampLight: (overrides) => look.makeLampLight(overrides),
-      setMirrorRect: (rect) => look.setMirrorRect(rect),
     },
     registries: {
       tilesets: listTilesets,
