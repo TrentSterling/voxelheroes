@@ -34,6 +34,7 @@ import { world } from '../world/world.js';
 import { hash3 } from '../core/vox.js';
 import { bark, befriend, chatLine, heartString, heartsOf, personalityOf, talksWith } from '../game/npc-talk.js';
 import { Bubble } from './npc-fx.js';
+import { toast } from '../ui/toast.js';
 import { Entity } from './entity.js';
 import { player } from './player.js';
 
@@ -230,7 +231,7 @@ export class Npc extends Entity {
     if (this.talk !== Npc.prototype.talk && this.name) {
       Promise.resolve(r).then(() => {
         const f = befriend(this.name);
-        if (f.up) this.bubble.emote('♥', 1.8);
+        if (f.up) this.heartUp();
       });
     }
     return true;
@@ -246,7 +247,12 @@ export class Npc extends Entity {
     const done = showDialog(pages, speaker ? { speaker } : {});
     const f = befriend(this.name);
     await done;
-    if (f.up) this.bubble.emote('♥', 1.8);
+    if (f.up) this.heartUp();
+  }
+
+  heartUp() {
+    this.bubble.emote('♥', 1.8);
+    toast(`${this.name} likes you more${heartString(heartsOf(this.name))}`, 2.2);
   }
 
   // A sword swung near it: a flinch, and an 'ow' for one right in front of the blade.

@@ -2,3 +2,5 @@ node_modules
 dist
 dist-artifact
 playtest-out
+
+dist-*
