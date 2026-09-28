@@ -19,8 +19,10 @@
 import { DenseGrid, hash3 } from '../../core/vox.js';
 import { CP } from '../palette.js';
 import { model, jitter } from '../kit.js';
+import { parseBoxel } from '../../core/boxel.js';
 
-const C = {
+// Exported so scripts/art/foes-v2.mjs builds its boxel shapes from the same hex values.
+export const C = {
   fur: 0xc98b4e, furLo: 0x9a6232, furHi: 0xf0d2a4, nose: 0xe86a7a,
   wasp: 0xf2c43c, waspLo: 0x2e2a2a, wing: 0xdfeefa,
   bark: 0x8a5d34, barkLo: 0x5e3d20, ring: 0xd9b27a, leaf: 0x5aa84a,
@@ -33,6 +35,20 @@ const C = {
   scale: 0x2f8f7a, scaleLo: 0x1d5e50, scaleHi: 0x6fd0b0, fang: 0xf4f0e0, glow: 0xfff08a,
   crown: 0xffd84a, crownGem: 0xff4a6a,
 };
+
+// Foes v2, the overworld roster and D1's gazer rebuilt as boxels (scripts/art/foes-v2.mjs ->
+// assets/models/foes-v2.boxel). On by default; ?foes=old falls back to the hand-coded shapes
+// below for a side-by-side compare. The file is inlined by Vite; plain Node (scripts/) has no
+// import.meta.env and skips it, so scripts/export-boxel.mjs and foes-v2.mjs itself see the
+// hand-coded shapes unchanged.
+const FOES_V2_SRC = import.meta.env
+  ? Object.values(import.meta.glob('../../../assets/models/foes-v2.boxel', { query: '?raw', import: 'default', eager: true }))[0]
+  : null;
+const FOES_V2 = !!FOES_V2_SRC && !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('foes') === 'old');
+let foesGridsCache = null;
+const foesGrids = () => (foesGridsCache ??= parseBoxel(FOES_V2_SRC).grids);
+// The boxel grid for '<foe>:<frame>' when v2 is on and the matrix exists; else the hand-coded shape.
+const v2 = (key, make) => (FOES_V2 && foesGrids()[key]) || make();
 
 // ---------------------------------------------------------------- hopper
 export function hopper(frame = 0) {
@@ -54,7 +70,7 @@ export function hopper(frame = 0) {
   g.box(6, 3, 0, 8, 5, 2, C.furHi); // tail
   return g;
 }
-export const hopperModel = (f) => model(`foe-hopper:${f}`, () => hopper(f));
+export const hopperModel = (f) => model(`foe-hopper:${f}`, () => v2(`hopper:${f}`, () => hopper(f)));
 
 // ---------------------------------------------------------------- buzzer
 export function buzzer(frame = 0) {
@@ -69,7 +85,7 @@ export function buzzer(frame = 0) {
   g.box(13, 6 + up, 3, 18, 7 + up, 9, C.wing);
   return g;
 }
-export const buzzerModel = (f) => model(`foe-buzzer:${f}`, () => buzzer(f));
+export const buzzerModel = (f) => model(`foe-buzzer:${f}`, () => v2(`buzzer:${f}`, () => buzzer(f)));
 
 // ---------------------------------------------------------------- stump
 export function stump(awake = 0) {
@@ -89,7 +105,7 @@ export function stump(awake = 0) {
   }
   return g;
 }
-export const stumpModel = (a) => model(`foe-stump:${a ? 1 : 0}`, () => stump(a ? 1 : 0));
+export const stumpModel = (a) => model(`foe-stump:${a ? 1 : 0}`, () => v2(`stump:${a ? 1 : 0}`, () => stump(a ? 1 : 0)));
 
 // ---------------------------------------------------------------- archer
 export function archer(frame = 0) {
@@ -108,7 +124,7 @@ export function archer(frame = 0) {
   g.box(2, 3, 11 - draw, 3, 12, 12 - draw, C.string);
   return g;
 }
-export const archerModel = (f) => model(`foe-archer:${f}`, () => archer(f));
+export const archerModel = (f) => model(`foe-archer:${f}`, () => v2(`archer:${f}`, () => archer(f)));
 
 // ---------------------------------------------------------------- leaper
 export function leaper(frame = 0) {
@@ -126,7 +142,7 @@ export function leaper(frame = 0) {
   }
   return g;
 }
-export const leaperModel = (f) => model(`foe-leaper:${f}`, () => leaper(f));
+export const leaperModel = (f) => model(`foe-leaper:${f}`, () => v2(`leaper:${f}`, () => leaper(f)));
 
 // ---------------------------------------------------------------- guardian
 export function guardian(frame = 0) {
@@ -143,7 +159,7 @@ export function guardian(frame = 0) {
   g.box(17, 6, 7, 20, 12, 11, C.stoneLo);
   return g;
 }
-export const guardianModel = (f = 0) => model(`foe-guardian:${f}`, () => guardian(f));
+export const guardianModel = (f = 0) => model(`foe-guardian:${f}`, () => v2(`guardian:${f}`, () => guardian(f)));
 
 // ---------------------------------------------------------------- treasure-slime
 export function goldBlob(frame = 0) {
@@ -156,7 +172,7 @@ export function goldBlob(frame = 0) {
   g.box(7, h + 1, 7, 9, h + 2, 9, C.goldHi);
   return g;
 }
-export const goldBlobModel = (f) => model(`foe-goldblob:${f}`, () => goldBlob(f));
+export const goldBlobModel = (f) => model(`foe-goldblob:${f}`, () => v2(`goldblob:${f}`, () => goldBlob(f)));
 
 // ---------------------------------------------------------------- wyrm
 export function wyrm(frame = 0) {
@@ -176,7 +192,7 @@ export function wyrm(frame = 0) {
   for (let z = 4; z < 20; z += 3) g.box(11, 13, z, 13, 14, z + 2, C.horn); // back ridge
   return g;
 }
-export const wyrmModel = (f) => model(`foe-wyrm:${f}`, () => wyrm(f));
+export const wyrmModel = (f) => model(`foe-wyrm:${f}`, () => v2(`wyrm:${f}`, () => wyrm(f)));
 
 // ---------------------------------------------------------------- gazer
 export function gazer(open = 1) {
@@ -189,7 +205,7 @@ export function gazer(open = 1) {
   g.box(3, 12, 5, 11, 14, 9, C.lidLo); // a brow ridge
   return g;
 }
-export const gazerModel = (o) => model(`foe-gazer:${o ? 1 : 0}`, () => gazer(o ? 1 : 0));
+export const gazerModel = (o) => model(`foe-gazer:${o ? 1 : 0}`, () => v2(`gazer:${o ? 1 : 0}`, () => gazer(o ? 1 : 0)));
 
 // ---------------------------------------------------------------- arrow trap
 export function arrowTrap() {
