@@ -22,18 +22,33 @@ The signature things a player of the original would expect to find (with the gam
 9. **Controls.** Sword, item, dash, guard, map, inventory and item cycling each have their own button.
 10. **Custom hero.** The original lets you build your own hero in a voxel editor. We add a simple editor late on.
 
+## Scope: the smaller world
+
+Trent chose a smaller world (spec Q25, 2026-09-28): fewer, smaller areas and dungeons, so a complete game from title screen to ending lands sooner. Mechanics and look still follow the original 1:1. Where the gameplay spec gives full-size counts (sections 4.1, 5.3, 6.8, 6.9, 10.5), these win:
+
+| | Original (spec) | Ours |
+|---|---|---|
+| Overworld | 7 × 5 areas of 4 × 4 screens, about 560 screens | 4 × 3 areas of 3 × 3 screens (16 × 16 tiles each), about 108 screens |
+| Dungeons | 6 plus a 7-floor tower, about 370 rooms | 4 plus a short tower (2 to 3 rematch floors, then the final), about 100 rooms |
+| First dungeon | 20 to 24 rooms | about 16 rooms, same mechanics (4 small keys, boomerang, dark room, colored side room, antechamber) |
+| Tool chain | boomerang, bombs, grapple, long grapple, fire wand, swamp boots | boomerang, bombs, grapple, fire wand; 4 orbs open the tower |
+| Swords | 12 to 16 | about 8 to 10 |
+| Places | castle, 3 villages, 3 inns, lone houses, graveyard, volcano, lost woods | castle, 1 village (shops, smith, inn), a second inn, graveyard, a small lost woods (5 exits), caves |
+
+`TUNING.world.areaScreens` becomes [3, 3] and `areas` [4, 3] when the overworld stream builds its areas.
+
 ## Milestones
 
 | # | Milestone | Contents |
 |---|-----------|----------|
 | M0 | Prototype (done) | 6 overworld screens, a 4-room crypt, sword, 2 enemy types, key, door, chest |
-| M1 | Foundation (done) | Split into modules with clear extension points: tile registry, entity registry, event bus, inventory, dialog, save. Deterministic headless play-test harness with screenshots. |
-| M1.5 | Look port, world structure, contracts | Three pieces built in parallel. Look (`feat/look-render`, `feat/look-kits`): renderer, lighting, post-processing, materials, the terrain and dungeon kits, models at 1/16 tile with hero poses, particles. World (`feat/world`): per-area screen sizes, `'area:i,j'` addressing and spots, 16 × 12 dungeon rooms, area transitions with a loading-card hold, `room-enter` and `area-enter`, camera follow. Contracts (`feat/contracts`): [CONTRACTS.md](CONTRACTS.md), the file owners, units, shared state, events, input actions, registries and APIs that M2 builds on, in code and tested. |
-| M2 | The seven streams | hero, items, foes-overworld, foes-dungeon, dungeon, overworld and ui, built at the same time on `feat/m2-<stream>` branches against the contracts (CONTRACTS.md section 1 says what each one builds) |
-| M3 | Integration and a title-to-boss play-test | Merge the seven streams in the order CONTRACTS.md gives, fix the seams, settle its open questions, and add a play-test that runs from the title screen through a new game, the overworld slice and the first temple to its boss |
-| M4 | Remaining look work | The effects catalogue, biome palettes and temple themes |
-| M5 | Alignment with the gameplay spec | Cameras, speeds, damage values, item behaviour and every other number checked against the spec, with its measured values folded into `TUNING` |
-| M6 | Extras | Hero voxel editor, more dungeons, music |
+| M1 | Foundation (done) | Modules with registries, event bus, inventory, dialog, save; deterministic headless play-test harness with screenshots |
+| M1.5 | Look, world, contracts (done, v0.3) | The art bible look (materials, lighting, post-processing, 1/8 terrain, 1/16 characters, the dungeon kit); per-area screen sizes, 16 × 12 dungeon rooms, area loads; [CONTRACTS.md](CONTRACTS.md), TUNING, the fixed 60 Hz step and the spec's key layout |
+| P0 | Framework alignment | Cameras A and D follow the hero with follow changes, B and C hold and slide (48 ticks); loads of at most 90 ticks with cards; only the current area built; dungeon, large-room and interior cameras from the art bible |
+| M2 | The kit and the first slice | hero (movement, thrust, full-life blade, spin, guard, dash, damage), items, overworld and dungeon enemies with the first boss, the dungeon kit and D1, the overworld slice (castle area, village, D1's area), and the ui, one stream at a time or in pairs |
+| M3 | Title to the first boss | Merge the streams, fix the seams, and a play-test from the title screen through a new game, the overworld slice and D1 to its boss |
+| M4 | The complete game | D2 to D4, the remaining areas, the tower, the final boss and the ending; the effects catalogue, biome palettes and temple themes |
+| M5 | Extras | Hero voxel editor, new game+, minigames, music |
 
 The gameplay spec's build order (its section 13, phases P0 to P5) decides what comes first inside these milestones.
 
