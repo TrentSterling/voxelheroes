@@ -118,6 +118,7 @@ function barsProp(isShut) {
 
 registerTile('dungeon', 'H', {
   name: 'shutter',
+  driven: 'room', // opened and shut by the room's logic, not by a verb (scenarios/interact.mjs)
   solid: shutterSolid,
   doorway: true,
   build: (ctx) => fineFloor(ctx),
@@ -126,6 +127,7 @@ registerTile('dungeon', 'H', {
 
 registerTile('dungeon', 'E', {
   name: 'event-shutter',
+  driven: 'room', // opened and shut by the room's logic, not by a verb (scenarios/interact.mjs)
   solid: true,
   doorway: true,
   becomes: '.',

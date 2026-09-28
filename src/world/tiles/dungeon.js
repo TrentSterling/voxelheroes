@@ -299,6 +299,7 @@ registerTile('dungeon', 'S', {
 const brazierGrid = brazier();
 registerTile('dungeon', 'F', {
   name: 'brazier',
+  decor: true, // a lit fixture: light and atmosphere only (scenarios/interact.mjs)
   solid: true,
   detailHeight: brazierGrid.sy,
   build(ctx) {

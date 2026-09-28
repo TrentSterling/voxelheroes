@@ -15,7 +15,7 @@ import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile } from '../tiles.js';
 import { LEVEL } from '../terrain.js';
 import { TP, GROUND, PROP } from '../palette.js';
-import { bushProp, potProp, chestProp, cutPlant, openChest } from '../tilekit.js';
+import { bushProp, potProp, chestProp, cutPlant, breakPot, openChest } from '../tilekit.js';
 import { gravestone, signpost } from '../../models/props.js';
 
 defineTileset('overworld', { floor: '.' });
@@ -253,6 +253,7 @@ registerTile('overworld', 'B', {
   build: (ctx) => land(ctx),
   prop: bushProp,
   onSword: (ctx) => cutPlant(ctx, [TP.leaf, TP.leafDark, TP.leafLight, TP.leaf]),
+  onBomb: (ctx) => cutPlant(ctx, [TP.leaf, TP.leafDark, TP.leafLight, TP.leaf]),
 });
 
 // Raised ground: one level (the M1 cliff) and two.
@@ -385,7 +386,18 @@ registerTile('overworld', 'i', {
     stampModel(ctx, signGrid);
   },
 });
-registerTile('overworld', 'v', { name: 'pot', solid: true, ground: 'grass', build: (ctx) => land(ctx), prop: potProp });
+// Pots (gameplay spec: sword or bomb breaks it into cubes, 50% drop roll); back on the next visit.
+registerTile('overworld', 'v', {
+  name: 'pot',
+  solid: true,
+  regrow: true,
+  becomes: '.',
+  ground: 'grass',
+  build: (ctx) => land(ctx),
+  prop: potProp,
+  onSword: (ctx) => breakPot(ctx),
+  onBomb: (ctx) => breakPot(ctx),
+});
 registerTile('overworld', 'C', { name: 'chest', solid: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, onPush: openChest });
 
 // ---------------------------------------------------------------- backdrop tiles

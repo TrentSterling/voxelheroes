@@ -24,7 +24,7 @@ import {
   potModel,
   FLAME_Y,
 } from '../models/props.js';
-import { burst } from '../systems/particles.js';
+import { burst, sparks } from '../systems/particles.js';
 import { rollDrop } from '../systems/drops.js';
 import { keyCount, useKey } from '../systems/keys.js';
 import { grant } from '../systems/grants.js';
@@ -140,6 +140,19 @@ export function cutPlant(ctx, colors, drops = 'bush') {
   sfx.cut();
   burst(tx + 0.5, GROUND_Y + 0.3, tz + 0.5, cols, 26, { speed: 3, size: 0.1, up: 4 });
   rollDrop(drops, tx + 0.5, tz + 0.5);
+  return true;
+}
+
+// A pot shatters: its own colours in a big burst of cubes and shards, a crack of pottery, the pot
+// drop roll (drops.js 'pot': heart, coin, magic, ten coins).
+export function breakPot(ctx) {
+  const { world, tx, tz, def } = ctx;
+  const cols = world.propAt(tx, tz)?.userData.colors ?? [0xb86a3a, 0x8a4a2a, 0xd08a50];
+  if (!world.setTile(tx, tz, def.becomes ?? '.', { rebuild: false, reason: 'break' })) return false;
+  sfx.shatter?.() ?? sfx.cut();
+  burst(tx + 0.5, GROUND_Y + 0.35, tz + 0.5, cols, 36, { speed: 3.6, size: 0.11, up: 4.5 });
+  sparks(tx + 0.5, GROUND_Y + 0.3, tz + 0.5, [0xffffff, 0xf0d0a0], 8, { speed: 3, size: 0.05, up: 3, life: 0.3 });
+  rollDrop('pot', tx + 0.5, tz + 0.5);
   return true;
 }
 
