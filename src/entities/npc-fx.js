@@ -1,103 +1,64 @@
-// Speech over people's heads: emote bubbles (! ? ♥ ♪ … ✦) and short bark lines, as camera-facing
-// sprites drawn to canvas once per symbol or line and cached. Used by entities/npc.js.
+// Speech over people's heads: emote bubbles (! ? ♥ ♪ … ✦) and short bark lines. They are HTML laid
+// over the view at the speaker's head (projected every frame), not sprites in the scene: the
+// depth-of-field pass blurred sprites away wherever the distance showed behind them.
 //
-//   const b = new Bubble(parent, 1.3);   // parent Object3D, height above the feet
-//   b.emote('!');  b.say('Morning!');    // each pops in, holds, fades
-//   b.update(dt);
+//   const b = new Bubble(holder, 1.55);   // the NPC's Object3D, height above the feet
+//   b.emote('!');  b.say('Morning!');     // each pops in, holds, fades
+//   b.update(dt);  b.dispose();
 import * as THREE from 'three';
-
-const cache = new Map();
-const FONT = '"Pixelify Sans", "Courier New", monospace';
-
-function makeTexture(key, draw, w, h) {
-  let tex = cache.get(key);
-  if (tex) return tex;
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
-  tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  cache.set(key, tex);
-  return tex;
-}
+import { camera, renderer } from '../core/renderer.js';
 
 const EMOTE_COLOR = { '!': '#e0402f', '?': '#3a6fd8', '♥': '#e0407a', '♪': '#2e9a4a', '…': '#5a5a5a', '✦': '#d89a1a' };
+const FONT = '"Pixelify Sans", "Courier New", monospace';
 
-function roundRect(g, x, y, w, h, r) {
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
+let layer = null;
+function root() {
+  if (layer) return layer;
+  layer = document.createElement('div');
+  layer.id = 'speech';
+  Object.assign(layer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: 12, overflow: 'hidden' });
+  document.body.append(layer);
+  return layer;
 }
 
-function emoteTexture(sym) {
-  return makeTexture(`emote:${sym}`, (g, w, h) => {
-    g.fillStyle = 'rgba(255, 252, 240, 0.97)';
-    roundRect(g, 4, 4, w - 8, h - 20, 18);
-    g.fill();
-    g.beginPath(); // the tail
-    g.moveTo(w / 2 - 9, h - 17);
-    g.lineTo(w / 2, h - 4);
-    g.lineTo(w / 2 + 9, h - 17);
-    g.fill();
-    g.fillStyle = EMOTE_COLOR[sym] ?? '#222';
-    g.font = `700 52px ${FONT}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(sym, w / 2, (h - 16) / 2 + 3);
-  }, 96, 96);
-}
-
-function barkTexture(text) {
-  const g0 = document.createElement('canvas').getContext('2d');
-  g0.font = `500 30px ${FONT}`;
-  const tw = Math.ceil(g0.measureText(text).width * 1.15); // room for the pixel face if it loads late
-  const w = Math.min(720, tw + 48);
-  const tex = makeTexture(`bark:${text}`, (g, W, H) => {
-    g.fillStyle = 'rgba(20, 22, 20, 0.84)';
-    roundRect(g, 2, 2, W - 4, H - 4, 14);
-    g.fill();
-    g.fillStyle = '#f5f1e4';
-    g.font = `500 30px ${FONT}`;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(text, W / 2, H / 2 + 1, W - 24);
-  }, w, 52);
-  return { tex, aspect: w / 52 };
-}
+const _p = new THREE.Vector3();
 
 export class Bubble {
-  constructor(parent, height = 1.3) {
+  constructor(holder, height = 1.55) {
+    this.holder = holder;
     this.height = height;
-    this.emoteSprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
-    this.barkSprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false }));
-    for (const s of [this.emoteSprite, this.barkSprite]) {
-      s.visible = false;
-      s.renderOrder = 20;
-      s.userData.noShadow = true;
-      parent.add(s);
-    }
     this.e = null; // { t, life }
     this.b = null;
+    this.emoteEl = null;
+    this.barkEl = null;
+  }
+
+  el(kind) {
+    const key = kind === 'e' ? 'emoteEl' : 'barkEl';
+    if (this[key] || typeof document === 'undefined') return this[key];
+    const d = document.createElement('div');
+    Object.assign(d.style, { position: 'absolute', left: '0', top: '0', whiteSpace: 'nowrap', opacity: '0', willChange: 'transform, opacity' });
+    if (kind === 'e') {
+      Object.assign(d.style, { width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255, 252, 240, 0.97)', display: 'grid', placeItems: 'center', font: `700 20px/1 ${FONT}`, boxShadow: '0 2px 0 rgba(0,0,0,0.25)' });
+    } else {
+      Object.assign(d.style, { padding: '4px 10px', borderRadius: '8px', background: 'rgba(20, 22, 20, 0.86)', color: '#f5f1e4', font: `500 14px/1.2 ${FONT}` });
+    }
+    root().append(d);
+    return (this[key] = d);
   }
 
   emote(sym, life = 1.4) {
-    this.emoteSprite.material.map = emoteTexture(sym);
-    this.emoteSprite.material.needsUpdate = true;
+    const d = this.el('e');
+    if (d) {
+      d.textContent = sym;
+      d.style.color = EMOTE_COLOR[sym] ?? '#222';
+    }
     this.e = { t: 0, life };
   }
 
   say(text, life = 2.6) {
-    const { tex, aspect } = barkTexture(text);
-    this.barkSprite.material.map = tex;
-    this.barkSprite.material.needsUpdate = true;
-    this.barkSprite.userData.aspect = aspect;
+    const d = this.el('b');
+    if (d) d.textContent = text;
     this.b = { t: 0, life };
   }
 
@@ -106,26 +67,45 @@ export class Bubble {
   }
 
   update(dt) {
-    const pop = (s, st, base, w) => {
-      if (!st) {
-        s.visible = false;
-        return null;
-      }
+    const step = (st) => {
+      if (!st) return null;
       st.t += dt;
-      if (st.t >= st.life) {
-        s.visible = false;
-        return null;
+      return st.t >= st.life ? null : st;
+    };
+    this.e = step(this.e);
+    this.b = step(this.b);
+    if (!this.emoteEl && !this.barkEl) return;
+    // where the head is on screen (hidden when the speaker is, or behind the camera)
+    let sx = 0;
+    let sy = 0;
+    let on = this.holder.visible !== false && !!this.holder.parent;
+    if (on) {
+      this.holder.getWorldPosition(_p);
+      _p.y += this.height;
+      _p.project(camera);
+      on = _p.z < 1;
+      const c = renderer.domElement.getBoundingClientRect();
+      sx = c.left + ((_p.x + 1) / 2) * c.width;
+      sy = c.top + ((1 - _p.y) / 2) * c.height;
+    }
+    const place = (d, st, dy) => {
+      if (!d) return;
+      if (!st || !on) {
+        d.style.opacity = '0';
+        return;
       }
       const k = st.t < 0.12 ? st.t / 0.12 : st.t > st.life - 0.25 ? (st.life - st.t) / 0.25 : 1;
-      const scale = (st.t < 0.12 ? 0.6 + 0.5 * k : 1) * base;
-      s.visible = true;
-      s.scale.set(scale * w, scale, 1);
-      s.material.opacity = Math.max(0, Math.min(1, k));
-      return st;
+      const pop = st.t < 0.12 ? 0.6 + 0.4 * k : 1;
+      d.style.opacity = String(Math.max(0, Math.min(1, k)));
+      d.style.transform = `translate(${sx.toFixed(1)}px, ${(sy + dy).toFixed(1)}px) translate(-50%, -100%) scale(${pop.toFixed(3)})`;
     };
-    this.e = pop(this.emoteSprite, this.e, 0.42, 1);
-    this.emoteSprite.position.set(0, this.height + 0.1 + (this.e ? Math.sin(this.e.t * 9) * 0.02 : 0), 0);
-    this.b = pop(this.barkSprite, this.b, 0.3, this.barkSprite.userData.aspect ?? 4);
-    this.barkSprite.position.set(0, this.height + (this.e ? 0.55 : 0.2), 0);
+    place(this.emoteEl, this.e, 0);
+    place(this.barkEl, this.b, this.e ? -36 : -4);
+  }
+
+  dispose() {
+    this.emoteEl?.remove();
+    this.barkEl?.remove();
+    this.emoteEl = this.barkEl = null;
   }
 }

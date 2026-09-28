@@ -70,7 +70,7 @@ export class Npc extends Entity {
     this.rig = def.rig ?? null;
     this.model = def.rig?.root ?? def.model ?? null;
     if (this.model) this.holder.add(this.model);
-    this.bubble = new Bubble(this.holder, 1.25);
+    this.bubble = new Bubble(this.holder, 1.55) // high enough to clear the head of a hero standing in front;
     // what it is doing: 'idle' | 'walk' | 'watch'; `t` counts down to the next decision
     this.mind = { mode: 'idle', t: 1.5 + this.next() * 3, target: null, glance: 0, greeted: false, watchT: 0, walkT: 0 };
     this.holder.position.set(this.x, GROUND_Y, this.z);
@@ -87,6 +87,7 @@ export class Npc extends Entity {
 
   remove() {
     live.delete(this);
+    this.bubble.dispose();
     super.remove();
   }
 
