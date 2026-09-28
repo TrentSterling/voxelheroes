@@ -448,7 +448,13 @@ function buildRect(world, env) {
   add('terrain', terrainGeo, { ...LAYERS.terrain, ...(env.terrainLayer ?? {}) });
   add('fine', own(F, { faces }), LAYERS.fine);
   add('detail', own(D, { faces }), LAYERS.detail);
-  for (const [name, l] of custom) add(name, own(l, {}), LAYERS[name]);
+  // registered layers; terrain-resolution ones (foliage) are meshed like the terrain: at half
+  // resolution without shadows in far backdrop chunks
+  for (const [name, l] of custom) {
+    const asTerrain = l.res === BPT;
+    const geo = asTerrain && env.coarse ? coarseMesh(l, x0, z0, w, h, faces) : own(l, asTerrain ? { faces } : {});
+    add(name, geo, asTerrain && env.terrainLayer ? { ...LAYERS[name], ...env.terrainLayer } : LAYERS[name]);
+  }
   // the ring around a room: the rest of the window, meshed in strips into a group of its own
   if (env.ring) {
     const group = ringGroup();

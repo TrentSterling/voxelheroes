@@ -25,6 +25,16 @@ const SLOW_SECONDS = 3;
 const _size = new THREE.Vector2();
 const _hero = new THREE.Vector3();
 
+// The low path (no post stack) draws the dungeons' per-channel shoulder (look.tone.mapping
+// 'shoulder', bible section 5) through three's custom tone mapping, with the bible's knee and ceiling.
+THREE.ShaderChunk.tonemapping_pars_fragment = THREE.ShaderChunk.tonemapping_pars_fragment.replace(
+  'vec3 CustomToneMapping( vec3 color ) { return color; }',
+  `vec3 CustomToneMapping( vec3 color ) {
+  vec3 x = color * toneMappingExposure, k = vec3( 0.45 ), C = vec3( 0.87 );
+  return mix( x, C - ( C - k ) * exp( - ( x - k ) / ( C - k ) ), step( k, x ) );
+}`
+);
+
 export function createLook({ renderer, scene, camera }) {
   const LIGHTING = { day: LOOK_DAY, crypt: LOOK_CRYPT };
   const rig = new LightRig(scene);
@@ -235,7 +245,7 @@ export function createLook({ renderer, scene, camera }) {
       pipeline.render({ look: L, quality: Q, dof, focusDistance, exposure: exp, saturation: display.saturation });
     } else {
       renderer.setRenderTarget(null);
-      renderer.toneMapping = Q.flat ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+      renderer.toneMapping = Q.flat ? THREE.NoToneMapping : L.tone?.mapping === 'shoulder' ? THREE.CustomToneMapping : THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = Q.flat ? 1 : exp;
       renderer.render(scene, camera);
     }

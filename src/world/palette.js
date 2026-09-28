@@ -3,16 +3,21 @@
 // These are authoring colours: the lights and the tone mapping move them toward the rendered
 // targets listed in the bible. Re-derive by rendering and sampling, not by eye.
 
-// Overworld, grass field (art bible section 7, "Albedo" column; sand, soil and wood from the lab).
+// Overworld, grass field (art bible section 7, "Albedo" column; soil and wood from the lab). Sand is
+// the bible's sand biome (base, ripple strokes, specks): the lab's placeholder sand 0xe2d6a4 rendered
+// pale pinkish grey, #cbbdac, against the references' #b5a772. Cliffs are the bible's albedos x0.94
+// (south faces rendered 15-20% brighter than refs 36, 40 and 49, in the game and the lab alike).
+// Leaf speckles are a yellow-green cream (ref 01's close-up reads #cbdd9f; 0xf2e2d6 rendered
+// pink-white #d9cad1, brighter than any canopy pixel in the references).
 export const TP = {
   grass: 0x7bb45a, grassDark: 0x5f983f, grassLight: 0x94c273,
   dirt: 0xada47b, dirtDark: 0x968e68, dirtLight: 0xc2b98e,
-  sand: 0xe2d6a4, sandDark: 0xc9bb86, sandLight: 0xeee4bd,
-  cliff: 0xb2ad80, cliffDark: 0x97936d, cliffLight: 0xc1bc8b, cliffCrack: 0x7c7859,
+  sand: 0xc3bf7e, sandDark: 0x8b8a61, sandLight: 0xd2cd92,
+  cliff: 0xa7a378, cliffDark: 0x8e8a67, cliffLight: 0xb5b183, cliffCrack: 0x747154,
   soil: 0x7d6650,
   cave: 0x1a120c,
   waterBed: 0x2c5f9e,
-  leaf: 0x1aa818, leafDark: 0x0f8a10, leafLight: 0x86d45e, leafSpeck: 0xf2e2d6,
+  leaf: 0x1aa818, leafDark: 0x0f8a10, leafLight: 0x86d45e, leafSpeck: 0xdfe9a6,
   trunk: 0x9a7458, trunkDark: 0x7a5a44,
   rock: 0x9c968c, rockDark: 0x77726a,
   stone: 0xa7a39a, stoneDark: 0x817d75,

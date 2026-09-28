@@ -13,7 +13,7 @@
 import { hash3, shadeHex, mixHex } from '../../core/vox.js';
 import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile } from '../tiles.js';
-import { LEVEL } from '../terrain.js';
+import { LEVEL, registerLayer } from '../terrain.js';
 import { TP, GROUND, PROP } from '../palette.js';
 import { bushProp, potProp, chestProp, cutPlant, openChest } from '../tilekit.js';
 import { gravestone, signpost } from '../../models/props.js';
@@ -149,19 +149,29 @@ function cliffEdges(ctx, nb, level) {
 }
 
 // ---------------------------------------------------------------- scenery
-// One tree per tile (refs 34, 40): a 4 x 4 trunk 3 or 4 blocks tall with a darker bottom ring,
+// Canopies and bushes use the foliage material kind (a gentle bevel and faint seams, art bible
+// section 6 as tuned against refs 34 and 40), so leaf blocks go into a layer of their own.
+registerLayer('foliage', { kind: 'foliage' });
+
+// One tree per tile (refs 34, 40): a 4 x 4 trunk 4 (or 3) blocks tall with a darker bottom ring,
 // under a canopy of stacked square layers 8, 10, 10, 8, 6 blocks wide (2, 2, 2, 2, 1 tall) with
 // chamfered corners, saturated green, a darker bottom layer and about 3% pale speckles. The canopy
 // overhangs the tile by a block, so rows of trees merge into hedges. y0: first block above ground.
+// The bottom layer is 6 wide over the trunk's 4 (the bible's 8 overhangs the trunk by two blocks,
+// whose shadow covers all of a 3 or 4 block trunk: it rendered near black, where refs 34 and 40
+// show its lower part in the sun). Backdrop trees (no owning screen) have no speckles: the far
+// chunks mesh at half resolution, where each speckle became a quarter-tile white block.
 export function tree(ctx, y0) {
   const { T, X0, Z0 } = ctx;
+  const L = ctx.voxelLayer('foliage');
   const cx = X0 + 4;
   const cz = Z0 + 4;
-  const trunkH = 3 + (hash3(ctx.tx, 0, ctx.tz, 7) > 0.7 ? 1 : 0);
+  const trunkH = 4 - (hash3(ctx.tx, 0, ctx.tz, 7) > 0.7 ? 1 : 0);
   T.box(cx - 2, y0, cz - 2, cx + 2, y0 + trunkH, cz + 2, TP.trunk);
   T.box(cx - 2, y0, cz - 2, cx + 2, y0 + 1, cz + 2, TP.trunkDark);
+  const speck = ctx.owner ? 0.97 : 2;
   let y = y0 + trunkH;
-  for (const [w, h] of [[8, 2], [10, 2], [10, 2], [8, 2], [6, 1]]) {
+  for (const [w, h] of CANOPY) {
     const half = w / 2;
     for (let yy = y; yy < y + h; yy++)
       for (let z = -half; z < half; z++)
@@ -170,11 +180,12 @@ export function tree(ctx, y0) {
           const X = cx + x;
           const Z = cz + z;
           const n = hash3(X, yy, Z, 61);
-          T.set(X, yy, Z, yy === y0 + trunkH ? TP.leafDark : n > 0.97 ? TP.leafSpeck : TP.leaf);
+          L.set(X, yy, Z, yy === y0 + trunkH ? TP.leafDark : n > speck ? TP.leafSpeck : TP.leaf);
         }
     y += h;
   }
 }
+const CANOPY = [[6, 2], [10, 2], [10, 2], [8, 2], [6, 1]]; // [width, height] in blocks, bottom up
 
 // Rounded grey lump 7 to 8 blocks across and 6 tall, lighter on top, centred on the tile.
 export function rock(ctx, y0 = 1) {

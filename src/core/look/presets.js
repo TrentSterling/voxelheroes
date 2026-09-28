@@ -42,29 +42,40 @@ export const LOOK_DAY = {
   // material at roughness 0.7 (art bible section 6: "statues and drums use the voxel material at
   // roughness 0.7"), so they read as matte stone instead of a dense grid of character seams
   propMaterial: { roughness: 0.7 },
-  // water (ref 28): grey-blue with darker diagonal wave troughs, round soft glints 1.5 to 2 blocks across
-  // riding the crests, far water paler (sky sheen at grazing angles) with glints that stay bright
-  // through the depth-of-field blur
+  // foliage kind (canopies, bushes), merged over `material`: with the terrain's bevel (0.16, tilt
+  // 0.75) and the sun from the east, every west-facing bevel strip of a canopy face gets N.L of
+  // about 0.08 against 0.45 for the face, so each leaf block drew a dark line beside a bright strip
+  // (50-65% dips); refs 34 and 40 vary 13% at most across a canopy at the hero's distance
+  foliageMaterial: { bevel: 0.06, bevelTilt: 0.3, grid: { width: 0.06, dark: 0.92 } },
+  // water (ref 28): grey-blue with darker diagonal wave troughs, small round glints about a block
+  // across riding the crests, far water a little paler (sky sheen at grazing angles). The bible's
+  // OW_A values (sparkle 2.6, glintSize 1.6, glintFar 0.12, sheen 0.35) wash the river out to
+  // lavender-white in the game (glints plus bloom; the lab's own river is paler than ref 28 too);
+  // these were retuned in the game against ref 28: hero row p50 #7688c4, far river p50 #a6afcd
   water: {
     color: 0x1a4690,
     opacity: 0.95,
     roughness: 0.3,
     ripple: 0.06,
-    sparkle: 2.6,
-    glintSize: 1.6,
+    sparkle: 1.8,
+    glintSize: 1.0,
     glintDensity: 0.55,
-    glintFar: 0.12,
+    glintFar: 0.05,
     glintGrow: 0,
     trough: 0.5,
     troughDir: [0.8, 0.6],
     troughFreq: 1.6,
-    sheen: 0.35,
+    sheen: 0.25,
     sheenColor: 0xc8d0e8,
   },
   ao: { intensity: 0.85, radius: 0.35, distanceExponent: 1.4, thickness: 0.8, scale: 1.0, samples: 16 },
   bloom: { strength: 0.32, radius: 0.55, threshold: 0.88 },
   glare: { threshold: 3.2, knee: 0.5, strength: 0.3, attenuation: 0.9, angle: 45 },
-  tone: { exposure: 0.88 },
+  tone: { mapping: 'aces', exposure: 0.88 },
+  // edge vignette: a thin exponential rim, 1 - rim * exp(-d / rimWidth) (0.25 at the edge, 0.58 at
+  // 4 px, 0.76 at 8 px, 0.98 at 24 px), and a faint 3% falloff, fitted to the median of 34 overworld
+  // gameplay references (the bible's smoothstep rim 0.85 over 0.033 with a 20% falloff over 0.2 of
+  // the height darkens the first 24 px to 0.16-0.8 of the references and the whole frame's edges)
   grade: {
     saturation: 1.12,
     contrast: 1.03,
@@ -72,9 +83,10 @@ export const LOOK_DAY = {
     gain: [1, 1, 1],
     vignette: 0.06,
     vignetteSoftness: 0.6,
-    rim: 0.85,
-    rimWidth: 0.033,
-    edge: 0.2,
+    rimShape: 'exp',
+    rim: 0.75,
+    rimWidth: 0.0097,
+    edge: 0.03,
     edgeWidth: 0.2,
   },
   reflect: 0, // polished floor off
@@ -159,13 +171,18 @@ export const LOOK_CRYPT = {
 // focus = view depth of the hero's feet + focusOffset; no blur within +-focusRange of it; the blur
 // radius ramps linearly to farMaxBlur over farRamp tiles behind and to nearMaxBlur over nearRamp
 // tiles in front. Blur radii are px at 720p and scale with the screen height.
+// A and D are calibrated for this pipeline's tile-max gather, which blurs at the full nominal radius
+// (the lab's fixed 16 px disc under-blurred the transition, and the bible's OW_A values 0.9 / 0.3 /
+// 2.4 were fitted on it): with them the sharp band (mean squared Laplacian over a grass strip above
+// 50% of its peak) runs y 378-448 at 720p as in ref 29, from 2.2 tiles north of the hero's feet to
+// his feet row, and all of the hero is crisp (his head is 0.36 tile nearer than his feet).
 export const DOF_PRESETS = {
-  A: { focusOffset: 0.9, focusRange: 0.3, farRamp: 5, nearRamp: 2.4, farMaxBlur: 16, nearMaxBlur: 10 },
+  A: { focusOffset: 1.0, focusRange: 0.9, farRamp: 5, nearRamp: 4.5, farMaxBlur: 16, nearMaxBlur: 10 },
   // B is visibly less blurred (estimated); appendix A sets its focus offset to 0
   B: { focusOffset: 0, focusRange: 2.5, farRamp: 8, nearRamp: 5, farMaxBlur: 7, nearMaxBlur: 4 },
   // C and D are unmeasured cameras: guesses between B and A
   C: { focusOffset: 0, focusRange: 3, farRamp: 10, nearRamp: 6, farMaxBlur: 6, nearMaxBlur: 3 },
-  D: { focusOffset: 0.9, focusRange: 0.3, farRamp: 4.5, nearRamp: 2.2, farMaxBlur: 16, nearMaxBlur: 10 },
+  D: { focusOffset: 1.0, focusRange: 0.9, farRamp: 4.5, nearRamp: 4.2, farMaxBlur: 16, nearMaxBlur: 10 },
   // the fixed dungeon camera: nearly sharp frames (lab: focused on the room with no offset)
   dungeon: { focusOffset: 0, focusRange: 3, farRamp: 8, nearRamp: 6, farMaxBlur: 4, nearMaxBlur: 3 },
 };

@@ -5,7 +5,8 @@
 //   DOF    -> prepare (colour + view depth) -> tile-max CoC (16 px tiles) -> dilate -> Vogel-disc gather
 //   bloom  -> UnrealBloomPass, added into the DOF result
 //   glare  -> four streaks at 45 degrees from pixels above 3.2 (half resolution), added
-//   grade  -> ACES filmic (exposure), grade in display space, edge vignette, dither -> canvas
+//   grade  -> tone curve (ACES filmic, or the dungeons' per-channel shoulder; exposure), grade in
+//             display space, edge vignette, dither -> canvas
 //
 // Depth of field: the circle of confusion is 0 within focusRange of the focus depth and ramps
 // linearly to farMaxBlur / nearMaxBlur (px at 720p, scaled by the drawing-buffer height). The
@@ -188,8 +189,12 @@ const GradeShader = {
     vignetteSoftness: { value: 0.6 },
     rim: { value: 0.85 },
     rimWidth: { value: 0.033 },
+    rimExp: { value: 0 },
     edge: { value: 0.2 },
     edgeWidth: { value: 0.2 },
+    shoulder: { value: 0 },
+    shoulderKnee: { value: 0.45 },
+    shoulderCeil: { value: 0.87 },
     resolution: { value: new THREE.Vector2(1, 1) },
   },
   vertexShader: /* glsl */ `precision highp float; uniform mat4 modelViewMatrix; uniform mat4 projectionMatrix;
@@ -197,19 +202,27 @@ const GradeShader = {
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `precision highp float;
     uniform sampler2D tDiffuse; uniform float saturation, contrast, vignette, vignetteSoftness;
-    uniform float rim, rimWidth, edge, edgeWidth;
+    uniform float rim, rimWidth, rimExp, edge, edgeWidth, shoulder, shoulderKnee, shoulderCeil;
     uniform vec3 lift, gain; uniform vec2 resolution;
-    // Edge darkening measured on the reference captures: a thin dark rim (~24 px at 720p) and a soft
-    // falloff over ~144 px from every screen edge; corners multiply both axes.
+    // Edge darkening measured on the reference captures: a thin dark rim and a soft falloff from every
+    // screen edge; corners multiply both axes. The rim is a smoothstep over rimWidth (the bible's
+    // 81-frame stack), or with rimExp an exponential 1 - rim * exp(-d / rimWidth) (the overworld refs).
     float edgeFactor(float d) {
-      return (1.0 - rim * (1.0 - smoothstep(0.0, rimWidth, d))) * (1.0 - edge * (1.0 - smoothstep(0.0, edgeWidth, d)));
+      float r = rimExp > 0.5 ? exp(-d / max(rimWidth, 1e-5)) : 1.0 - smoothstep(0.0, rimWidth, d);
+      return (1.0 - rim * r) * (1.0 - edge * (1.0 - smoothstep(0.0, edgeWidth, d)));
     }
     #include <tonemapping_pars_fragment>
     #include <colorspace_pars_fragment>
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
-      c.rgb = ACESFilmicToneMapping(c.rgb);
+      if (shoulder > 0.5) {
+        // dungeons (bible section 5): a per-channel shoulder, straight up to the knee, then an
+        // exponential roll-off toward the ceiling, with no filmic desaturation, so lamp-lit highlights
+        // and flames stay saturated yellow and top out near 226/255
+        vec3 x = c.rgb * toneMappingExposure, k = vec3(shoulderKnee), C = vec3(shoulderCeil);
+        c.rgb = mix(x, C - (C - k) * exp(-(x - k) / (C - k)), step(k, x));
+      } else c.rgb = ACESFilmicToneMapping(c.rgb);
       c = sRGBTransferOETF(c);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
       c.rgb = mix(vec3(l), c.rgb, saturation);
@@ -375,8 +388,13 @@ export class LookPipeline {
     g.vignetteSoftness.value = G.vignetteSoftness ?? 0.6;
     g.rim.value = G.rim ?? 0;
     g.rimWidth.value = G.rimWidth ?? 0.033;
+    g.rimExp.value = G.rimShape === 'exp' ? 1 : 0;
     g.edge.value = G.edge ?? 0;
     g.edgeWidth.value = G.edgeWidth ?? 0.2;
+    const T = L.tone ?? {};
+    g.shoulder.value = T.mapping === 'shoulder' ? 1 : 0;
+    g.shoulderKnee.value = T.knee ?? 0.45;
+    g.shoulderCeil.value = T.ceil ?? 0.87;
     g.resolution.value.set(this.w, this.h);
     renderer.setRenderTarget(null);
     this.gradeQ.render(renderer);

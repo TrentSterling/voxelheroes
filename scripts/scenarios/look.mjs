@@ -14,9 +14,9 @@ const info = (t) => t.eval(() => window.__voxelHeroes.look.info());
 // Draw a frame and measure its depth of field the way the art bible does (appendix B): mean squared
 // Laplacian of luminance per 28 px band over x 300 to 560, from y 300 down, normalised to the
 // sharpest band. Returns the profile, the centroid of the bands at 50% or more, and the screen row
-// of the focus point (the ground 0.9 tiles behind the hero's feet).
-const dofProfile = (t) =>
-  t.eval(() => {
+// of the focus point (the ground `offset` tiles behind the hero's feet).
+const dofProfile = (t, offset) =>
+  t.eval((offset) => {
     const h = window.__voxelHeroes;
     const cam = h.look.camera;
     const gl = document.querySelector('canvas').getContext('webgl2');
@@ -46,9 +46,9 @@ const dofProfile = (t) =>
     let ws = 0;
     let ys = 0;
     for (const [y, v] of profile) if (v >= 0.5) (ws += v), (ys += v * y);
-    const f = new cam.position.constructor(h.player.x, 0.125, h.player.z - 0.9).project(cam);
+    const f = new cam.position.constructor(h.player.x, 0.125, h.player.z - offset).project(cam);
     return { profile, centroid: Math.round(ys / ws), focusRow: Math.round((1 - (f.y * 0.5 + 0.5)) * H) };
-  });
+  }, offset);
 
 export default async function lookScenario(t) {
   await t.press('Enter');
@@ -69,16 +69,18 @@ export default async function lookScenario(t) {
   i = await info(t);
   t.expect(i.lighting === 'day' && i.path === 'post' && i.exposure === 0.88 && i.shadowMap === 4096, `day look, post stack, exposure ${i.exposure}, shadow map ${i.shadowMap}`);
   t.expect(!i.mirror, 'no polished floor in the overworld');
-  const focusA = await t.eval(() => {
+  // preset A focuses 1 tile behind the hero's feet (look/presets.js DOF_PRESETS)
+  const offsetA = i.dof?.focusOffset;
+  const focusA = await t.eval((off) => {
     const h = window.__voxelHeroes;
     const cam = h.look.camera;
     const v = new cam.position.constructor(h.player.x, 0.125, h.player.z).applyMatrix4(cam.matrixWorldInverse);
-    return -v.z + 0.9;
-  });
-  t.expect(Math.abs(i.focusDistance - focusA) < 0.02, `DOF focus on the hero's feet + 0.9 (${i.focusDistance} vs ${focusA.toFixed(3)})`);
+    return -v.z + off;
+  }, offsetA);
+  t.expect(offsetA === 1 && Math.abs(i.focusDistance - focusA) < 0.02, `DOF focus on the hero's feet + ${offsetA} (${i.focusDistance} vs ${focusA.toFixed(3)})`);
 
   // depth of field: one sharp band at the focus point, blur in front of it and behind it
-  const dof = await dofProfile(t);
+  const dof = await dofProfile(t, offsetA);
   const far = dof.profile.filter(([y]) => y < dof.centroid - 70).map((b) => b[1]);
   const near = dof.profile.filter(([y]) => y > dof.centroid + 70).map((b) => b[1]);
   t.expect(
@@ -165,7 +167,7 @@ export default async function lookScenario(t) {
   await t.step(2.5);
   await t.shot('mirror-lake-A');
   i = await info(t);
-  t.expect(i.materials.water.trough === 0.5 && i.materials.water.sheen === 0.35, 'lab water values');
+  t.expect(i.materials.water.trough === 0.5 && i.materials.water.sheen === 0.25, `water values retuned against ref 28 (sheen ${i.materials.water.sheen})`);
 
   // ---------------------------------------------------------------- crypt room, dungeon camera
   await t.teleport('crypt:0,1', 8, 5.5, { yaw: 0 });

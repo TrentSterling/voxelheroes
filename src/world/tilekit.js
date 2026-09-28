@@ -36,7 +36,7 @@ const V = 1 / 16; // character voxel
 // A cuttable bush: one of four terrain-resolution lumps, turned by a quarter.
 export function bushProp(ctx) {
   const m = bushModel(Math.floor(hash3(ctx.tx, 1, ctx.tz, 8) * 4));
-  const obj = modelMesh(m, getMaterial('terrain'));
+  const obj = modelMesh(m, getMaterial('foliage'));
   obj.rotation.y = Math.floor(hash3(ctx.tx, 2, ctx.tz, 8) * 4) * (Math.PI / 2);
   obj.position.set(ctx.cx, GROUND_Y, ctx.cz);
   obj.userData.colors = m.colors;

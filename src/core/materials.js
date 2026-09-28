@@ -6,6 +6,8 @@
 //   getMaterial('fine')       fine floors built at character resolution (dungeon floors, 1/16 tile)
 //   getMaterial('prop')       static stone props at character resolution (statues, braziers): the
 //                             room's faint seams at roughness 0.7, not the characters' clear seams
+//   getMaterial('foliage')    tree canopies and bushes (1/8 tile): a narrow, gentle bevel and faint
+//                             seams, so leaf blocks read as soft clumps, not a dark-gridded box
 //   makeCharacterMaterial()   a new unshared character material (per-entity hit flash); it keeps the
 //                             bevel and seam shader and follows look changes like the shared one
 //   makeGlowMaterial(color, intensity)  emissive-only (unlit, HDR) so bloom and glare catch it;
@@ -22,7 +24,7 @@
 //   seam       a thin line of half-width `grid.width` darkens to `grid.dark` around every face
 import * as THREE from 'three';
 
-export const MATERIAL_KINDS = ['terrain', 'character', 'fine', 'prop'];
+export const MATERIAL_KINDS = ['terrain', 'character', 'fine', 'prop', 'foliage'];
 
 // ---------------------------------------------------------------- shared uniforms
 // One seam switch for every kind (the reference has a menu option to hide seam lines).
@@ -43,7 +45,7 @@ function uniformBag() {
   };
 }
 
-const BAGS = { terrain: uniformBag(), character: uniformBag(), fine: uniformBag(), prop: uniformBag() };
+const BAGS = { terrain: uniformBag(), character: uniformBag(), fine: uniformBag(), prop: uniformBag(), foliage: uniformBag() };
 
 // ---------------------------------------------------------------- voxel material
 const VOXEL_VERTEX_PARS = /* glsl */ `
@@ -134,6 +136,7 @@ const SHARED = {
   character: new VoxelMaterial({}, 'character'),
   fine: new VoxelMaterial({}, 'fine'),
   prop: new VoxelMaterial({}, 'prop'),
+  foliage: new VoxelMaterial({}, 'foliage'),
 };
 
 export function getMaterial(kind = 'terrain') {
@@ -323,9 +326,9 @@ function applyBag(U, M = {}) {
   if (M.roughness !== undefined) U.voxRoughness.value = M.roughness;
 }
 
-// Switch every kind to a look's values: `material` is the terrain kind, `charMaterial` and
-// `propMaterial` are merged over it (as the lab does), `fineMaterial` replaces it for the fine kind,
-// `water` sets the water.
+// Switch every kind to a look's values: `material` is the terrain kind, `charMaterial`,
+// `propMaterial` and `foliageMaterial` are merged over it (as the lab does), `fineMaterial` replaces
+// it for the fine kind, `water` sets the water.
 export function applyMaterialLook(look) {
   const base = look.material ?? {};
   const merge = (over = {}) => ({ ...base, ...over, grid: { ...base.grid, ...over.grid } });
@@ -333,6 +336,7 @@ export function applyMaterialLook(look) {
   applyBag(BAGS.character, merge(look.charMaterial));
   applyBag(BAGS.fine, look.fineMaterial ?? base);
   applyBag(BAGS.prop, merge(look.propMaterial));
+  applyBag(BAGS.foliage, merge(look.foliageMaterial));
   for (const kind of MATERIAL_KINDS) SHARED[kind].roughness = BAGS[kind].voxRoughness.value;
   applyWater({ ...WATER_DEFAULTS, ...(look.water ?? {}) });
 }
