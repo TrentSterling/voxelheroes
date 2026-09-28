@@ -12,10 +12,27 @@ export const VOXEL = 1 / VOXELS_PER_TILE;
 
 const FILLED = 0x1000000;
 
+// Boxels: a voxel's six faces can each carry their own colour (Boxel's per-face model). `faces` is
+// null until the first setFace, then a Map from cell index * 6 + face (FACE_* bit order: +x, -x,
+// +y, -y, +z, -z) to a colour that overrides the voxel's own on that face. Plain voxel grids
+// never allocate it.
 export class DenseGrid {
   constructor(sx, sy, sz) {
     this.sx = sx; this.sy = sy; this.sz = sz;
     this.data = new Uint32Array(sx * sy * sz);
+    this.faces = null;
+  }
+  // Colour one face of a filled voxel (f: 0..5); c == null removes the override.
+  setFace(x, y, z, f, c) {
+    if (!this.has(x, y, z)) return this;
+    const k = this.i(x, y, z) * 6 + f;
+    if (c == null) { this.faces?.delete(k); return this; }
+    (this.faces ??= new Map()).set(k, c & 0xffffff);
+    return this;
+  }
+  faceColor(x, y, z, f) {
+    const i = this.i(x, y, z);
+    return this.faces?.get(i * 6 + f) ?? (this.data[i] & 0xffffff);
   }
   inside(x, y, z) {
     return x >= 0 && y >= 0 && z >= 0 && x < this.sx && y < this.sy && z < this.sz;
@@ -26,7 +43,9 @@ export class DenseGrid {
   color(x, y, z) { return this.get(x, y, z) & 0xffffff; }
   set(x, y, z, c) {
     if (!this.inside(x, y, z)) return this;
-    this.data[this.i(x, y, z)] = c == null ? 0 : (FILLED | (c & 0xffffff));
+    const i = this.i(x, y, z);
+    this.data[i] = c == null ? 0 : (FILLED | (c & 0xffffff));
+    if (this.faces) for (let f = 0; f < 6; f++) this.faces.delete(i * 6 + f); // a new voxel starts plain
     return this;
   }
   // Inclusive-exclusive box. c may be a color or fn(x,y,z) -> color|null.
@@ -76,7 +95,13 @@ export class DenseGrid {
   mirrorX() { // copy left half onto right half (x < sx/2 is the master)
     const h = Math.floor(this.sx / 2);
     for (let z = 0; z < this.sz; z++) for (let y = 0; y < this.sy; y++) for (let x = 0; x < h; x++) {
-      this.data[this.i(this.sx - 1 - x, y, z)] = this.data[this.i(x, y, z)];
+      const src = this.i(x, y, z), dst = this.i(this.sx - 1 - x, y, z);
+      this.data[dst] = this.data[src];
+      if (!this.faces) continue;
+      for (let f = 0; f < 6; f++) { // mirrored: +x and -x swap
+        const c = this.faces.get(src * 6 + f), mf = f < 2 ? f ^ 1 : f;
+        if (c === undefined) this.faces.delete(dst * 6 + mf); else this.faces.set(dst * 6 + mf, c);
+      }
     }
     return this;
   }
@@ -115,6 +140,7 @@ const FACE_TABLE = FACES.map((F) => {
 });
 
 const _c = new THREE.Color();
+const _fc = new THREE.Color();
 
 // Build a BufferGeometry with only exposed faces, per-vertex colors (linear) with baked voxel AO,
 // face UVs (0..1 per voxel face) for the bevel shader, and per-face flags.
@@ -144,9 +170,11 @@ export function meshVoxels(grid, opts = {}) {
   const x1 = Math.min(sx, rx1), y1 = Math.min(sy, ry1), z1 = Math.min(sz, rz1);
   const pos = [], nor = [], col = [], uv = [], idx = [];
   const aos = [0, 0, 0, 0];
+  const faces = grid.faces?.size ? grid.faces : null;
   let v = 0;
   for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-    const val = data[x + sx * (y + sy * z)];
+    const ci = x + sx * (y + sy * z);
+    const val = data[ci];
     if (!val) continue;
     _c.setHex(val & 0xffffff, THREE.SRGBColorSpace); // → linear working space
     for (let f = 0; f < 6; f++) {
@@ -156,6 +184,8 @@ export function meshVoxels(grid, opts = {}) {
       if (ny === -1 && y < skipBelow) continue;
       const px = x + nx, py = y + ny, pz = z + nz;
       if (solid(px, py, pz)) continue;
+      const fc = faces?.get(ci * 6 + f);
+      const c = fc === undefined ? _c : _fc.setHex(fc, THREE.SRGBColorSpace);
       for (let k = 0; k < 4; k++) {
         const C = F.corners[k];
         let a = 3;
@@ -169,7 +199,7 @@ export function meshVoxels(grid, opts = {}) {
         pos.push((x + C.c[0] - ox) * scale, (y + C.c[1] - oy) * scale, (z + C.c[2] - oz) * scale);
         nor.push(nx, ny, nz);
         const m = AO_CURVE[3 - a];
-        col.push(_c.r * m, _c.g * m, _c.b * m);
+        col.push(c.r * m, c.g * m, c.b * m);
         uv.push(FACE_UV[k][0], FACE_UV[k][1]);
       }
       // Flip the quad diagonal so AO interpolates without the anisotropy artefact.
