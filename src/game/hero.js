@@ -51,6 +51,7 @@ import { state } from '../core/state.js';
 import { input } from '../core/input.js';
 import { on, emit } from '../core/events.js';
 import { sfx } from '../core/audio.js';
+import { GROUND_Y } from '../core/constants.js';
 import { TUNING } from '../core/tuning.js';
 import { world, currentScreen } from '../world/world.js';
 import { player } from '../entities/player.js';
@@ -58,7 +59,7 @@ import { hurtPlayer } from '../systems/combat.js';
 import { moveHero } from '../systems/hero-body.js';
 import { setSwordStats, setBladeHooks } from '../systems/sword.js';
 import { flashBlade } from '../systems/sword-fx.js';
-import { burst } from '../systems/particles.js';
+import { burst, smoke } from '../systems/particles.js';
 import { registerPlayHook } from '../systems/flow.js';
 import { registerGrant } from '../systems/grants.js';
 import { tryInteract } from '../systems/interact.js';
@@ -478,8 +479,14 @@ on('pickup', ({ type, wasFull }) => {
 player.hazardHandler = (def, tx, tz) => {
   const D = TUNING.damage;
   switch (def.hazard) {
-    case 'pit':
-      return hero.fall({ damage: D.pit, to: 'entry' });
+    case 'pit': {
+      // a whistle and a puff where he drops, a thump and a puff where he lands
+      sfx.fall?.();
+      smoke(tx + 0.5, GROUND_Y + 0.05, tz + 0.5, 6, { radius: 0.14, spread: 0.4, life: 0.5 });
+      const r = hero.fall({ damage: D.pit, to: 'entry' });
+      smoke(player.x, GROUND_Y + 0.05, player.z, 5, { radius: 0.12, spread: 0.35, life: 0.45 });
+      return r;
+    }
     case 'lava':
       return hero.fall({ damage: D.lava, to: 'safe' });
     case 'puddle':
