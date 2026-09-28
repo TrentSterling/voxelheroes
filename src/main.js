@@ -18,6 +18,7 @@ import { allAreas } from './world/areas.js';
 import { player } from './entities/player.js';
 import { initParticles, updateParticles } from './systems/particles.js';
 import { updateCritters } from './systems/critters.js';
+import { tickClock } from './game/clock.js';
 import { placeAtStart, loadGame } from './systems/flow.js';
 import { applyScreenAmbience, syncScreenVisibility, shownRect } from './systems/transitions.js';
 import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
@@ -55,6 +56,7 @@ function update(dt) {
   world.update(state.time, dt);
   if (input.pressed('mute')) toggleMuteUi();
   updateMode(dt);
+  tickClock(dt);
   updateParticles(dt);
   updateCritters(dt);
   world.flush();

@@ -117,3 +117,76 @@ export function bark(npc, kind) {
 }
 
 export const heartString = (n) => (n > 0 ? ' ' + '♥'.repeat(n) : '');
+
+// ---------------------------------------------------------------- gifts (once a day each)
+// What can be given: wildflowers (cut from flower tiles, game/forage.js), a pouch of 10 coins, a bomb.
+export const GIFTS = {
+  wildflower: { label: 'Wildflower', has: () => (state.forage?.wildflower ?? 0) > 0, take: () => state.forage.wildflower--, name: 'a wildflower' },
+  coins: { label: '10 coins', has: () => (state.coins ?? 0) >= 10, take: () => (state.coins -= 10), name: 'ten coins' },
+  bomb: { label: 'A bomb', has: () => (state.inventory?.ammo?.bombs ?? 0) > 0, take: () => state.inventory.ammo.bombs--, name: 'a bomb' },
+};
+const TASTE = {
+  cheery: { wildflower: 'love', coins: 'like', bomb: 'dislike' },
+  grumpy: { coins: 'love', bomb: 'like', wildflower: 'dislike' },
+  gossip: { wildflower: 'love', coins: 'like', bomb: 'dislike' },
+  dreamy: { wildflower: 'love', coins: 'neutral', bomb: 'dislike' },
+  worker: { bomb: 'love', coins: 'like', wildflower: 'neutral' },
+};
+const GIFT_POINTS = { love: 3, like: 2, neutral: 1, dislike: -1 };
+const REACTIONS = {
+  love: { cheery: 'Oh! {gift}! I love these! You are wonderful!', grumpy: '...{gift}. Hmph. Fine. It is perfect.', gossip: '{gift}? For me? Wait until everyone hears!', dreamy: '{gift}... it smells like a morning I once had.', worker: '{gift}! Now THAT will clear the stumps. Thank you!' },
+  like: 'Thank you, {hero}. That is kind.',
+  neutral: 'Oh. {gift}. Thanks, I suppose.',
+  dislike: { cheery: 'Oh... um. {gift}. That is... something!', grumpy: '{gift}? Take your weeds elsewhere.', gossip: 'A bomb? Are you trying to start a scandal?', dreamy: '{gift}... it makes the air feel sharp.', worker: 'I have no use for {gift}, sorry.' },
+};
+
+export const giftableNow = (npc) => friend(npc.name).giftDay !== (state.clock?.day ?? 1) && Object.values(GIFTS).some((g) => g.has());
+export const giftChoices = () => Object.entries(GIFTS).filter(([, g]) => g.has());
+
+// Give gift `id` to npc: -> { line, taste, up }
+export function giveGift(npc, id) {
+  const g = GIFTS[id];
+  if (!g?.has()) return null;
+  g.take();
+  const p = personalityOf(npc);
+  const taste = TASTE[p]?.[id] ?? 'neutral';
+  const f = friend(npc.name);
+  f.giftDay = state.clock?.day ?? 1;
+  const r = befriend(npc.name, GIFT_POINTS[taste]);
+  f.talks -= GIFT_POINTS[taste] > 0 ? 1 : 0; // a gift is not a conversation
+  const tpl = typeof REACTIONS[taste] === 'string' ? REACTIONS[taste] : REACTIONS[taste][p];
+  const line = fill(tpl.replace('{gift}', g.name).replace(/^./, (c) => c.toUpperCase()));
+  return { line, taste, ...r };
+}
+
+// ---------------------------------------------------------------- heart events
+// At 2 and 4 hearts the next conversation is a scene with a present: coins, then a heart piece.
+const HEART_EVENTS = {
+  2: {
+    cheery: ['You know what, {hero}? You make this place brighter.', 'Here. I have been saving these for someone who deserved them.'],
+    grumpy: ['...Sit. No, not there. There.', 'My old travelling purse. Take it before I change my mind.'],
+    gossip: ['I have a secret, and it is about you. Everyone likes you!', 'Also, I found this purse by the well. Finders keepers, now it is yours.'],
+    dreamy: ['I dreamt you would come today. I made you a gift in the dream.', 'And look, it came true. Mostly coins.'],
+    worker: ['Good work deserves good pay. You have been working on all of us.', 'Take this. Earned, every coin.'],
+  },
+  4: {
+    cheery: ['I made you something special. It holds a little of my luck.'],
+    grumpy: ['This was my wife\'s. She would have liked you. Keep it close.'],
+    gossip: ['This is the most precious thing I have ever heard about. I mean, owned.'],
+    dreamy: ['I found this glowing in the grass where the fireflies sleep. It is yours.'],
+    worker: ['Carved it myself, from the oldest oak. It beats like a heart. Strange, eh?'],
+  },
+};
+
+export function pendingHeartEvent(npc) {
+  const f = friend(npc.name);
+  const done = (f.events ??= []);
+  const h = heartsOf(npc.name);
+  for (const at of [2, 4]) if (h >= at && !done.includes(at)) return at;
+  return null;
+}
+
+export function heartEventLines(npc, at) {
+  friend(npc.name).events.push(at);
+  return (HEART_EVENTS[at][personalityOf(npc)] ?? HEART_EVENTS[at].cheery).map(fill);
+}

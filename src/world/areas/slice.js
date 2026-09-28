@@ -130,8 +130,8 @@ registerArea({
       spawns: {},
       spawnsAt: {
         '7,5': { type: 'npc-king' },
-        '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, lines: ['The king has been waiting for you.', 'Mossbrook is north, up the road past the gate.'] },
-        '10,7': { type: 'npc', name: 'Guard Pell', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, lines: ['West of the village the old barrow has woken.', 'Things crawl out of it at night. Mind yourself.'] },
+        '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 0, schedule: 'always', lines: ['The king has been waiting for you.', 'Mossbrook is north, up the road past the gate.'] },
+        '10,7': { type: 'npc', name: 'Guard Pell', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 0, schedule: 'always', lines: ['West of the village the old barrow has woken.', 'Things crawl out of it at night. Mind yourself.'] },
       },
       rows: [
         'TTTTTT....TTTTTT',

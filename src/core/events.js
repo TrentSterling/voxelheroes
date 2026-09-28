@@ -126,6 +126,8 @@ export const EVENTS = {
   // ---- overworld and services
   'shop-buy': E('{ shop, entry, price }', 'shops.js buy', 'ui, audio'),
   'inn-rest': E('{ inn, price }', 'services.js innRest', 'ui'),
+  hour: E('{ hour }', 'game/clock.js when the in-game hour changes', 'npcs (schedules read hour())'),
+  'new-day': E('{ day, reason }', 'game/clock.js after a night at an inn or past 2:00', 'forage (picked tiles reset), npcs (gifts once a day)'),
   'music-change': E('{ id, from }', 'music.js playMusic', 'audio'),
 
   // ---- meta

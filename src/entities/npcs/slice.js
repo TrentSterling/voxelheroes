@@ -20,7 +20,7 @@ const look = (palette) => makeHero(getMaterial('character'), { ...TOWNSFOLK, ...
 // the hero with the starter blade and the first shield.
 class King extends Npc {
   constructor(opts) {
-    super(opts, { rig: look({ tunic: 0x8a2a3a, tunicLight: 0xaa4a5a, cap: 0xe6b43a, leg: 0x5a2a3a, extras: ['crown', 'beard'] }), name: 'King Aldric' });
+    super(opts, { rig: look({ tunic: 0x8a2a3a, tunicLight: 0xaa4a5a, cap: 0xe6b43a, leg: 0x5a2a3a, extras: ['crown', 'beard'] }), name: 'King Aldric', schedule: 'always' });
   }
   async talk() {
     const sp = { speaker: this.name };
@@ -98,7 +98,7 @@ registerEntity('npc-inventor', (opts) => new Inventor(opts));
 // A spell nobody has registered yet (the items stream's) is not granted.
 class Sage extends Npc {
   constructor(opts) {
-    super(opts, { rig: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0, extras: [['hood', 0xe8e0f0], 'beard'] }), name: 'Sage Oriel' });
+    super(opts, { rig: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0, extras: [['hood', 0xe8e0f0], 'beard'] }), name: 'Sage Oriel', schedule: 'always' });
     this.spell = opts.spell ?? null;
     this.flag = opts.flag ?? `overworld:sage:${this.spell}`;
   }
