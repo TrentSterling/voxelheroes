@@ -90,8 +90,57 @@ const VOXEL_COLOR = /* glsl */ `
   diffuseColor.rgb *= mix(1.0, gridDark, line * gridOn * on);
 }`;
 
-function patchVoxelShader(shader, U) {
+// Cutaway: what stands between the camera and the hero (a row of trees, a wall on the camera side)
+// dissolves in a dithered circle around him, so he is never hidden. Only above the ground (the
+// floor at his feet stays), only nearer the camera than he is, never the characters. The original
+// avoids most of this by keeping camera-side props low; this catches the rest.
+const cutUniforms = {
+  cutHero: { value: new THREE.Vector3(0, -1000, 0) },
+  cutCam: { value: new THREE.Vector3(0, 1000, 0) },
+  cutRadius: { value: 1.1 },
+  cutFloor: { value: 0 },
+};
+export function setCutaway(hero, cam, floorY) {
+  cutUniforms.cutHero.value.copy(hero);
+  cutUniforms.cutCam.value.copy(cam);
+  cutUniforms.cutFloor.value = floorY;
+}
+const CUT_VERTEX = 'varying vec3 vCutPos;';
+const CUT_FRAGMENT_PARS = /* glsl */ `
+varying vec3 vCutPos;
+uniform vec3 cutHero;
+uniform vec3 cutCam;
+uniform float cutRadius;
+uniform float cutFloor;
+float cutBayer(vec2 p) {
+  ivec2 q = ivec2(mod(p, 4.0));
+  int i = q.x + q.y * 4;
+  int b[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+  return (float(b[i]) + 0.5) / 16.0;
+}`;
+const CUT_FRAGMENT = /* glsl */ `
+{
+  vec3 ray = cutHero - cutCam;
+  float len2 = dot(ray, ray);
+  float t = dot(vCutPos - cutCam, ray) / len2;
+  if (t > 0.0 && t < 1.0 - 0.6 / sqrt(len2) && vCutPos.y > cutFloor + 0.2) {
+    float d = length(vCutPos - (cutCam + ray * t));
+    float k = 1.0 - smoothstep(cutRadius * 0.55, cutRadius, d);
+    if (k > cutBayer(gl_FragCoord.xy)) discard;
+  }
+}`;
+
+function patchVoxelShader(shader, U, cut = false) {
   Object.assign(shader.uniforms, U);
+  if (cut) {
+    Object.assign(shader.uniforms, cutUniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${CUT_VERTEX}`)
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvCutPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${CUT_FRAGMENT_PARS}`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${CUT_FRAGMENT}`);
+  }
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', `#include <common>\n${VOXEL_VERTEX_PARS}`)
     .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFaceUv = faceUv;');
@@ -115,10 +164,10 @@ export class VoxelMaterial extends THREE.MeshStandardMaterial {
     this.defaultAttributeValues = { faceUv: [0.5, 0.5], color: [1, 1, 1] };
   }
   onBeforeCompile(shader) {
-    patchVoxelShader(shader, this.voxelUniforms);
+    patchVoxelShader(shader, this.voxelUniforms, this.kind !== 'character');
   }
   customProgramCacheKey() {
-    return 'voxel-bevel-seam-v1';
+    return this.kind === 'character' ? 'voxel-bevel-seam-v1' : 'voxel-bevel-seam-cut-v1';
   }
   copy(source) {
     super.copy(source);

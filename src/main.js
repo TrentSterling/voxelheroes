@@ -2,7 +2,10 @@
 // Module map and extension points: docs/ARCHITECTURE.md.
 import './style.css';
 import './content.js';
-import { scene, mountRenderer, renderScene, look } from './core/renderer.js';
+import * as THREE from 'three';
+import { scene, mountRenderer, renderScene, look, camera } from './core/renderer.js';
+import { setCutaway } from './core/materials.js';
+import { GROUND_Y } from './core/constants.js';
 import { initCamera, placeCamera, followSubject, cameraPreset, currentCameraPreset } from './core/camera.js';
 import { initInput, input } from './core/input.js';
 import { initAudio } from './core/audio.js';
@@ -55,8 +58,11 @@ function update(dt) {
   input.endFrame();
 }
 
+const _cutHero = new THREE.Vector3();
+const _cutCam = new THREE.Vector3();
 function render() {
   refreshHud();
+  setCutaway(_cutHero.set(player.x, GROUND_Y + 0.5, player.z), camera.getWorldPosition(_cutCam), GROUND_Y);
   renderScene();
 }
 
