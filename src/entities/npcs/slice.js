@@ -13,14 +13,14 @@ import { Npc } from '../npc.js';
 import { registerEntity } from '../registry.js';
 import { TOWNSFOLK } from './npc.js';
 
-const look = (palette) => makeHero(getMaterial('character'), { ...TOWNSFOLK, ...palette }).root;
+const look = (palette) => makeHero(getMaterial('character'), { ...TOWNSFOLK, ...palette }); // a rig: it walks and poses
 
 // ---------------------------------------------------------------- the king
 // A new game with the prologue starts unarmed (CONTRACTS 8.16): the king arms
 // the hero with the starter blade and the first shield.
 class King extends Npc {
   constructor(opts) {
-    super(opts, { model: look({ tunic: 0x8a2a3a, tunicLight: 0xaa4a5a, cap: 0xe6b43a, leg: 0x5a2a3a }), name: 'King Aldric' });
+    super(opts, { rig: look({ tunic: 0x8a2a3a, tunicLight: 0xaa4a5a, cap: 0xe6b43a, leg: 0x5a2a3a }), name: 'King Aldric' });
   }
   async talk() {
     const sp = { speaker: this.name };
@@ -42,7 +42,7 @@ registerEntity('npc-king', (opts) => new King(opts));
 // ---------------------------------------------------------------- Mossbrook's services
 class Shopkeeper extends Npc {
   constructor(opts) {
-    super(opts, { model: look({ tunic: 0x3a6a8a, tunicLight: 0x5a8aaa, cap: 0xe8e0d0 }), name: 'Mags' });
+    super(opts, { rig: look({ tunic: 0x3a6a8a, tunicLight: 0x5a8aaa, cap: 0xe8e0d0 }), name: 'Mags' });
     this.shop = opts.shop ?? 'v1-shop';
   }
   async talk() {
@@ -54,7 +54,7 @@ registerEntity('npc-shop', (opts) => new Shopkeeper(opts));
 
 class Smith extends Npc {
   constructor(opts) {
-    super(opts, { model: look({ tunic: 0x4a3a2e, tunicLight: 0x6a5a4e, cap: 0x3a3a44, leg: 0x3a3a44 }), name: 'Brannoc' });
+    super(opts, { rig: look({ tunic: 0x4a3a2e, tunicLight: 0x6a5a4e, cap: 0x3a3a44, leg: 0x3a3a44 }), name: 'Brannoc' });
   }
   async talk() {
     if (!state.swords.equipped) return showDialog('No blade? Come back when you have one to work on.', { speaker: this.name });
@@ -66,7 +66,7 @@ registerEntity('npc-smith', (opts) => new Smith(opts));
 
 class Innkeeper extends Npc {
   constructor(opts) {
-    super(opts, { model: look({ tunic: 0x8a6a2a, tunicLight: 0xaa8a4a, cap: 0x6a3a2a }), name: 'Wenna' });
+    super(opts, { rig: look({ tunic: 0x8a6a2a, tunicLight: 0xaa8a4a, cap: 0x6a3a2a }), name: 'Wenna' });
     this.inn = opts.inn ?? 'inn-1';
   }
   talk() {
@@ -79,7 +79,7 @@ registerEntity('npc-inn', (opts) => new Innkeeper(opts));
 // Gives the Sprint Boots once (gameplay spec: the inventor in V1, before D1); dash needs them.
 class Inventor extends Npc {
   constructor(opts) {
-    super(opts, { model: look({ tunic: 0x6a5a8a, tunicLight: 0x8a7aaa, cap: 0xc8a040, hair: 0xe8e8e8 }), name: 'Tinker Wyll' });
+    super(opts, { rig: look({ tunic: 0x6a5a8a, tunicLight: 0x8a7aaa, cap: 0xc8a040, hair: 0xe8e8e8 }), name: 'Tinker Wyll' });
   }
   async talk() {
     const sp = { speaker: this.name };
@@ -98,7 +98,7 @@ registerEntity('npc-inventor', (opts) => new Inventor(opts));
 // A spell nobody has registered yet (the items stream's) is not granted.
 class Sage extends Npc {
   constructor(opts) {
-    super(opts, { model: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0 }), name: 'Sage Oriel' });
+    super(opts, { rig: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0 }), name: 'Sage Oriel' });
     this.spell = opts.spell ?? null;
     this.flag = opts.flag ?? `overworld:sage:${this.spell}`;
   }

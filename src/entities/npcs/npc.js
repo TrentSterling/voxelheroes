@@ -1,6 +1,6 @@
 // 'npc': a plain townsperson built on the hero's rig in plain clothes. It
-// stands still, faces the hero when spoken to and says the lines given in the
-// spawn table:
+// strolls near where it stands, watches and greets the hero (entities/npc.js),
+// says the lines given in the spawn table the first time and chats after that:
 //
 //   spawnsAt: { '5,4': { type: 'npc', name: 'Old Wren', lines: ['The smith lives up the hill.'] } }
 //
@@ -24,4 +24,4 @@ export const TOWNSFOLK = {
   shield: null,
 };
 
-registerEntity('npc', (opts) => new Npc(opts, { model: makeHero(getMaterial('character'), { ...TOWNSFOLK, ...opts.palette }).root }));
+registerEntity('npc', (opts) => new Npc(opts, { rig: makeHero(getMaterial('character'), { ...TOWNSFOLK, ...opts.palette }), wander: 2 }));

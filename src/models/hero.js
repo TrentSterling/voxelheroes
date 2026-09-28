@@ -136,20 +136,31 @@ export function swordGrid(length = 15, width = 2) {
 export const heroModel = (pose, S = HERO_SLOTS, opts = {}) => {
   const p = HERO_ALIASES[pose] ?? pose;
   const tag = S === HERO_SLOTS && opts.shield !== false ? '' : `:${Object.values(S).join(',')}:${opts.shield !== false}`;
-  const heroColours = Object.entries(HERO_SLOTS).every(([k, v]) => S[k] === v); // makeHero passes a copy
-  if (HERO_V2 && heroColours && opts.shield !== false) return model(`hero-v2:${p}`, () => heroV2Grids()[p]);
+  if (HERO_V2) return model(`hero-v2:${p}${tag}`, () => heroV2Grid(p, S, opts.shield !== false));
   return model(`hero:${p}${tag}`, () => heroGrid(p, S, opts));
 };
 
-// Hero v2, the boxel hero authored for Boxel (scripts/art/hero-v2.mjs -> assets/models/hero-v2.boxel).
-// On trial behind ?hero=v2 for the player; townspeople and the shieldless figure keep heroGrid.
+// Hero v2, the boxel hero authored for Boxel (scripts/art/hero-v2.mjs -> assets/models/hero-v2.boxel),
+// the default for the hero and every townsperson (?hero=old for the hand-coded one). A palette
+// recolours its named slots, and the slot*k shades follow; a shieldless figure drops the shield.
 // The file is inlined by Vite; plain Node (scripts/) has no import.meta.env and skips it.
 const HERO_V2_SRC = import.meta.env
   ? Object.values(import.meta.glob('../../assets/models/hero-v2.boxel', { query: '?raw', import: 'default', eager: true }))[0]
   : null;
-const HERO_V2 = !!HERO_V2_SRC && typeof location !== 'undefined' && new URLSearchParams(location.search).get('hero') === 'v2';
-let v2Grids = null;
-const heroV2Grids = () => (v2Grids ??= parseBoxel(HERO_V2_SRC).grids);
+const HERO_V2 = !!HERO_V2_SRC && !(typeof location !== 'undefined' && new URLSearchParams(location.search).get('hero') === 'old');
+const SHIELD_COLOURS = new Set([CP.shieldRim, CP.shieldWood, CP.shieldMark]);
+const v2ByPalette = new Map();
+function heroV2Grid(pose, S, shield) {
+  const key = Object.values(S).join(',');
+  let grids = v2ByPalette.get(key);
+  if (!grids) v2ByPalette.set(key, (grids = parseBoxel(HERO_V2_SRC, { recolor: S }).grids));
+  const g = grids[pose];
+  if (!shield) {
+    for (let z = 0; z < g.sz; z++) for (let y = 0; y < g.sy; y++) for (let x = 0; x < g.sx; x++)
+      if (g.has(x, y, z) && SHIELD_COLOURS.has(g.color(x, y, z))) g.set(x, y, z, null);
+  }
+  return g;
+}
 
 // A sword mesh with its origin on the blade's centre line at the start of the grip.
 export function makeSwordMesh(material = getMaterial('character'), length = 15, width = 2) {

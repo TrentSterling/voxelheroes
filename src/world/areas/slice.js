@@ -352,6 +352,10 @@ registerArea({
         '13,5': { type: 'npc-inventor' }, // the Sprint Boots (gameplay spec: the inventor in V1, before D1)
         '5,11': { type: 'npc-inn', inn: 'inn-1' },
         '10,11': { type: 'npc', name: 'Hettie', lines: ['Welcome to Mossbrook!', 'The inn lets you rest and wakes you there if you fall.'] },
+        '2,8': { type: 'npc', name: 'Pip', personality: 'cheery', palette: { tunic: 0x4a9a5a, tunicLight: 0x6aba7a, hair: 0xd8a040, cap: 0xd05a3a }, lines: ['I am Pip! I can run faster than a slime. Probably.'] },
+        '13,9': { type: 'npc', name: 'Old Tobin', personality: 'grumpy', palette: { tunic: 0x5a5a6a, tunicLight: 0x7a7a8a, hair: 0xc8c8c8, cap: 0x3a3a44 }, lines: ['Another adventurer. Wonderful.', 'Stay off my bench.'] },
+        '5,14': { type: 'npc', name: 'Nell', personality: 'gossip', palette: { tunic: 0xa04a7a, tunicLight: 0xc06a9a, hair: 0x3a2418, cap: 0xe8d8b0 }, lines: ['Oh! You must be the one the king sent for!', 'Everyone is talking about you. Well, I am.'] },
+        '12,14': { type: 'npc', name: 'Rowan', personality: 'worker', palette: { tunic: 0x7a5a3a, tunicLight: 0x9a7a5a, hair: 0x8a3a20, cap: 0x5a7a3a }, lines: ['Mind the fence posts, I just set them.'] },
       },
       rows: [
         'TTTTTTppppTTTTTT',
