@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const rate = +arg('--rate', '4');
 const seconds = +arg('--seconds', '20');
+const lite = process.argv.includes('--lite'); // experiment: no far backdrop, no previews
 const browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 960, height: 540 } });
 const cdp = await page.context().newCDPSession(page);
@@ -16,7 +17,7 @@ await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { tim
 await page.keyboard.press('Enter');
 await page.waitForTimeout(3000);
 const run = async (label, where) => {
-  await page.evaluate((w) => window.__voxelHeroes.teleport(w[0], w[1], w[2]), where);
+  await page.evaluate(([w, lite]) => { const h = window.__voxelHeroes; h.teleport(w[0], w[1], w[2]); if (lite) { for (const m of h.world.backdrop ?? []) m.mesh.visible = false; for (const s of h.world.previews) for (const m of s.meshes) m.mesh.visible = false; h.world.previews.clear(); } }, [where, lite]);
   await page.waitForTimeout(3000);
   await page.evaluate(() => {
     const R = (window.__potato = { d: [], last: performance.now() });
@@ -36,7 +37,7 @@ const run = async (label, where) => {
   });
   console.log(`${label.padEnd(10)} median ${r.p50} ms (${r.fps} fps), p95 ${r.p95} ms, quality now '${r.quality}', watchdog drops ${JSON.stringify(r.drops)}`);
 };
-console.log(`potato: SwiftShader software GL, ${rate}x CPU throttle, 960x540`);
+console.log(`potato: SwiftShader software GL, ${rate}x CPU throttle, 960x540${lite ? ', lite (no backdrop, no previews)' : ''}`);
 await run('village', ['Mossbrook Square', 8, 4.5]);
 await run('crossroads', ['Crossroads', 8, 5.5]);
 await browser.close();

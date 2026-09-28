@@ -47,7 +47,7 @@ import { TUNING } from '../core/tuning.js';
 import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
-import { applyLighting, renderer, scene, camera } from '../core/renderer.js';
+import { applyLighting, renderer, scene, camera, look } from '../core/renderer.js';
 import { isManual } from '../core/loop.js';
 import * as THREE from 'three';
 import { GROUND_Y } from '../core/constants.js';
@@ -213,9 +213,18 @@ export function shownRect() {
 // Hide what is not shown. Runs every frame (main.js) so meshes rebuilt and
 // props added on hidden screens stay hidden; shown screens are touched only
 // when they come back into view.
+let liteShown = false;
 export function syncScreenVisibility() {
+  // At the 'low' look (weak devices; the watchdog drops there) the far backdrop and the next
+  // area's previews are skipped: fewer triangles, which is what a weak device is short of.
+  const lite = look.quality() === 'low';
+  if (lite !== liteShown) {
+    liteShown = lite;
+    for (const m of world.backdrop ?? []) m.mesh.visible = !lite;
+    for (const s of world.previews) s.shown = null; // re-sync below
+  }
   for (const s of world.screens.values()) {
-    const on = shown.has(s) || world.previews.has(s); // previews: the next area's edge, as scenery
+    const on = shown.has(s) || (!lite && world.previews.has(s)); // previews: the next area's edge, as scenery
     if (on && s.shown === true) continue;
     for (const m of s.meshes) if (m.mesh.visible !== on) m.mesh.visible = on;
     for (const obj of s.props.values()) if (obj.visible !== on) obj.visible = on;
