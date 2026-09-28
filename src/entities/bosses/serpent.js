@@ -31,7 +31,8 @@ import { dropCoins } from '../../game/pickups.js';
 import { grant } from '../../systems/grants.js';
 import { registerBestiary } from '../../game/bestiary.js';
 import { Entity } from '../entity.js';
-import { Enemy } from '../enemy.js';
+import { Enemy, stepSquash } from '../enemy.js';
+import { tell, stepTell } from '../ai.js';
 import { spawn, entities } from '../manager.js';
 import { registerEntity, hasEntityType } from '../registry.js';
 import { player } from '../player.js';
@@ -66,6 +67,7 @@ class Segment extends Enemy {
   }
   hurt(hit) {
     if (hit.swingId !== undefined) this.hitSwing = hit.swingId;
+    this.squashT = TUNING.enemy.hitSquash.time;
     this.head.breakSegment(this, hit);
     return true;
   }
@@ -75,12 +77,14 @@ class Segment extends Enemy {
     this.mat.emissive.setHex(on ? 0x5a4a10 : 0x000000);
   }
   update(dt) {
-    // the head places the segments; only contact and the flash run here
+    // the head places the segments; only contact, the flash and a hit's
+    // squash-and-stretch run here
     if (this.flashT > 0) {
       this.flashT -= dt;
       this.mat.emissive.setHex(this.flashT > 0 ? 0xffffff : this.glowing ? 0x5a4a10 : 0x000000);
     }
     this.holder.scale.setScalar(1);
+    stepSquash(this, dt);
     this.holder.position.set(this.x, GROUND_Y, this.z);
     this.holder.rotation.y = this.yaw;
     if (Math.hypot(player.x - this.x, player.z - this.z) < this.r + player.r) this.touchHero();
@@ -106,6 +110,10 @@ class Serpent extends Enemy {
     this.phase = 0;
     this.spawnT = 0;
     this.introDone = !!opts.skipIntro;
+    this.brokenSwings = new Set(); // swingIds where a tail break already resolved this swing
+    this.punishOrbs = new Map(); // swingId -> orbs a punish fired, undone if that same swing also broke the tail
+    this.lungeT = s.lungeCooldown; // the telegraphed lunge: wind-up, then a fast straight dash
+    this.lungeUntil = 0;
   }
 
   onAdd() {
@@ -142,22 +150,39 @@ class Serpent extends Enemy {
     this.punish(this, hit);
   }
 
-  // A hit on a part that isn't glowing: a ring of orbs from that part.
+  // A hit on a part that isn't glowing: a ring of orbs from that part. A
+  // correct thrust that also grazes a guarded neighbour is one swing, not
+  // two rulings: if that same swingId breaks the tail (either order, since
+  // segments overlap and one swing can land on more than one of them at
+  // once), no punish from it stands (fun audit: 4 of 6 correct tail breaks
+  // still fired 2-11 orbs). punishOrbs accumulates per swingId rather than
+  // overwriting, since more than one guarded part can be hit in one swing.
   punish(part, hit) {
     if (hit.swingId !== undefined) {
       if (part.hitSwing === hit.swingId) return;
       part.hitSwing = hit.swingId;
+      if (this.brokenSwings.has(hit.swingId)) return;
     }
     const s = S();
+    const orbs = [];
     for (let i = 0; i < s.ringCount; i++) {
       const a = (i / s.ringCount) * Math.PI * 2;
-      spawn('serpent-orb', { x: part.x + Math.sin(a) * part.r, z: part.z + Math.cos(a) * part.r, dir: { x: Math.sin(a), z: Math.cos(a) }, speed: s.ringSpeed, damage: s.ringDamage });
+      orbs.push(spawn('serpent-orb', { x: part.x + Math.sin(a) * part.r, z: part.z + Math.cos(a) * part.r, dir: { x: Math.sin(a), z: Math.cos(a) }, speed: s.ringSpeed, damage: s.ringDamage }));
     }
+    if (hit.swingId !== undefined) this.punishOrbs.set(hit.swingId, [...(this.punishOrbs.get(hit.swingId) ?? []), ...orbs]);
     sfx.block();
   }
 
   breakSegment(seg, hit) {
     if (seg !== this.tail() || !seg.glowing) return;
+    if (hit.swingId !== undefined) {
+      this.brokenSwings.add(hit.swingId);
+      const orbs = this.punishOrbs.get(hit.swingId);
+      if (orbs) {
+        for (const o of orbs) o.remove();
+        this.punishOrbs.delete(hit.swingId);
+      }
+    }
     this.segments.pop();
     seg.remove();
     burst(seg.x, GROUND_Y + 0.5, seg.z, seg.colors, 30, { speed: 3.5, size: 0.12, up: 5, life: 1.0 });
@@ -226,14 +251,40 @@ class Serpent extends Enemy {
     this.heading += turn * dt;
   }
 
+  // Alone, the head is capped at speedMax (4.2 t/s: never outruns the hero's
+  // 4.5) but still needs a real fight, so it telegraphs a lunge: a lungeTell
+  // s wind-up (a readable shake, holding its line), then a fast lungeSpeed
+  // straight dash for lungeTime s before it recovers to normal curving.
+  moveStep(dt) {
+    const s = S();
+    const wasTelling = this.ai.pendingLunge;
+    if (stepTell(this, dt)) return 0;
+    if (wasTelling) {
+      this.ai.pendingLunge = false;
+      this.lungeUntil = s.lungeTime;
+      return s.lungeSpeed * dt;
+    }
+    if (this.lungeUntil > 0) {
+      this.lungeUntil -= dt;
+      if (this.lungeUntil <= 0) this.lungeT = s.lungeCooldown; // recovers; cooldown restarts
+      return s.lungeSpeed * dt;
+    }
+    this.steer(dt);
+    this.lungeT -= dt;
+    if (this.lungeT <= 0) {
+      tell(this, s.lungeTell);
+      this.ai.pendingLunge = true;
+    }
+    return this.speed * dt;
+  }
+
   think(dt) {
     const s = S();
     if (!this.introDone) {
       this.introDone = true;
       startBossIntro(this);
     }
-    this.steer(dt);
-    const step = this.speed * dt;
+    const step = this.moveStep(dt);
     this.x += Math.cos(this.heading) * step;
     this.z += Math.sin(this.heading) * step;
     const r = currentScreen();
@@ -268,8 +319,13 @@ class Serpent extends Enemy {
     }
   }
 
+  // Only reached once the body is gone (guards() gates it before this).
+  // Unlike a normal boss part, the exposed head actually staggers: a real
+  // punish for landing a hit on a real fight, not free follow-up damage
+  // (fun audit: hits never staggered it, so a naive bot never got a window).
   hurt(hit) {
-    return super.hurt({ ...hit, tiles: 0 });
+    const s = S();
+    return super.hurt({ ...hit, tiles: s.headKnock, stun: s.headStagger, bossStagger: true });
   }
 
   die(hit = null) {

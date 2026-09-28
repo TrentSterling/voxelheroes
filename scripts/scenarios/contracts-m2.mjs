@@ -1430,7 +1430,8 @@ export default async function contractsM2(t) {
   r = await t.eval(() => {
     const h = window.__voxelHeroes;
     const { EVENTS } = h.game.events;
-    const unknown = [...window.__allEvents].filter((n) => !(n in EVENTS) && !n.startsWith('probe'));
+    // a stream may fire names of its own prefixed with its name ('world:screen-live'; CONTRACTS 'Events')
+    const unknown = [...window.__allEvents].filter((n) => !(n in EVENTS) && !n.startsWith('probe') && !/^[a-z]+:[a-z-]+$/.test(n));
     return { unknown, playTime: h.state.playTime, visited: [...h.state.visited].sort().join(' '), fired: window.__allEvents.size };
   });
   t.expect(r.playTime > 5, `play time counts (${r.playTime.toFixed(1)} s)`);

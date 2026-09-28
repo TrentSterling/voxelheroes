@@ -6,8 +6,12 @@
 import { isManual } from './loop.js';
 
 let left = 0;
+let calls = 0; // bumped on every request, even while isManual() skips the hold itself: play-tests
+// step exact ticks and would otherwise never see that a hit asked for one (scripts/scenarios/hero.mjs).
+if (typeof window !== 'undefined') window.__hitstopCalls = () => calls;
 
 export function hitstop(seconds) {
+  calls++;
   if (isManual()) return;
   left = Math.max(left, seconds);
 }

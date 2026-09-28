@@ -20,12 +20,16 @@ export const sword = {
   hold: 0.2, // was 0.3: the thrust rooted him long enough to feel stuck
   retract: 0.08,
   smallLength: 1.25,
-  smallHitWidth: 0.35,
+  smallHitWidth: 0.55, // was 0.35: a bare line whiffed constantly (fun audit)
   length: (L) => 2.5 + 0.7 * L, // tiles, full-life blade
   width: (W) => 0.25 + 0.1 * W, // tiles
-  minHitWidth: 0.35,
+  minHitWidth: 0.5, // was 0.35, with smallHitWidth
   spinRate: 1440, // degrees per second
-  beam: { speed: 12, size: 0.4 },
+  // The ALttP swipe (fun audit): a press sweeps this many degrees across the
+  // facing (half to either side), reusing the spin's sector test, instead of
+  // an instant thrust straight ahead. 0 restores the old straight thrust.
+  swipe: 90,
+  beam: { speed: 12, size: 0.4, range: 6.5 }, // the full-life sword beam (systems/sword.js startSwing)
   enemyFlash: 0.3,
   regainFlash: 0.2,
   freezePerLevel: 1.0, // seconds a freeze-special hit freezes, per level

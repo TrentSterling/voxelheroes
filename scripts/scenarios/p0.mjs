@@ -2,9 +2,10 @@
 // A follows the hero and changes screen with no slide past a 0.5-tile dead
 // band; B holds and slides in 48 ticks, carrying the hero 1.0 tile in; a load
 // takes at most 90 ticks with its card shown on the black, and only the
-// current area is built; the dungeon room uses the art bible's standard rig
-// on the room centre, and the interior rig follows the hero inside its room.
-export const description = 'Camera follow and hold modes, follow changes, slides, loads with cards, one built area, the dungeon and interior rigs.';
+// current area is drawn (the outdoor ring stays built, hidden); the dungeon
+// room uses the art bible's standard rig on the room centre, and the interior
+// rig follows the hero inside its room.
+export const description = 'Camera follow and hold modes, follow changes, slides, loads with cards, one drawn area, the dungeon and interior rigs.';
 
 const near = (a, b, eps = 0.02) => Math.abs(a - b) <= eps;
 
@@ -37,7 +38,7 @@ export default async function p0(t) {
   await t.eval(() => window.__voxelHeroes.start());
   await t.step(1.1);
   let s = await t.state();
-  t.expect(s.loadedArea === 'v1', `only the current area is built at the start, Mossbrook's (${s.loadedArea})`);
+  t.expect(s.loadedArea === 'v1', `the hero starts in Mossbrook's area (${s.loadedArea})`);
 
   // ---------------------------------------------------------------- A: follow
   await t.eval(() => {
@@ -145,13 +146,20 @@ export default async function p0(t) {
   s = await t.state();
   t.expect(total <= 90, `  the load takes at most 90 ticks (${total})`);
   t.expect(!s.loadCard.visible, '  the card is gone when play resumes');
+  // The outdoor ring stays built behind him (hidden), so the way back out has nothing to build;
+  // nothing outside the crypt is drawn.
   const built = await t.eval(() => {
     const h = window.__voxelHeroes;
-    let other = 0;
-    for (const sc of h.world.screens.values()) if (sc.area.id !== 'crypt') other += sc.meshes.length + sc.props.size;
-    return { loaded: h.world.loaded, other };
+    let drawn = 0;
+    let kept = 0;
+    for (const sc of h.world.screens.values()) {
+      if (sc.area.id === 'crypt') continue;
+      if (sc.meshes.length) kept++;
+      drawn += sc.meshes.filter((m) => m.mesh.visible).length + [...sc.props.values()].filter((o) => o.visible).length;
+    }
+    return { loaded: h.world.loaded, drawn, kept, crypt: [...h.world.screens.values()].filter((sc) => sc.area.id === 'crypt').every((sc) => sc.built) };
   });
-  t.expect(built.loaded === 'crypt' && built.other === 0, `  only the crypt is built now (${built.other} meshes and props elsewhere)`);
+  t.expect(built.loaded === 'crypt' && built.crypt && built.drawn === 0, `  only the crypt is drawn now (${built.drawn} meshes and props shown elsewhere; ${built.kept} outdoor screens kept built for the way out)`);
 
   // ---------------------------------------------------------------- dungeon and interior rigs
   s = await t.state();

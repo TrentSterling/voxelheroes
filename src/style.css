@@ -439,6 +439,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   #banner { animation: none; }
+  #hurt-flash { display: none; }
+  .hud-pop { animation: none; }
 }
 
 /* Settings panel (ui/settings-panel.js) */
@@ -517,4 +519,28 @@ body.title-mode .tront-about { top: 52px; bottom: auto; }
 @media (pointer: coarse) {
   body.title-mode #touch { display: none; }
   body.title-mode #overlay .controls { display: none; }
+}
+
+/* Hurt feedback (systems/impact.js): a red vignette flash on a hit taken, fun-audit juice. */
+#hurt-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(232, 54, 74, 0) 42%, rgba(232, 54, 74, 0.6) 100%);
+}
+#hurt-flash.on { animation: hurt-flash-pop 0.4s ease-out; }
+@keyframes hurt-flash-pop {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* HUD counters (ui/hud.js): a scale pop when coins or hearts gain, fun-audit juice (pickups read
+   as silent otherwise). */
+.hud-pop { animation: hud-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes hud-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.5); }
+  100% { transform: scale(1); }
 }

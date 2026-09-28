@@ -7,7 +7,11 @@
 //   kind           'enemy' | 'projectile' | 'pickup' | 'npc' | ...
 //   priority       update order, lower first
 //   object         THREE.Object3D the manager adds to / removes from the scene
-//   screenScoped   removed when the hero leaves the screen (default true)
+//   screenScoped   belongs to the screen it is on (default true): kept with it
+//                  outdoors when the hero walks on (entities/manager.js buckets),
+//                  removed when he leaves a room or the screen leaves the live ring
+//   onWake()       optional: placed or woken where nobody watched (its screen came
+//                  into the live ring, or the hero came back near it)
 //   solid          blocks the hero and every body moved with moveBody, like a
 //                  wall (NPCs, push blocks). Default false: enemies, pickups
 //                  and shots overlap freely. A solid body that moves is also

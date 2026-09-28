@@ -78,6 +78,9 @@ const checkSpots = (t, key, spots) =>
           const at = `${s.name} ${lx},${lz} facing ${face}`;
           g.teleport(key, lx, lz, { yaw });
           for (const e of g.entities) if (e.kind === 'enemy' || e.kind === 'projectile') e.remove();
+          // Neighbour screens are live now (streaming), so over ~1,700 spot checks their foes
+          // can chip the hero down; this scenario checks framing, not survival.
+          g.state.hp = g.state.maxHp;
           g.player.invT = 0;
           g.update(1 / 60);
           if (g.screen() !== s || g.state.mode !== 'play') {
@@ -257,11 +260,14 @@ export default async function cameraScenario(t) {
   // From Cairn Ridge in B (a hold preset) its own row of the overworld is
   // drawn, and nothing wholly south of it (the Crossroads row); in A (a
   // follow preset) the camera crosses screen lines, so the whole area is.
-  // Either way nothing of another area.
+  // Either way nothing of another area. (The outdoors streams: the ring
+  // around the hero is built over a few frames after a teleport, so the
+  // check waits for it.)
   const drawnFrom = async (preset) => {
     await t.eval((n) => window.__voxelHeroes.camera.choose(n), preset);
     await t.teleport('overworld:1,0', 8, 5.5);
-    return t.eval(() => {
+    return t.eval(async () => {
+      for (let i = 0; i < 1200 && window.__voxelHeroes.world.pending.size; i++) await window.__voxelHeroes.tick();
       const g = window.__voxelHeroes;
       const s = g.screen();
       const keys = [...g.world.screens.keys()].filter((k) => g.transitions.shown(k)).sort();

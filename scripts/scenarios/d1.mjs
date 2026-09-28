@@ -311,50 +311,119 @@ export default async function d1(t) {
   await t.waitFor((st) => st.mode === 'play', { seconds: 6 });
   t.expect((await t.events('boss-intro')).length === 1, 'the serpent opens with its intro');
 
-  // ---------------------------------------------------------------- the boss
+  // ---------------------------------------------------------------- the boss: a real fight, sword only
   r = await t.eval(async () => {
     const h = window.__voxelHeroes;
-    const g = h.game;
     const H = window.__d1;
     H.safe();
     const boss = H.of('boss-serpent')[0];
-    const out = { segments: boss.segments.length, doorsShut: H.solid(10, 0) && H.solid(10, 15) };
-    let n = 0;
-    const until = async (pred, max) => {
-      for (let i = 0; i < max && !pred(); i++) await h.tick();
-    };
-    // one real exchange for the screenshot
-    await until(() => boss.tail()?.glowing, 240);
-    while (boss.segments.length > 3) {
-      const tail = boss.tail();
-      await until(() => tail.glowing, 240);
-      g.damage.dealDamage(tail, { amount: 3, source: 'sword', swingId: `d1-${n++}`, from: h.player });
-    }
-    return out;
+    return { segments: boss.segments.length, doorsShut: H.solid(10, 0) && H.solid(10, 15) };
   });
   t.expect(r.segments === 6 && r.doorsShut, `the serpent has 6 segments and the arena doors are shut (${JSON.stringify(r)})`);
-  await t.step(0.5);
-  await t.shot('d1-06-boss');
+
+  // One controlled swing, thrust from directly behind the glowing tail: the
+  // correct play the hint asks for must never trip the guard punish, even
+  // though the hitbox can graze the guarded segment right next to it (fun
+  // audit: 4 of 6 correct tail breaks fired 2-11 orbs anyway).
   r = await t.eval(async () => {
     const h = window.__voxelHeroes;
     const g = h.game;
     const H = window.__d1;
     const boss = H.of('boss-serpent')[0];
-    let n = 100;
+    const orbs = () => h.entities.filter((e) => !e.removed && e.type === 'serpent-orb').length;
     const until = async (pred, max) => {
       for (let i = 0; i < max && !pred(); i++) await h.tick();
+      return pred();
     };
-    while (boss.segments.length) {
-      const tail = boss.tail();
-      await until(() => tail.glowing, 240);
-      g.damage.dealDamage(tail, { amount: 3, source: 'sword', swingId: `d1-${n++}`, from: h.player });
+    const ready = await until(() => boss.tail()?.glowing, 400);
+    if (!ready) return { ready };
+    const tail = boss.tail();
+    const nb = boss.segments[boss.segments.length - 2] ?? boss;
+    let ax = tail.x - nb.x, az = tail.z - nb.z;
+    const L = Math.hypot(ax, az) || 1;
+    ax /= L;
+    az /= L;
+    // cardinal thrusts only: the hero stands beyond the tail, on the body's
+    // own line, and thrusts back along it (the "behind" approach)
+    const card = [[1, 0, 'east'], [-1, 0, 'west'], [0, 1, 'south'], [0, -1, 'north']];
+    const want = [-ax, -az];
+    let best = card[0], bd = -Infinity;
+    for (const c of card) {
+      const d = -(c[0] * want[0] + c[1] * want[1]);
+      if (d > bd) { bd = d; best = c; }
     }
-    for (let i = 0; i < 30 && !boss.removed; i++) g.damage.dealDamage(boss, { amount: 3, source: 'sword', swingId: `d1-h${i}`, from: h.player });
-    await h.tick();
-    return { dead: boss.removed, container: H.of('heart-container').length, flag: H.flags().includes('boss:d1'), open: !H.solid(10, 0) };
+    h.player.x = tail.x - best[0] * 1.6;
+    h.player.z = tail.z - best[1] * 1.6;
+    h.player.invT = 5;
+    g.hero.hero.setFacing(best[2]);
+    const think = boss.think;
+    boss.think = () => {}; // hold the geometry for one clean swing
+    const seg0 = boss.segments.length;
+    const orbs0 = orbs();
+    h.input.tap('sword');
+    for (let i = 0; i < 16; i++) await h.tick();
+    boss.think = think;
+    return { ready, broke: seg0 - boss.segments.length, orbs: orbs() - orbs0 };
+  });
+  t.expect(r.ready, 'the tail lights up within a few seconds of the fight starting');
+  t.expect(r.broke === 1 && r.orbs === 0, `a tail thrust from directly behind breaks it clean, no guard orbs (${JSON.stringify(r)})`);
+  await t.step(0.5);
+  await t.shot('d1-06-boss');
+
+  // The rest of the fight, played for real (no dealDamage): the bot always
+  // approaches the glowing tail from behind it, then, body gone, stands off
+  // the exposed head and thrusts when it lines up. Must be won inside 90 s
+  // of sim time (fun audit: a naive bot never landed a head hit in 90 s).
+  r = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const H = window.__d1;
+    const boss = H.of('boss-serpent')[0];
+    h.state.maxHp = 20;
+    h.setHp(20);
+    const cardFacing = (dx, dz) => (Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? 'east' : 'west') : (dz > 0 ? 'south' : 'north'));
+    let t = 0;
+    while (t < 90 && !boss.removed) {
+      if (h.state.hp <= 6) h.setHp(20);
+      let gx, gz, faceAt, ready;
+      if (boss.segments.length) {
+        const tail = boss.tail();
+        const nb = boss.segments[boss.segments.length - 2] ?? boss;
+        let ax = tail.x - nb.x, az = tail.z - nb.z;
+        const L = Math.hypot(ax, az) || 1;
+        ax /= L;
+        az /= L;
+        gx = tail.x + ax * 1.5;
+        gz = tail.z + az * 1.5;
+        faceAt = tail;
+        ready = tail.glowing;
+      } else {
+        const reach = 1.5 + boss.r;
+        const d0 = Math.hypot(boss.x - h.player.x, boss.z - h.player.z);
+        if (d0 > reach) { gx = boss.x; gz = boss.z; }
+        else { gx = h.player.x; gz = h.player.z; }
+        faceAt = boss;
+        ready = d0 <= reach;
+      }
+      const dx = gx - h.player.x, dz = gz - h.player.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.2) h.input.setStick(dx / d, dz / d);
+      else {
+        h.input.setStick(0, 0);
+        if (ready && h.player.attackT <= 0) {
+          g.hero.hero.setFacing(cardFacing(faceAt.x - h.player.x, faceAt.z - h.player.z));
+          h.input.tap('sword');
+        }
+      }
+      await h.tick();
+      t += 1 / 60;
+    }
+    h.input.setStick(0, 0);
+    return { seconds: +t.toFixed(1), dead: boss.removed, container: H.of('heart-container').length, flag: H.flags().includes('boss:d1'), open: !H.solid(10, 0) };
   });
   const beaten = await t.events('boss-defeated');
-  t.expect(r.dead && r.flag && r.container === 1 && beaten.some((e) => e.dungeon === 'd1' && !e.refight), `the serpent is beaten: boss:d1, a heart container (${JSON.stringify(r)})`);
+  t.expect(r.dead && r.seconds <= 90, `the serpent falls to a real fight inside 90 s of sim time (${r.seconds} s)`);
+  t.expect(r.flag && r.container === 1 && beaten.some((e) => e.dungeon === 'd1' && !e.refight), `the serpent is beaten: boss:d1, a heart container (${JSON.stringify(r)})`);
   t.expect(r.open, 'the arena doors open');
   const maxHp0 = (await snap(t)).maxHp;
   await t.eval(() => window.__voxelHeroes.player.invT = 0);

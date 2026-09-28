@@ -213,6 +213,11 @@ export default async function hero(t) {
     H.place(x, z, 'east');
     const out = { spot: [x, z] };
     const d = H.dummy(x + 2, z);
+    // Full life also fires a sword beam (systems/sword.js) straight down the same facing; this
+    // dummy sits right in its path too, but this count is the blade's own dedup, so the beam
+    // (tested on its own further down) is filtered out here.
+    const dHurt = d.hurt.bind(d);
+    d.hurt = (hit) => (hit.source === 'beam' ? false : dHurt(hit));
     const swings0 = window.__hkSwings ?? 0;
     h.input.tap('sword');
     await h.tick();
@@ -220,9 +225,11 @@ export default async function hero(t) {
     await h.tick();
     out.afterTwo = +H.p.thrust.reach.toFixed(3);
     out.fullReach = H.hero.blade().reach;
-    // rooted during the hold; a press in the hold does nothing
+    // rooted during the hold; a press in the hold does nothing. East (the
+    // facing itself, so full-life blade-start's spin steers the swipe back
+    // onto the dummy rather than away from it) keeps this a pure root check.
     const x0 = H.p.x;
-    await H.ticks(10, () => h.input.setStick(0, 1));
+    await H.ticks(10, () => h.input.setStick(1, 0));
     out.rooted = +(H.p.x - x0).toFixed(4) === 0 && +(H.p.z - z - h.screen().z0).toFixed(4) === 0;
     const id = H.p.thrust.id;
     h.input.tap('sword');
@@ -325,6 +332,9 @@ export default async function hero(t) {
     h.input.setStick(0, -1);
     h.input.tap('sword');
     await h.tick();
+    // full life also fires a sword beam straight ahead (systems/sword.js), which would otherwise
+    // land its own extra hit on the dummy due north before the spin itself ever reaches it
+    for (const e of h.entities) if (e.type === 'beam') e.remove();
     let shotAt = null;
     for (let i = 1; i < seq.length; i++) {
       const [sx, sz] = dirs[seq[i]];
@@ -357,15 +367,18 @@ export default async function hero(t) {
     h.input.setStick(0, -1);
     h.input.tap('sword');
     await h.tick();
+    // th.turned alone no longer proves this: the swipe (fun audit) always
+    // sweeps some, small blade or not, so the small blade's tell is th.spin
+    // itself staying off, not turning toward the stick the way a manual spin would.
     await H.ticks(10, () => h.input.setStick(1, 0));
-    out.smallTurned = H.p.thrust?.turned ?? -1;
+    out.smallSpin = H.p.thrust?.spin ?? true;
     await H.ticks(20);
     H.full();
     H.release();
     return out;
   });
   t.expect(r.hits.length === 8 && r.hits.every((n) => n === 1), `one 360-degree spin at full life hits all 8 dummies in a ring of 2.5, each once (${r.hits})`);
-  t.expect(r.smallTurned === 0, 'below full life the blade does not spin');
+  t.expect(r.smallSpin === false, 'below full life the blade cannot spin (the small blade never turns to the stick)');
 
   // ---------------------------------------------------------------- terrain clip
   r = await t.eval(async () => {
@@ -376,6 +389,12 @@ export default async function hero(t) {
     const W = H.wallEast(3);
     if (!W) return { none: true };
     const out = { wall: W };
+    // The swipe (systems/sword.js) sweeps the blade off the facing as it
+    // goes, so a straight-line reach check needs the old thrust back;
+    // TUNING.sword.swipe: 0 is its own documented escape hatch for this.
+    const T = h.game.tuning.TUNING.sword;
+    const swipe0 = T.swipe;
+    T.swipe = 0;
     const run = async (id) => {
       h.game.swords.equipSword(id);
       H.place(W[0] - 2, W[1] + 0.5, 'east');
@@ -388,6 +407,7 @@ export default async function hero(t) {
     out.plain = await run('blade-start');
     out.pierce = await run('probe-pierce');
     h.game.swords.equipSword('blade-start');
+    T.swipe = swipe0;
     return out;
   });
   t.expect(!r.none, 'found a wall to test the clip on');
@@ -613,4 +633,110 @@ export default async function hero(t) {
   });
   t.expect(r.to !== r.from && near(r.past, 1.0, 0.03), `camera B: a slide north lands him 1.0 tile past the new screen's south line (${r.past})`);
   t.expect(r.stays && r.backAfter, 'a step back does not slide him straight back; walking the full tile does');
+
+  // ---------------------------------------------------------------- the swipe (fun audit)
+  r = await t.eval(async () => {
+    const H = window.__hk;
+    const h = window.__voxelHeroes;
+    h.game.swords.equipSword('blade-start');
+    H.clear();
+    H.full();
+    const [x, z] = H.openSpot(3);
+    H.place(x, z, 'east');
+    // 45 degrees off the facing, at 1.3 tiles: the old straight thrust (a
+    // 0.35-tile line down the exact facing) always whiffed this.
+    const a = H.p.yaw - Math.PI / 4;
+    const d = H.dummy(x + Math.sin(a) * 1.3, z + Math.cos(a) * 1.3);
+    h.input.tap('sword');
+    await H.ticks(20);
+    const out = { hits: d.hits };
+    d.remove();
+    H.release();
+    return out;
+  });
+  t.expect(r.hits === 1, `the swipe sweeps wide enough to hit a blob 45 degrees off-axis at 1.3 tiles, once (${r.hits})`);
+
+  // ---------------------------------------------------------------- the full-life beam (fun audit)
+  r = await t.eval(async () => {
+    const H = window.__hk;
+    const h = window.__voxelHeroes;
+    H.clear();
+    H.full();
+    // a row with 9 tiles clear (open, and no shot-blocker) east of the hero, room for the hero,
+    // the hopper 6 tiles out and the beam's own hit radius
+    const s = h.screen();
+    let x = null, z = null;
+    for (let row = 1; row < s.h - 1 && x == null; row++) {
+      let run = 0;
+      for (let col = 0; col < s.w; col++) {
+        const ok = H.freeTile(s.x0 + col, s.z0 + row) && H.freeTile(s.x0 + col, s.z0 + row - 1) && H.freeTile(s.x0 + col, s.z0 + row + 1);
+        run = ok ? run + 1 : 0;
+        if (run >= 9) {
+          x = col - 8 + 0.5;
+          z = row + 0.5;
+          break;
+        }
+      }
+    }
+    if (x == null) return { none: true };
+    H.place(x, z, 'east');
+    const out = {};
+    const hop = h.spawn('hopper', x + 6, z);
+    hop.spawned = true;
+    hop.update = () => {}; // stand still, grounded, so the beam can reach and hit it
+    h.input.tap('sword');
+    await h.tick();
+    out.spawnedFull = h.entities.some((e) => e.type === 'beam');
+    await H.ticks(45); // the beam covers 6 tiles at TUNING.sword.beam.speed well inside this
+    out.killedFull = hop.removed;
+    H.release();
+    await H.ticks(5);
+    // below full life: no beam at all
+    H.hero.receiveHit({ damage: 1, kind: 'hazard', knockback: false });
+    const hop2 = h.spawn('hopper', x + 6, z);
+    hop2.spawned = true;
+    hop2.update = () => {};
+    h.input.tap('sword');
+    await h.tick();
+    out.spawnedLow = h.entities.some((e) => e.type === 'beam');
+    await H.ticks(45);
+    out.killedLow = hop2.removed;
+    if (!hop2.removed) hop2.remove();
+    H.full();
+    H.release();
+    return out;
+  });
+  t.expect(!r.none, 'found a 9-tile clear row to test the beam on');
+  if (!r.none) {
+    t.expect(r.spawnedFull && r.killedFull, `a full-life swipe fires a beam that kills a hopper 6 tiles away (spawned ${r.spawnedFull}, killed ${r.killedFull})`);
+    t.expect(!r.spawnedLow && !r.killedLow, `below full life no beam fires, so the far hopper lives (spawned ${r.spawnedLow}, killed ${r.killedLow})`);
+  }
+
+  // ---------------------------------------------------------------- hurt feedback (fun audit)
+  r = await t.eval(async () => {
+    const H = window.__hk;
+    const h = window.__voxelHeroes;
+    H.clear();
+    H.full();
+    const [x, z] = H.openSpot(2);
+    H.place(x, z, 'south');
+    const camBefore = { x: h.gfx.camera.position.x, y: h.gfx.camera.position.y };
+    const hitstopBefore = window.__hitstopCalls?.() ?? 0;
+    H.hero.receiveHit({ damage: 1, from: { x: H.p.x + 1, z: H.p.z }, kind: 'contact' });
+    await h.tick();
+    const out = { hitstopCalled: (window.__hitstopCalls?.() ?? 0) > hitstopBefore };
+    // the shake nudges the camera off the deterministic placeCamera() position within a few ticks
+    let moved = false;
+    for (let i = 0; i < 6 && !moved; i++) {
+      await h.tick();
+      moved = Math.abs(h.gfx.camera.position.x - camBefore.x) > 1e-4 || Math.abs(h.gfx.camera.position.y - camBefore.y) > 1e-4;
+    }
+    out.shook = moved;
+    await H.ticks(90);
+    H.full();
+    H.release();
+    return out;
+  });
+  t.expect(r.hitstopCalled, 'a hit taken asks core/hitstop.js for a hold');
+  t.expect(r.shook, 'and kicks the camera (systems/impact.js on player-hurt)');
 }

@@ -2,37 +2,51 @@
 // blade, terrain clip, and hitting things along it. Every number is
 // TUNING.sword's.
 //
-//   startSwing(p)          a thrust along the attack facing (p.facingYaw());
-//                          false while the blade is still out (a new thrust may
+//   startSwing(p)          a swipe along the attack facing (p.facingYaw());
+//                          false while the blade is still out (a new swipe may
 //                          start from the first tick of the retract)
 //   tickSword(p, dt, dir)  advance it; dir: the stick's 8-way direction
 //                          (input.move8().dir, -1 idle) for the spin
 //   bladeSweep(p, opts)    one hit test of a blade (the dash uses it)
 //   isRooted(p)            extend and hold: the hero cannot walk
 //
-// The thrust: the blade extends in TUNING.sword.extend (2 ticks), holds
-// `hold` and retracts in `retract`; it hits during the extend and the hold,
-// each target once per thrust (swingId). Its length is swordStats(): the
-// blade the hero holds now (hero.js sets the provider to hero.blade(), the
-// full-life rule). Without pierce the blade stops at the first tile that
-// stops shots (it calls onSword on the tiles it covers from the hilt out,
-// once per tile per thrust); a clipped blade grows back once it clears.
+// The swipe (ALttP as the teacher, fun audit): a press extends the blade in
+// TUNING.sword.extend (2 ticks), holds `hold` and retracts in `retract`; on
+// the way it sweeps TUNING.sword.swipe degrees across the facing, starting
+// half that to one side, so it reads and connects like a real swing instead
+// of an instant thrust down one exact line (0 restores the old straight
+// thrust). It hits during the extend and the hold, each target once per
+// thrust (swingId). Its length is swordStats(): the blade the hero holds now
+// (hero.js sets the provider to hero.blade(), the full-life rule). Without
+// pierce the blade stops at the first tile that stops shots (it calls
+// onSword on the tiles it covers from the hilt out, once per tile per
+// thrust); a clipped blade grows back once it clears. At full life a swipe
+// also fires a short sword beam (entities/projectiles/beam.js) straight down
+// the facing; none below full life.
 //
 // The spin (7.6): with the spin stat at full life, twisting the stick while
 // the blade is out (extend plus hold) turns the blade toward the stick at up
 // to TUNING.sword.spinRate deg/s, the short way round (an exact 180 keeps the
-// turning direction, clockwise if it has not turned). The hit test is the
-// sector swept this tick plus the blade. The spin-assist option turns a
-// half circle of input into a full turn.
+// turning direction, clockwise if it has not turned), and takes over from the
+// automatic swipe for the rest of that thrust. The hit test is the sector
+// swept this tick plus the blade. The spin-assist option turns a half circle
+// of input into a full turn.
 //
 // What a hit does to a target is the hero's (game/hero.js sets it with
 // setBladeHooks: dealDamage for enemies, collectPickup for pickups).
-import { sfx } from '../core/audio.js';
+import { sfx, registerSfx, tone, noise } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { TUNING } from '../core/tuning.js';
 import { state } from '../core/state.js';
 import { world } from '../world/world.js';
-import { entities } from '../entities/manager.js';
+import { entities, spawn } from '../entities/manager.js';
+
+// A bigger, airier whoosh for the swipe, layered on top of sfx.swing's (more
+// juice, not a replacement: nothing that already keys off swing goes quiet).
+registerSfx('swordSwipe', () => {
+  noise(0.16, { vol: 0.16, freq: 1500, q: 0.6 });
+  tone(900, 0.1, { to: 300, vol: 0.05, type: 'sine' });
+});
 
 // M1's stand-in stats, kept for code that still reads them.
 export const SWORD = {
@@ -94,7 +108,9 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 // yaw of the 8-way direction dir (0 north, clockwise); yaw 0 faces +z
 const dirYaw = (dir) => wrap(Math.PI - (dir * Math.PI) / 4);
 
-export function startSwing(p) {
+// opts.silent: the charged spin builds its own thrust from this (startChargedSpin) and does its
+// own sound and beam decision, so it skips both here.
+export function startSwing(p, opts = {}) {
   if (isRooted(p)) return false;
   const s = swordStats();
   if (s.none) return false;
@@ -109,6 +125,11 @@ export function startSwing(p) {
     stick: p.stickDir ?? -1,
     twisted: false,
     spin: s.spin > 0 && !s.small,
+    // The swipe (0: the old straight thrust): degrees still to auto-sweep,
+    // from half to one side of the facing through to half the other; a
+    // manual spin turn (turnBlade) zeroes it and takes over for good.
+    swipe: (TUNING.sword.swipe * Math.PI) / 180,
+    swipeStarted: false,
     reach: 0,
     tiles: new Set(),
     swept: 0, // degrees swept so far (the spin disc)
@@ -116,9 +137,28 @@ export function startSwing(p) {
   };
   p.attackT = phases().total;
   p.yaw = yaw;
-  sfx.swing();
+  if (!opts.silent) {
+    sfx.swing();
+    if (TUNING.sword.swipe) sfx.swordSwipe();
+    fireBeam(p, yaw, s);
+  }
   emit('sword-swing', { player: p, stats: s });
   return true;
+}
+
+// The full-life sword beam (fun audit, ALttP as the teacher): a swipe at full
+// life also fires a short beam straight down the facing; none below it (or
+// with no sword). Strong enough to drop a basic foe at range on its own.
+function fireBeam(p, yaw, s) {
+  if (!s.full || s.none) return;
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
+  spawn('beam', {
+    x: p.x + fx * (TUNING.sword.handOffset + 0.2),
+    z: p.z + fz * (TUNING.sword.handOffset + 0.2),
+    dir: { x: fx, z: fz },
+    damage: Math.max(3, s.strength * 2),
+  });
 }
 
 export function endSwing(p) {
@@ -162,7 +202,10 @@ export function tickSword(p, dt, dir = -1) {
   const active = t0 < E + H - 1e-9;
   const prev = th.angle;
   if (active && th.auto) autoSpin(p, th, dt);
-  else if (active && th.spin) turnBlade(p, th, dt, dir);
+  else if (active && th.spin && dir >= 0) {
+    th.swipe = 0; // a manual turn takes over from the automatic swipe for good
+    turnBlade(p, th, dt, dir);
+  } else if (active && th.swipe) autoSwipe(p, th, dt);
   const s = swordStats();
   const ext = th.t <= E ? th.t / E : th.t <= E + H ? 1 : Math.max(0, 1 - (th.t - E - H) / phases().R);
   if (!active) {
@@ -179,12 +222,15 @@ export function tickSword(p, dt, dir = -1) {
 export const CHARGE_TIME = 0.8;
 export function startChargedSpin(p) {
   if (isRooted(p) || swordStats().none) return false;
-  if (!startSwing(p)) return false;
+  if (!startSwing(p, { silent: true })) return false;
   const th = p.thrust;
+  th.angle = th.from = p.yaw; // start the full turn from the facing, not the swipe's offset
+  th.swipe = 0; // the auto-sweep is superseded by the full spin
   th.auto = true;
   th.turnDir = -1;
   th.extra = (2 * Math.PI) / ((TUNING.sword.spinRate * Math.PI) / 180) + 0.05; // time for a full turn
   th.id = `spin-${p.swingId}`;
+  sfx.swing();
   return true;
 }
 
@@ -196,6 +242,29 @@ function autoSpin(p, th, dt) {
   th.turned += step;
   th.swept = Math.min(360, th.swept + (step * 180) / Math.PI);
   p.yaw = th.angle;
+}
+
+// The automatic swipe (fun audit, ALttP as the teacher): with no manual spin
+// turn in progress, the blade sweeps th.swipe degrees on its own, at the same
+// TUNING.sword.spinRate the manual spin turns at (reusing its sector test and
+// its snap, so a dead-ahead target still connects almost at once). th.from is
+// still the facing (set in startSwing); the sweep starts half of th.swipe to
+// one side of it the first time this runs, so it plays as a real swing
+// through the facing rather than jumping there at once.
+function autoSwipe(p, th, dt) {
+  if (!th.swipeStarted) {
+    th.swipeStarted = true;
+    th.angle = wrap(th.from - th.swipe / 2);
+    th.swipeLeft = th.swipe;
+  }
+  const rate = (TUNING.sword.spinRate * Math.PI) / 180;
+  const step = Math.min(rate * dt, th.swipeLeft);
+  if (step <= 0) return;
+  th.angle = wrap(th.angle + step);
+  th.swipeLeft -= step;
+  th.turned += step;
+  th.swept = Math.min(360, th.swept + (step * 180) / Math.PI);
+  th.turnDir = 1;
 }
 
 function turnBlade(p, th, dt, dir) {

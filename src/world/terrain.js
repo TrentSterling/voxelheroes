@@ -35,8 +35,9 @@
 // Backdrops (registerBackdrop): tiles outside every screen of an area can be filled by a generator,
 // so the camera sees the world continue (art bible section 8, "The far distance").
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DenseGrid, meshVoxels, FACE_ALL, FACE_NZ } from '../core/vox.js';
+import { DenseGrid, meshVoxels, arraysToGeometry, FACE_ALL, FACE_NZ } from '../core/vox.js';
+import { newAccumulator, meshInto, finish } from '../core/mesher.js';
+import { submitMesh } from './meshing.js';
 import { rng } from '../core/voxel.js';
 import { getMaterial, getBackdropMaterial, makeWaterMaterial } from '../core/materials.js';
 import { SCREEN_W, SCREEN_H, GROUND_Y } from '../core/constants.js';
@@ -172,19 +173,23 @@ export class VoxelLayer {
   // (ox, oz); the rest of the window only hides faces and darkens corners.
   mesh(tx0, tz0, tx1, tz1, ox, oz, opts = {}) {
     if (!this.grid) return null;
+    const geo = meshVoxels(this.grid, this.part(tx0, tz0, tx1, tz1, ox, oz, opts));
+    return geo.index.count ? geo : (geo.dispose(), null);
+  }
+
+  // The mesher options (core/mesher.js) for mesh(): plain data, so a worker can take them.
+  part(tx0, tz0, tx1, tz1, ox, oz, opts = {}) {
     const r = this.res;
-    const region = [tx0 * r - this.x0, 0, tz0 * r - this.z0, tx1 * r - this.x0, this.sy, tz1 * r - this.z0];
     // y origin: block Y's bottom sits at Y / 8 (terrain); fine voxel Y's bottom at (Y + 1) / 16,
     // so both put the ground's top layer just under GROUND_Y.
     const lift = r === BPT ? 0 : GROUND_Y * r - 1;
-    const geo = meshVoxels(this.grid, {
-      region,
+    return {
+      region: [tx0 * r - this.x0, 0, tz0 * r - this.z0, tx1 * r - this.x0, this.sy, tz1 * r - this.z0],
       origin: [ox * r - this.x0, -this.yMin - lift, oz * r - this.z0],
       scale: 1 / r,
       skipBottom: opts.skipBottom ?? -this.yMin + 1, // no bottom faces at or below the ground's top
       faces: opts.faces ?? FACE_ALL,
-    });
-    return geo.index.count ? geo : (geo.dispose(), null);
+    };
   }
 }
 
@@ -284,22 +289,29 @@ function voidOwner(world, tx, tz) {
   return null;
 }
 
-// One geometry from the pieces meshed for a layer (null when there are none).
-function joinGeometries(parts) {
-  const list = parts.filter(Boolean);
-  if (list.length < 2) return list[0] ?? null;
-  const geo = mergeGeometries(list);
-  for (const g of list) g.dispose();
-  geo.computeBoundingSphere();
-  geo.computeBoundingBox();
-  return geo;
+// A build runs in steps (a generator): TILE_STEP tiles' builders, or one SLAB_ROWS-row slab of a
+// layer meshed here, per step; a step that yields { wait } waits for a worker (world/meshing.js).
+// world.pump() runs steps within a time budget; drain() runs them all now (a worker never waits
+// that way: it meshes here).
+const TILE_STEP = 24;
+const SLAB_ROWS = 2;
+
+export function drain(steps) {
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
 }
 
 // Build one rectangle of tiles (a screen or a backdrop chunk). Returns the meshes and fixtures.
 // env: { x0, z0, w, h, screen, cells(tx, tz) -> cell | null for the rectangle's own tiles,
 // ring(tx, tz) -> cell | null for the margin (rooms: drawn with the rectangle, meshed apart),
 // margin: { n, s, w, e } tiles built around the rectangle (default MARGIN on every side) }.
-function buildRect(world, env) {
+// worker: mesh the layers in a worker when one is available.
+const buildRect = (world, env) => drain(buildRectSteps(world, env));
+
+function* buildRectSteps(world, env, { worker = false } = {}) {
+  let built = 0;
   const { x0, z0, w, h } = env;
   const mg = env.margin ?? { n: MARGIN, s: MARGIN, w: MARGIN, e: MARGIN };
   // the window built, in tiles: the rectangle and its margin
@@ -415,6 +427,7 @@ function buildRect(world, env) {
       return legacyGrid(layerFor(name), x0 * BPT, z0 * BPT, rand);
     };
     def.build(ctx);
+    if (++built % TILE_STEP === 0) yield;
   }
 
   // Backdrops: nothing is ever seen from beyond the edge of the world, so the void around a chunk
@@ -442,14 +455,40 @@ function buildRect(world, env) {
   // the rectangle's own tiles, plus the margin tiles outside the world that this screen meshes
   const [mx0, mz0, mx1, mz1] = [x0, z0, x0 + w, z0 + h];
   const edge = env.screen && !env.ring && !env.solidVoid ? voids.filter(([tx, tz]) => voidOwner(world, tx, tz) === env.screen) : [];
-  const own = (V, opts) =>
-    joinGeometries([V.mesh(mx0, mz0, mx1, mz1, x0, z0, opts), ...edge.map(([tx, tz]) => V.mesh(tx, tz, tx + 1, tz + 1, x0, z0, opts))]);
-  const terrainGeo = env.coarse ? coarseMesh(T, x0, z0, w, h, faces) : own(T, { faces });
-  add('terrain', terrainGeo, { ...LAYERS.terrain, ...(env.terrainLayer ?? {}) });
-  add('fine', own(F, { faces }), LAYERS.fine);
-  add('detail', own(D, { faces }), LAYERS.detail);
-  for (const [name, l] of custom) add(name, own(l, {}), LAYERS[name]);
+  // The pieces a layer's mesh is made of, as mesher options: the rectangle's own tiles in slabs of
+  // SLAB_ROWS rows (in the mesher's own z order, so the slabs join into the very mesh one pass would
+  // make), then the edge tiles. Each is one step when meshed here; a worker takes the lot at once.
+  const pieces = (V, opts) => {
+    const out = [];
+    for (let z = mz0; z < mz1; z += SLAB_ROWS) out.push(V.part(mx0, z, mx1, Math.min(mz1, z + SLAB_ROWS), x0, z0, opts));
+    for (const [tx, tz] of edge) out.push(V.part(tx, tz, tx + 1, tz + 1, x0, z0, opts));
+    return out;
+  };
+  // Mesh a layer's pieces into one geometry (null when nothing shows): in a worker when one is
+  // available (the step waits for it; the layer's voxels go with it), else here, a piece a step.
+  // Ring strips (rooms) are meshed before this, since the worker takes the voxels away.
+  const own = function* (V, opts) {
+    if (!V.grid) return null;
+    const parts = pieces(V, opts);
+    let m = null;
+    const job = worker && !env.ring ? submitMesh(V.grid, parts) : null;
+    if (job) {
+      yield { wait: job.done };
+      if (job.error) throw job.error;
+      m = job.result;
+      V.grid = null; // (transferred)
+    } else {
+      const acc = newAccumulator();
+      for (const p of parts) {
+        meshInto(acc, V.grid, p);
+        yield;
+      }
+      m = finish(acc);
+    }
+    return m.faces ? arraysToGeometry(m, { bounds: true }) : null;
+  };
   // the ring around a room: the rest of the window, meshed in strips into a group of its own
+  let ring = null;
   if (env.ring) {
     const group = ringGroup();
     const strips = [
@@ -471,12 +510,19 @@ function buildRect(world, env) {
         mesh.visible = ringsShown;
         group.add(mesh);
       }
+      yield;
     }
     if (group.children.length) {
       group.position.set(x0, 0, z0);
-      meshes.push({ name: 'ring', mesh: group, layer: { ring: true } });
+      ring = { name: 'ring', mesh: group, layer: { ring: true } };
     }
   }
+  const terrainGeo = env.coarse ? coarseMesh(T, x0, z0, w, h, faces) : yield* own(T, { faces });
+  add('terrain', terrainGeo, { ...LAYERS.terrain, ...(env.terrainLayer ?? {}) });
+  add('fine', yield* own(F, { faces }), LAYERS.fine);
+  add('detail', yield* own(D, { faces }), LAYERS.detail);
+  for (const [name, l] of custom) add(name, yield* own(l, {}), LAYERS[name]);
+  if (ring) meshes.push(ring);
   if (water.length) {
     const mesh = new THREE.Mesh(waterGeometry(water, x0, z0), waterMaterial());
     mesh.name = 'water';
@@ -565,37 +611,50 @@ function disposeMeshes(scene, list) {
   }
 }
 
-// Free a screen's terrain meshes (its area is unloaded; world.loadArea).
+// Free a screen's terrain meshes (it left the streamed ring, or its area was left; world.unbuild).
 export function disposeScreenTerrain(world, screen) {
   disposeMeshes(world.scene, screen.meshes ?? []);
   screen.meshes = [];
   screen.built = null;
 }
 
-// (Re)build a screen's terrain meshes. They go into world.scene and screen.meshes as
-// { name, mesh, layer } (fixtures included), which is what shows and hides a screen.
-export function buildScreenTerrain(world, screen) {
-  disposeMeshes(world.scene, screen.meshes ?? []);
+// A screen's tiles as one string: what its meshes are built from (screen.built).
+export const tilesKey = (screen) => screen.tiles.map((r) => r.join('')).join('\n');
+
+// (Re)build a screen's terrain meshes in steps (drain() runs them all; world.pump() a budget's
+// worth a frame). The new meshes go into world.scene and screen.meshes as { name, mesh, layer }
+// (fixtures included), which is what shows and hides a screen, and replace the old ones only once
+// all are made, so a rebuild never leaves a hole. worker: mesh in a worker (world/meshing.js).
+export function* screenTerrainSteps(world, screen, { worker = false } = {}) {
+  const key = tilesKey(screen);
   const b = (screen._box = screenBox(screen));
   const ring = screen.area?.rooms ? rings.get(screen.tileset) : null;
-  const meshes = buildRect(world, {
-    x0: b.x0,
-    z0: b.z0,
-    w: b.w,
-    h: b.h,
-    screen,
-    cells: (tx, tz) => {
-      const ch = screen.tiles[tz - b.z0][tx - b.x0];
-      return { ch, def: getTile(screen.tileset, ch), screen };
+  const meshes = yield* buildRectSteps(
+    world,
+    {
+      x0: b.x0,
+      z0: b.z0,
+      w: b.w,
+      h: b.h,
+      screen,
+      cells: (tx, tz) => {
+        const ch = screen.tiles[tz - b.z0][tx - b.x0];
+        return { ch, def: getTile(screen.tileset, ch), screen };
+      },
+      ring: ring ? (tx, tz) => ring.fn(screen, tx, tz) : null,
+      margin: ring ? ring.margin : null,
     },
-    ring: ring ? (tx, tz) => ring.fn(screen, tx, tz) : null,
-    margin: ring ? ring.margin : null,
-  });
+    { worker }
+  );
+  disposeMeshes(world.scene, screen.meshes ?? []);
   for (const m of meshes) world.scene.add(m.mesh);
   screen.meshes = meshes;
-  screen.built = screen.tiles.map((r) => r.join('')).join('\n');
+  screen.built = key;
   return meshes;
 }
+
+// (Re)build a screen's terrain meshes now, on the main thread.
+export const buildScreenTerrain = (world, screen) => drain(screenTerrainSteps(world, screen));
 
 // ---------------------------------------------------------------- rooms
 // Room areas (area.rooms, art bible section 9) are drawn one room at a time with black all around.

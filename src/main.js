@@ -3,7 +3,7 @@
 import './style.css';
 import './content.js';
 import * as THREE from 'three';
-import { scene, mountRenderer, renderScene, look, camera } from './core/renderer.js';
+import { scene, mountRenderer, renderScene, look, camera, renderer } from './core/renderer.js';
 import { setCutaway } from './core/materials.js';
 import { hitstopTick } from './core/hitstop.js';
 import { GROUND_Y } from './core/constants.js';
@@ -21,6 +21,8 @@ import { updateCritters } from './systems/critters.js';
 import { tickClock } from './game/clock.js';
 import { placeAtStart, loadGame } from './systems/flow.js';
 import { applyScreenAmbience, syncScreenVisibility, shownRect } from './systems/transitions.js';
+import { initStreaming, updateStreaming, pumpBuilds } from './systems/streaming.js';
+import { warmLookFrame } from './core/warm.js';
 import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
 import { initOverlay } from './ui/overlay.js';
 import { initLoadCard } from './ui/loadcard.js';
@@ -37,6 +39,7 @@ initOverlay();
 initLoadCard();
 initCheats();
 initParticles(scene);
+initStreaming();
 world.build(scene, allAreas()); // parses every area's tiles; only the far backdrop meshes trickle in (terrain.js)
 scene.add(player.object);
 initHud();
@@ -44,9 +47,24 @@ placeAtStart();
 applyScreenAmbience(currentScreen());
 setAreaLabel(currentScreen().name);
 setMode('title');
-// Warm every shader program the start screen can predict (main-pass materials, shadow/depth
-// materials, the polished-floor reflector) while the title card, not gameplay, eats the stall.
-look.warmUp();
+// Shaders. The title panel is HTML, so it shows at once over the empty canvas; the scene is first
+// drawn only once every program that frame needs is linked (core/warm.js), in parallel on the
+// driver's threads, after the ring around the start has streamed in (at the larger budget: nothing
+// is drawn yet), or after WARM_MAX_MS whatever happens. A program first used before its link is
+// done links on the spot: that was a 1.5 s stall at the title, and ~1 s once it showed.
+// look.warmUp adds the look's own (the polished-floor reflector, the prop and fine kinds).
+const WARM_MAX_MS = 6000;
+let sceneReady = false;
+{
+  const t0 = performance.now();
+  look.warmUp();
+  const warmWhenBuilt = () => {
+    if (world.pending.size && performance.now() - t0 < WARM_MAX_MS / 2) return void setTimeout(warmWhenBuilt, 50);
+    warmLookFrame({ renderer, scene, camera, look }).then(() => (sceneReady = true));
+  };
+  warmWhenBuilt();
+  setTimeout(() => (sceneReady = true), WARM_MAX_MS);
+}
 
 // One simulation step. Every mode shares the world animation, particles and
 // camera; the mode decides what else moves.
@@ -63,9 +81,11 @@ function update(dt) {
   updateParticles(dt);
   updateCritters(dt);
   world.flush();
-  // Far screens of a fresh area: in 8 ms slices while the loading card holds, else 2 ms (at least
-  // one screen per step either way).
-  world.buildPending(state.mode === 'warp' ? 8 : 2);
+  // The streamed ring and what is built ahead (systems/streaming.js). The building itself runs
+  // once a frame in loopRender (a frame may hold several steps); play-tests, which step by hand
+  // and never draw, build here.
+  updateStreaming(dt, state.mode === 'play');
+  if (isManual()) pumpBuilds(state.mode === 'warp');
   syncScreenVisibility();
   followSubject(player, currentScreen());
   placeCamera();
@@ -85,6 +105,12 @@ function render() {
 // test hook asks (render()): a full look frame takes seconds in software GL.
 function loopRender() {
   if (isManual()) {
+    refreshHud();
+    return;
+  }
+  pumpBuilds(state.mode === 'warp' || !sceneReady); // TUNING.stream's budget: a frame never waits on a build
+  syncScreenVisibility();
+  if (!sceneReady) {
     refreshHud();
     return;
   }

@@ -1,6 +1,8 @@
 // Impact feedback for the hero's blows: hitstop, a spark burst at the target and a small camera
 // kick, heavier for a kill. Listens to 'enemy-hit' (damage.js) so every blade source (thrust, spin,
-// dash, beam) gets it without touching the combat code.
+// dash, beam) gets it without touching the combat code. Also listens to 'player-hurt' (combat.js)
+// for the hero's own hurt feedback: hitstop, a heavier camera kick and a red screen flash (fun
+// audit: hurt feedback read as weak). Never touches combat.js or camera.js, only what they emit.
 import { on } from '../core/events.js';
 import { hitstop } from '../core/hitstop.js';
 import { shakeCamera } from '../core/camera.js';
@@ -24,4 +26,25 @@ on('enemy-hit', ({ entity, hit, result }) => {
     hitstop(0.03);
     sparks(x, y, z, [0xd8e4ff, 0xffffff], 6, { speed: 3, size: 0.04, up: 2, life: 0.2 });
   }
+});
+
+// ---------------------------------------------------------------- the hero's own hurt feedback
+let vignette = null;
+
+function flashHurt() {
+  if (typeof document === 'undefined') return;
+  if (!vignette) {
+    vignette = document.createElement('div');
+    vignette.id = 'hurt-flash';
+    document.body.appendChild(vignette);
+  }
+  vignette.classList.remove('on');
+  void vignette.offsetWidth; // restart the CSS animation on a hit taken mid-flash
+  vignette.classList.add('on');
+}
+
+on('player-hurt', () => {
+  hitstop(0.08);
+  shakeCamera(0.12, 0.2);
+  flashHurt();
 });

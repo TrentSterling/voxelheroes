@@ -6,6 +6,7 @@
 // Convention: x → east (screen right), y → up, z → south (toward the camera).
 // One world unit = one map tile = 16 character voxels (a voxel is 1/16 unit) = 8 terrain blocks.
 import * as THREE from 'three';
+import { meshArrays } from './mesher.js';
 
 export const VOXELS_PER_TILE = 16;
 export const VOXEL = 1 / VOXELS_PER_TILE;
@@ -108,39 +109,8 @@ export class DenseGrid {
   count() { let n = 0; for (const v of this.data) if (v) n++; return n; }
 }
 
-// Face table: normal, the 4 corners (unit cube, CCW seen from outside), and the tangent axes for face UVs.
-// Face order (and the bit order of opts.faces): +x, -x, +y, -y, +z, -z.
-const FACES = [
-  { n: [1, 0, 0], c: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]] },
-  { n: [-1, 0, 0], c: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]] },
-  { n: [0, 1, 0], c: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] },
-  { n: [0, -1, 0], c: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] },
-  { n: [0, 0, 1], c: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] },
-  { n: [0, 0, -1], c: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] },
-];
-const FACE_UV = [[0, 0], [1, 0], [1, 1], [0, 1]];
-const AO_CURVE = [1.0, 0.8, 0.66, 0.52];
-
 // Face bits for opts.faces.
 export const FACE_PX = 1, FACE_NX = 2, FACE_PY = 4, FACE_NY = 8, FACE_PZ = 16, FACE_NZ = 32, FACE_ALL = 63;
-
-// Per face and corner: the corner offset and the three AO probe offsets (the two edge neighbours and
-// the corner neighbour in the face's outward layer), precomputed so the mesher allocates nothing per face.
-const FACE_TABLE = FACES.map((F) => {
-  const axes = [0, 1, 2].filter((i) => F.n[i] === 0);
-  return {
-    n: F.n,
-    corners: F.c.map((c) => {
-      const d = [c[0] * 2 - 1, c[1] * 2 - 1, c[2] * 2 - 1];
-      const e1 = [0, 0, 0], e2 = [0, 0, 0];
-      e1[axes[0]] = d[axes[0]]; e2[axes[1]] = d[axes[1]];
-      return { c, e1, e2, ec: [e1[0] + e2[0], e1[1] + e2[1], e1[2] + e2[2]] };
-    }),
-  };
-});
-
-const _c = new THREE.Color();
-const _fc = new THREE.Color();
 
 // Build a BufferGeometry with only exposed faces, per-vertex colors (linear) with baked voxel AO,
 // face UVs (0..1 per voxel face) for the bevel shader, and per-face flags.
@@ -152,120 +122,29 @@ const _fc = new THREE.Color();
 // opts.faces: bit mask of the face directions to emit (FACE_PX | ... ; default all six).
 // opts.skipBottom: true drops every bottom face; a number drops only those of voxels whose y index is
 //   below it (terrain: no bottom faces on the ground, but overhangs keep theirs for shadow maps).
-// Linear-space colour per sRGB hex, converted once (colour conversion per voxel was ~10% of a build).
-const _linear = new Map();
-function linearOf(hex) {
-  let c = _linear.get(hex);
-  if (!c) {
-    _c.setHex(hex, THREE.SRGBColorSpace);
-    c = [_c.r, _c.g, _c.b];
-    _linear.set(hex, c);
-  }
-  return c;
-}
-
-// Growable output buffers, reused between calls; each geometry gets exact-size copies.
-const out = { cap: 0, pos: null, nor: null, col: null, uv: null, idx: null };
-function reserve(faces) {
-  if (faces <= out.cap) return;
-  let cap = Math.max(4096, out.cap);
-  while (cap < faces) cap *= 2;
-  const grow = (a, n) => { const b = new (a ? a.constructor : n.T)(cap * n.k); if (a) b.set(a); return b; };
-  out.pos = grow(out.pos, { T: Float32Array, k: 12 });
-  out.nor = grow(out.nor, { T: Float32Array, k: 12 });
-  out.col = grow(out.col, { T: Float32Array, k: 12 });
-  out.uv = grow(out.uv, { T: Float32Array, k: 8 });
-  out.idx = grow(out.idx, { T: Uint32Array, k: 6 });
-  out.cap = cap;
-}
-
+// The work is core/mesher.js's (no three.js in it, so world/mesh-worker.js runs the same code).
 export function meshVoxels(grid, opts = {}) {
-  const scale = opts.scale ?? VOXEL;
-  const [ox, oy, oz] = opts.origin ?? [grid.sx / 2, 0, grid.sz / 2];
-  const { sx, sy, sz, data } = grid;
-  const sxy = sx * sy;
-  const nb = opts.neighbors ?? null;
-  const solid = (x, y, z) => {
-    if (x >= 0 && y >= 0 && z >= 0 && x < sx && y < sy && z < sz) return data[x + sx * (y + sy * z)] !== 0;
-    return nb ? !!nb(x, y, z) : false;
-  };
-  const aoOn = opts.ao !== false;
-  const sb = opts.skipBottom ?? false;
-  const skipBelow = sb === true ? Infinity : typeof sb === 'number' ? sb : -Infinity;
-  const mask = opts.faces ?? FACE_ALL;
-  const [rx0, ry0, rz0, rx1, ry1, rz1] = opts.region ?? [0, 0, 0, sx, sy, sz];
-  const x0 = Math.max(0, rx0), y0 = Math.max(0, ry0), z0 = Math.max(0, rz0);
-  const x1 = Math.min(sx, rx1), y1 = Math.min(sy, ry1), z1 = Math.min(sz, rz1);
-  // Index offsets of each face's neighbour and AO probes, for voxels at least one cell inside the
-  // grid (every probe is then within +-1 on each axis, so a plain array read).
-  const off = (d) => d[0] + sx * d[1] + sxy * d[2];
-  const OFF = FACE_TABLE.map((F) => ({ n: off(F.n), k: F.corners.map((C) => [off(C.e1), off(C.e2), off(C.ec)]) }));
-  const aos = [0, 0, 0, 0];
-  const faces = grid.faces?.size ? grid.faces : null;
-  let n = 0; // faces written
-  reserve(1024);
-  for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-    const ci = x + sx * (y + sy * z);
-    const val = data[ci];
-    if (!val) continue;
-    const base = linearOf(val & 0xffffff); // → linear working space
-    const inner = x > 0 && y > 0 && z > 0 && x < sx - 1 && y < sy - 1 && z < sz - 1;
-    for (let f = 0; f < 6; f++) {
-      if (!(mask & (1 << f))) continue;
-      const F = FACE_TABLE[f];
-      const nx = F.n[0], ny = F.n[1], nz = F.n[2];
-      if (ny === -1 && y < skipBelow) continue;
-      const px = x + nx, py = y + ny, pz = z + nz;
-      const O = OFF[f];
-      const pi = ci + O.n;
-      if (inner ? data[pi] !== 0 : solid(px, py, pz)) continue;
-      const fc = faces?.get(ci * 6 + f);
-      const c = fc === undefined ? base : linearOf(fc);
-      if (n >= out.cap) reserve(n + 1);
-      const { pos, nor, col, uv } = out;
-      for (let k = 0; k < 4; k++) {
-        const C = F.corners[k];
-        let a = 3;
-        if (aoOn) {
-          let s1, s2, sc;
-          if (inner) {
-            const K = O.k[k];
-            s1 = data[pi + K[0]] !== 0 ? 1 : 0;
-            s2 = data[pi + K[1]] !== 0 ? 1 : 0;
-            sc = data[pi + K[2]] !== 0 ? 1 : 0;
-          } else {
-            s1 = solid(px + C.e1[0], py + C.e1[1], pz + C.e1[2]) ? 1 : 0;
-            s2 = solid(px + C.e2[0], py + C.e2[1], pz + C.e2[2]) ? 1 : 0;
-            sc = solid(px + C.ec[0], py + C.ec[1], pz + C.ec[2]) ? 1 : 0;
-          }
-          a = (s1 && s2) ? 0 : 3 - (s1 + s2 + sc);
-        }
-        aos[k] = a;
-        const p = n * 12 + k * 3;
-        pos[p] = (x + C.c[0] - ox) * scale; pos[p + 1] = (y + C.c[1] - oy) * scale; pos[p + 2] = (z + C.c[2] - oz) * scale;
-        nor[p] = nx; nor[p + 1] = ny; nor[p + 2] = nz;
-        const m = AO_CURVE[3 - a];
-        col[p] = c[0] * m; col[p + 1] = c[1] * m; col[p + 2] = c[2] * m;
-        const q = n * 8 + k * 2;
-        uv[q] = FACE_UV[k][0]; uv[q + 1] = FACE_UV[k][1];
-      }
-      // Flip the quad diagonal so AO interpolates without the anisotropy artefact.
-      const v = n * 4, i = n * 6, idx = out.idx;
-      if (aos[0] + aos[2] > aos[1] + aos[3]) { idx[i] = v; idx[i + 1] = v + 1; idx[i + 2] = v + 2; idx[i + 3] = v; idx[i + 4] = v + 2; idx[i + 5] = v + 3; }
-      else { idx[i] = v + 1; idx[i + 1] = v + 2; idx[i + 2] = v + 3; idx[i + 3] = v + 1; idx[i + 4] = v + 3; idx[i + 5] = v; }
-      n++;
-    }
-  }
-  const v = n * 4;
+  return arraysToGeometry(meshArrays(grid, { ...opts, scale: opts.scale ?? VOXEL }, { shared: true }));
+}
+
+// A BufferGeometry from mesher arrays ({ faces, pos, nor, col, uv, idx, min, max }). bounds: true
+// takes the bounding box and sphere from the mesher's min / max (voxel boxes: never smaller than
+// the vertices' own), false computes them from the vertices.
+export function arraysToGeometry(m, { bounds = false } = {}) {
+  const v = m.faces * 4;
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(out.pos.slice(0, n * 12), 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(out.nor.slice(0, n * 12), 3));
-  g.setAttribute('color', new THREE.BufferAttribute(out.col.slice(0, n * 12), 3));
-  g.setAttribute('faceUv', new THREE.BufferAttribute(out.uv.slice(0, n * 8), 2));
-  const idx = out.idx.subarray(0, n * 6);
-  g.setIndex(new THREE.BufferAttribute(v > 65535 ? idx.slice() : Uint16Array.from(idx), 1));
-  g.computeBoundingSphere();
-  g.computeBoundingBox();
+  g.setAttribute('position', new THREE.BufferAttribute(m.pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(m.nor, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(m.col, 3));
+  g.setAttribute('faceUv', new THREE.BufferAttribute(m.uv, 2));
+  g.setIndex(new THREE.BufferAttribute(v > 65535 ? m.idx : Uint16Array.from(m.idx), 1));
+  if (bounds && m.faces) {
+    g.boundingBox = new THREE.Box3(new THREE.Vector3(...m.min), new THREE.Vector3(...m.max));
+    g.boundingSphere = g.boundingBox.getBoundingSphere(new THREE.Sphere());
+  } else {
+    g.computeBoundingSphere();
+    g.computeBoundingBox();
+  }
   return g;
 }
 

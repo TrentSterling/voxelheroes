@@ -138,6 +138,35 @@ export function heartSVG(fill) {
   return `<svg viewBox="0 0 7 6" shape-rendering="crispEdges" aria-hidden="true">${rects}</svg>`;
 }
 
+// A quick scale pop on the element (fun audit: pickups read as silent
+// without one), restarted on every call so a fast run of hits still reads.
+function pop(el) {
+  if (!el) return;
+  el.classList.remove('hud-pop');
+  void el.offsetWidth;
+  el.classList.add('hud-pop');
+}
+
+// Counts a HUD number up (or down) instead of snapping to it (fun audit).
+function tickTo(el, to, ms = 260) {
+  if (!el) return;
+  const from = Number(el.textContent) || 0;
+  if (from === to) {
+    el.textContent = String(to);
+    return;
+  }
+  const t0 = performance.now();
+  const step = (now) => {
+    const f = Math.min(1, (now - t0) / ms);
+    const eased = 1 - (1 - f) ** 3;
+    el.textContent = String(Math.round(from + (to - from) * eased));
+    if (f < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+let lastHp = null;
+
 registerHudWidget({
   id: 'hearts',
   region: 'left',
@@ -152,6 +181,8 @@ registerHudWidget({
     }
     $('hearts').innerHTML = html;
     $('hearts').setAttribute('aria-label', `Health ${s.hp / 2} of ${s.maxHp / 2} hearts`);
+    if (lastHp != null && s.hp > lastHp) pop($('hearts')); // a gain (a heart pickup); a hit taken has its own hurt flash
+    lastHp = s.hp;
   },
 });
 
@@ -173,7 +204,10 @@ registerHudWidget({
   mount: ({ host }) => host.append($('purse')),
   key: (s) => String(s.gems),
   render(s) {
-    $('gems').textContent = String(s.gems);
+    const el = $('gems');
+    const from = Number(el.textContent) || 0;
+    tickTo(el, s.gems);
+    if (s.gems > from) pop($('purse'));
   },
 });
 

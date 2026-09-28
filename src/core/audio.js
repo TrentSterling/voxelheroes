@@ -67,6 +67,11 @@ export const volumes = () => ({ ...levels });
 // The node music voices connect to (null before the first key press or tap).
 export const musicOutput = () => musicBus;
 
+// The master bus's actual gain (0 while muted or before the first key press
+// or tap): play-tests use this to confirm mute silences the real output,
+// since a track's own channel keeps ramping regardless of mute.
+export const outputGain = () => master?.gain.value ?? 0;
+
 export function tone(freq, dur, { type = 'square', vol = 0.12, to = null, delay = 0 } = {}) {
   if (!ctx) return;
   const t = ctx.currentTime + delay;

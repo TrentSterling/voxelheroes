@@ -236,6 +236,29 @@ export class Npc extends Entity {
     return true;
   }
 
+  // Placed or woken where nobody watched (entities/manager.js: its screen came into the live ring,
+  // or the hero came back near it): be where the clock says now, indoors for the night, or out by
+  // home or at the evening spot, instead of walking there in view later.
+  onWake() {
+    if (this.slotNow() === 'in') {
+      if (this.out) this.hide();
+      return;
+    }
+    if (!this.out) {
+      this.out = true;
+      this.solid = true;
+      this.holder.visible = true;
+      this.eve = null;
+    }
+    const A = this.anchor();
+    if (Math.hypot(A.x - this.x, A.z - this.z) > this.wander + 1) {
+      this.x = A.x;
+      this.z = A.z;
+    }
+    if (this.mind.mode === 'in') this.mind.mode = 'idle';
+    this.holder.position.set(this.x, GROUND_Y, this.z);
+  }
+
   hide() {
     this.out = false;
     this.solid = false;

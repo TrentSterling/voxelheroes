@@ -1,47 +1,59 @@
 // Moving between screens and areas, and what happens on arrival.
 //
+// The outdoors (every overworld and town screen, world.js screen.streams) is one space: its areas
+// are addresses, not loads, and systems/streaming.js keeps the screens around the hero built and
+// peopled ahead of him. So a screen line outdoors is crossed the same way whether or not it is an
+// area's edge; only doors, caves and stairs (and edges between areas of their own) fade.
+//
 //   follow With a follow preset (A, D) outdoors, the camera tracks the hero
-//          across screen lines, so a screen change inside an area is only
-//          bookkeeping (followChange): no slide, no input lock. It fires when
+//          across screen lines, so a screen change is only bookkeeping
+//          (followChange): no slide, no input lock. It fires when
 //          the hero's centre is TUNING.scroll.followDeadband (0.5) tiles past
 //          the edge, a 1-tile dead band against flip-flopping. Via 'follow'.
 //          A screen with scroll: 'flip' (and every room) slides instead.
-//   slide  The hero walks off an edge into another screen of the same area:
-//          the camera slides over (SLIDE_TIME, ease in-out) while the hero
-//          is carried a tile in (SLIDE_STEP from the edge; in a room,
-//          ROOM_STEP past the wall the doorway is in). Mode 'scroll'. At a
-//          south edge he goes as soon as any of him would leave the frame's
-//          bottom edge, which is held on the screen's edge (southLine).
-//   fade   The hero walks off an edge into another area, or takes a warp
-//          (doorway, stairs): fade to black, move, fade back in. Mode 'warp'.
-//          Arriving in another area is a load: FADE_OUT, loadHold() seconds
-//          of black while the loading card shows ('area-enter' starts it;
-//          ui/loadcard.js), FADE_IN. At black the old area is freed and the
-//          new one built (world.loadArea): only the current area exists. A warp inside one area (stairs between the floors of a
-//          dungeon, warp tiles) fades out and in over WARP_FADE each, with
-//          no card.
+//   slide  The hero walks off an edge into another screen of the same area
+//          (or of the outdoors): the camera slides over (SLIDE_TIME, ease
+//          in-out) while the hero is carried a tile in (SLIDE_STEP from the
+//          edge; in a room, ROOM_STEP past the wall the doorway is in). Mode
+//          'scroll'. At a south edge he goes as soon as any of him would leave
+//          the frame's bottom edge, which is held on the screen's edge (southLine).
+//   fade   The hero takes a warp (doorway, stairs), or walks off an edge into
+//          another area that is not part of the outdoors: fade to black, move,
+//          fade back in. Mode 'warp'. Arriving in another area is a load:
+//          FADE_OUT, loadHold() seconds of black while the loading card shows
+//          ('area-enter' starts it; ui/loadcard.js), FADE_IN; the black holds
+//          on (up to MAX_LOAD_HOLD) only while the screens it will show are
+//          still being built, which near a door is never: its area was built
+//          ahead (systems/streaming.js). A warp inside one area (stairs
+//          between the floors of a dungeon, warp tiles) fades out and in over
+//          WARP_FADE each, with no card.
 // Gameplay pauses in both modes; only the hero's walk animates. Input is
 // ignored in both (gameplay spec 4.3): neither mode carries a press (see
 // `carry` in core/modes.js), so A or B pressed during a slide or a fade acts
 // neither on the way nor on arrival. The times are the gameplay spec's
 // (sections 4.3 and 4.4), themselves guesses until footage measures them.
 //
+// People and foes: leaving an outdoor screen keeps everything on it (its bucket,
+// entities/manager.js), and arriving finds the next screen's already standing there. A room
+// empties when it is left and spawns afresh on entry; a teleport, a load or getting up after a
+// fall starts the arrival screen afresh too (FRESH below).
+//
 // Events
-//   'screen-leave' { screen }            before a screen's entities are cleared
-//   'area-enter'   { area, from, via }   another area is reached, at the start
+//   'screen-leave' { screen }            before the hero's screen's entities are stashed or cleared
+//   'area-enter'   { area, from, via }   another area is reached through a fade, at the start
 //                                        of the black hold (via 'edge' | 'warp')
 //   'room-enter'   { area, screen, via } every screen or room entered, once its
-//                                        spawns are in (via 'slide' | 'follow' | 'edge' |
+//                                        people and foes are in (via 'slide' | 'follow' | 'edge' |
 //                                        'warp' | 'start' | 'respawn' | 'load' | 'teleport')
 //   'screen-enter' { screen }            just before 'room-enter' (the M1 name)
 //   'warp'         { dest }              a warp starts; dest { screen, x, z, yaw }
 //
-// Drawing: only the current area is built (world.loadArea). In room areas
-// only the current room is drawn (both rooms during a slide), so everything
-// outside it is black. Outdoors a follow preset draws every screen of the
-// area; a hold preset draws them all except those wholly south of the
-// current screen: the camera never looks there, and the trees on the next
-// screen's first row would otherwise poke up at the frame's bottom edge.
+// Drawing: only built screens are drawn. In room areas only the current room
+// is drawn (both rooms during a slide), so everything outside it is black.
+// Outdoors a follow preset draws every live screen around the hero (and the
+// scenery ring past them); a hold preset draws them all except those wholly
+// south of the current screen: the camera never looks there, and the trees on
+// the next screen's first row would otherwise poke up at the frame's bottom edge.
 import { state, registerSaveField } from '../core/state.js';
 import { TUNING } from '../core/tuning.js';
 import { sfx } from '../core/audio.js';
@@ -65,13 +77,12 @@ import {
 } from '../core/camera.js';
 import { world, currentScreen, WALL_INSET } from '../world/world.js';
 import { DIRS } from '../world/grid.js';
-import { clearScreenEntities } from '../entities/manager.js';
 import { player } from '../entities/player.js';
 import { showBanner } from '../ui/banner.js';
 import { setAreaLabel } from '../ui/hud.js';
 import { setFade } from '../ui/overlay.js';
 import { clearDistance } from './physics.js';
-import { spawnScreen } from './spawner.js';
+import { leaveStage, dropStage, arriveStage, screensToShow } from './streaming.js';
 
 const S = TUNING.scroll;
 const L = TUNING.load;
@@ -83,7 +94,7 @@ export const AREA_HOLD = L.cardMin; // a load: seconds of black for the loading 
 export const FADE_IN = L.fade; // a load: seconds back from black (1.5 s, 90 ticks, in all)
 export const WARP_FADE = L.innerFade; // a warp inside one area: seconds to black, and again back
 export const WARP_HOLD = 0; // a warp inside one area: seconds of black in between
-const MAX_LOAD_HOLD = 4; // a load waits at most this long at black for the area's meshes
+const MAX_LOAD_HOLD = TUNING.stream?.maxHold ?? 4; // a load waits at most this long at black for the screens it shows
 
 // A load's black hold: the card's time, shorter with loading art off
 // (settings.loadingArt), and never so long that the load passes maxTotal.
@@ -143,16 +154,31 @@ registerSaveField('camera', {
   reset: () => {},
 });
 
+// The hero's screen's people and foes go for good (a teleport, a load, getting up after a fall):
+// its markers spawn afresh on arrival.
 export function clearScreen() {
-  emit('screen-leave', { screen: currentScreen() });
-  clearScreenEntities();
+  const screen = currentScreen();
+  emit('screen-leave', { screen });
+  dropStage(screen);
 }
+
+// The hero walks (or fades) off `screen`: outdoors everything on it stays, in its bucket
+// (systems/streaming.js), so it is all still there when he looks back; a room empties.
+function leaveScreen(screen) {
+  emit('screen-leave', { screen });
+  leaveStage(screen);
+}
+
+// How the hero arrives decides whether his screen's people and foes carry on or start afresh:
+// walking, sliding and fading in find them as they were; these reset them.
+const FRESH = new Set(['teleport', 'start', 'respawn', 'load']);
 
 // The hero is on the current screen for good: spawns, lighting, camera,
 // banner, hooks and events. via says how the hero got here (see the top).
 export function enterScreen(via = 'teleport') {
   const screen = currentScreen();
-  spawnScreen(screen);
+  if (FRESH.has(via)) dropStage(screen);
+  arriveStage(screen);
   applyScreenAmbience(screen);
   showBanner(screen.name);
   setAreaLabel(screen.name);
@@ -163,42 +189,39 @@ export function enterScreen(via = 'teleport') {
 }
 
 // ---------------------------------------------------------------- drawing
-let byArea = null; // area id -> its screens
-const shown = new Set();
+let view = null; // { screen, also }: the hero's screen, and during a slide the one he comes from
 
-// The screens drawn while the hero is on `screen` (see the top).
-function around(screen) {
-  if (!byArea) {
-    byArea = new Map();
-    for (const s of world.screens.values()) {
-      if (!byArea.has(s.area.id)) byArea.set(s.area.id, []);
-      byArea.get(s.area.id).push(s);
-    }
-  }
-  if (screen.area.rooms) return [screen];
-  const all = byArea.get(screen.area.id);
-  return followsOn(screen) ? all : all.filter((s) => s.z0 < screen.z1);
+// Is `s` drawn while the hero is on `screen` (see the top)? Only built screens ever are.
+function inView(screen, s) {
+  if (screen.area.rooms) return s === screen;
+  const hold = !followsOn(screen) && s.z0 >= screen.z1; // a hold preset never looks south of its screen
+  if (screen.streams) return s.streams && world.live.has(s) && !hold;
+  return s.area === screen.area && !hold;
 }
 
+const drawn = (s) => !!s.built && !!view && (inView(view.screen, s) || (!!view.also && inView(view.also, s)));
+
 // Draw the screens around `screen`, and during a slide also those around
-// `also`, the screen it comes from.
+// `also`, the screen it comes from. Both are built now if they are not yet;
+// outdoors the rest of the ring shows as it streams in.
 export function showScreens(screen, also = null) {
-  shown.clear();
-  for (const s of around(screen)) shown.add(s);
-  if (also) for (const s of around(also)) shown.add(s);
-  for (const s of shown) world.ensureBuilt(s);
+  view = { screen, also };
+  world.ensureBuilt(screen);
+  if (also) world.ensureBuilt(also);
+  if (!screen.streams) for (const s of world.live) if (inView(screen, s)) world.ensureBuilt(s);
   world.focus = screen;
   syncScreenVisibility();
 }
 
-export const screenShown = (screen) => shown.has(screen);
+export const screenShown = (screen) => !!screen && drawn(screen);
 
 // The world rect { x0, z0, x1, z1 } around every drawn screen: in a dungeon
 // the current room, or both rooms during a slide. For the look's polished
 // floor and lamp culling (look.bind({ roomRect: shownRect })).
 export function shownRect() {
   let r = null;
-  for (const s of shown) {
+  for (const s of world.live) {
+    if (!drawn(s)) continue;
     if (!r) r = { x0: s.x0, z0: s.z0, x1: s.x1, z1: s.z1 };
     else {
       r.x0 = Math.min(r.x0, s.x0);
@@ -210,26 +233,28 @@ export function shownRect() {
   return r;
 }
 
-// Hide what is not shown. Runs every frame (main.js) so meshes rebuilt and
-// props added on hidden screens stay hidden; shown screens are touched only
-// when they come back into view.
+// Hide what is not shown. Runs every frame (main.js) so meshes rebuilt, props
+// added and screens streamed in on hidden screens stay hidden; shown screens
+// are touched only when they come back into view.
 let liteShown = false;
 export function syncScreenVisibility() {
-  // At the 'low' look (weak devices; the watchdog drops there) the far backdrop and the next
-  // area's previews are skipped: fewer triangles, which is what a weak device is short of.
+  // At the 'low' look (weak devices; the watchdog drops there) the far backdrop and the scenery
+  // ring are skipped: fewer triangles, which is what a weak device is short of.
   const lite = look.quality() === 'low';
   if (lite !== liteShown) {
     liteShown = lite;
     for (const m of world.backdrop ?? []) m.mesh.visible = !lite;
     for (const s of world.previews) s.shown = null; // re-sync below
   }
-  for (const s of world.screens.values()) {
-    const on = shown.has(s) || (!lite && world.previews.has(s)); // previews: the next area's edge, as scenery
-    if (on && s.shown === true) continue;
+  const outdoors = !!view?.screen.streams;
+  const sync = (s, on) => {
+    if (on && s.shown === true) return;
     for (const m of s.meshes) if (m.mesh.visible !== on) m.mesh.visible = on;
     for (const obj of s.props.values()) if (obj.visible !== on) obj.visible = on;
     s.shown = on;
-  }
+  };
+  for (const s of world.live) sync(s, drawn(s));
+  for (const s of world.previews) sync(s, !lite && outdoors && !!s.built); // scenery past the live ring
 }
 
 // ---------------------------------------------------------------- edges
@@ -252,9 +277,13 @@ function neighbour(from, dir) {
   return next && next !== from ? next : null;
 }
 
+// One space: screens of one area, or of the streamed outdoors whatever their areas. Walking
+// between them never fades.
+const oneSpace = (from, next) => !!next && (next.area === from.area || (from.streams && next.streams));
+
 // A follow change (no slide) rather than a slide or a load: following on
-// both screens, same area.
-const softEdge = (from, next) => !!next && next.area === from.area && followsOn(from) && followsOn(next);
+// both screens, in one space.
+const softEdge = (from, next) => oneSpace(from, next) && followsOn(from) && followsOn(next);
 
 // The edge of screen s the hero has crossed ('north', 'south', 'east',
 // 'west'), or null. Where a follow change waits for the dead band it takes
@@ -285,10 +314,11 @@ export function crossEdge(dir) {
   // line; he leaves from the line, so no frame shows him cut off.
   if (uz > 0) player.z = Math.min(player.z, from.z1 - southLine(from));
   // Bushes cut on the next screen grow back before the landing is worked
-  // out, so it stops short of them instead of inside one.
-  world.regrow(next);
+  // out, so it stops short of them instead of inside one. (Outdoors they grew back
+  // when the screen came into the live ring, out of sight: systems/streaming.js.)
+  if (!next.streams) world.regrow(next);
   const land = landing(next, dir);
-  if (next.area === from.area) startSlide(from, next, land);
+  if (oneSpace(from, next)) startSlide(from, next, land);
   else startFade({ screen: next, x: land.x - next.x0, z: land.z - next.z0, yaw: player.yaw }, { via: 'edge', walkTo: land });
   return true;
 }
@@ -318,8 +348,8 @@ function landing(next, dir) {
 // ---------------------------------------------------------------- follow change
 // The hero is on `next` now; the camera, which follows him, does not move.
 function followChange(next) {
-  clearScreen();
-  world.regrow(next);
+  leaveScreen(currentScreen());
+  if (!next.streams) world.regrow(next);
   state.screenKey = next.key;
   showScreens(next);
   enterScreen('follow');
@@ -330,7 +360,7 @@ function followChange(next) {
 let slide = null;
 
 function startSlide(from, next, land) {
-  clearScreen();
+  leaveScreen(from);
   slide = { x0: player.x, z0: player.z, x1: land.x, z1: land.z };
   const preset = presetNameFor(next);
   // The hero walks in linearly; the camera keeps him in frame on the way.
@@ -410,19 +440,22 @@ registerMode('warp', {
   update(dt) {
     const f = fade;
     f.t += dt + 1e-9; // (a hair of slack, so 15 ticks of 1/60 s reach 0.25 s)
-    // A load's black hold lasts until the new area is meshed (world.buildPending, in slices so the
-    // card keeps animating), up to MAX_LOAD_HOLD; then whatever is left is built at once.
-    // Then the new materials' shaders compile in parallel (compileAsync) instead of stalling the
-    // first frames after the fade.
+    // A load's black hold lasts until the screens the fade will show are built (world.pump, in
+    // slices of TUNING.stream.loadBudgetMs so the card keeps animating), up to MAX_LOAD_HOLD; the
+    // rest of the area streams in behind play. Usually there is nothing left to build: the area
+    // was built ahead while the hero stood near its door (systems/streaming.js). Then the new
+    // materials' shaders compile in parallel (compileAsync) instead of stalling the first frames
+    // after the fade.
     if (f.moved && f.areaChange) {
       const late = f.t - f.out - f.hold > -dt;
-      const waiting = world.pending.size || f.compile === 'busy';
-      if (!world.pending.size && !f.compile && !isManual()) { // play-tests never draw
+      const building = screensToShow(f.dest.screen).some((sc) => !sc.built || world.pending.has(sc));
+      const waiting = building || f.compile === 'busy';
+      if (!building && !f.compile && !isManual()) { // play-tests never draw
         f.compile = 'busy';
         renderer.compileAsync(scene, camera).then(() => (f.compile = 'done'), () => (f.compile = 'done'));
       }
       if (late && waiting && f.t - f.out < MAX_LOAD_HOLD) f.hold += dt;
-      else if (late && world.pending.size) world.buildPending(Infinity);
+      else if (late && building) for (const sc of screensToShow(f.dest.screen)) world.ensureBuilt(sc); // (a slow device: the fade has waited long enough)
     }
     const inAt = f.out + f.hold; // the fade-in starts
     const k = f.t < f.out ? f.t / f.out : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / f.in);
@@ -434,7 +467,7 @@ registerMode('warp', {
     }
     if (!f.moved && f.t >= f.out) {
       f.moved = true;
-      clearScreen();
+      leaveScreen(f.from);
       const d = f.dest;
       placeAt(d.screen, d.x, d.z, d.yaw);
       world.regrow(d.screen);

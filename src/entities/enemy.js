@@ -55,6 +55,19 @@ import { player } from './player.js';
 
 const KNOCKBACK_DECAY = 0.85; // M1 knockback speed kept per 1/60 s (hits with no `tiles`)
 
+// A hit's squash-and-stretch: flattens on impact, then springs back past 1
+// and settles. Shared by Enemy.update and the serpent's segments (which
+// drive their own transform). Scales `holder`, so call it after anything
+// else that sets .scale this frame (growT, Segment's own setScalar(1)).
+export function stepSquash(e, dt) {
+  if (!(e.squashT > 0)) return;
+  const total = TUNING.enemy.hitSquash.time;
+  e.squashT = Math.max(0, e.squashT - dt);
+  const k = e.squashT / total; // 1 -> 0
+  const amt = TUNING.enemy.hitSquash.amount * Math.sin(k * Math.PI) * k; // punchy in, eased out
+  e.holder.scale.set(1 + amt, 1 - amt * 1.3, 1 + amt);
+}
+
 // A dead foe's own die() already removes it from play at once (room-cleared,
 // drops, hp checks never wait on this); its holder mesh lingers this long,
 // popping (a quick scale up, then away), purely as a look: none of it is on
@@ -126,6 +139,7 @@ export class Enemy extends Entity {
     this.spawned = false;
     this.growT = 0;
     this.hitSwing = -1;
+    this.squashT = 0; // the squash-and-stretch pulse a hit leaves behind (stepSquash)
     this.ai = {}; // entities/ai.js keeps its state here
   }
 
@@ -166,7 +180,11 @@ export class Enemy extends Entity {
     if (this.knockT > 1e-9) {
       const step = Math.min(dt, this.knockT);
       this.knockT -= step;
-      moveBody(this, this.kx * step, this.kz * step, bounds);
+      // bonk off a wall: reflect the slide instead of just pinning it there
+      if (moveBody(this, this.kx * step, this.kz * step, bounds)) {
+        this.kx *= -TUNING.enemy.wallBounce;
+        this.kz *= -TUNING.enemy.wallBounce;
+      }
       if (this.knockT <= 1e-9) this.kx = this.kz = 0;
     } else if (this.stunT > 0) {
       this.stunT -= dt;
@@ -182,6 +200,7 @@ export class Enemy extends Entity {
 
     this.holder.position.set(this.x, GROUND_Y, this.z);
     this.holder.rotation.y = lerpAngle(this.holder.rotation.y, this.yaw, Math.min(1, dt * 12));
+    stepSquash(this, rawDt);
     settleShadow(this.shadow, this.mesh.position.y, this.shadowR);
     if (this.crown) {
       this.crown.position.y = this.mesh.position.y + TUNING.enemy.crownHeight;
@@ -198,7 +217,9 @@ export class Enemy extends Entity {
   // Contact damage (CONTRACTS 8.5): through the hero's receiveHit; a guard
   // block knocks this enemy back and stuns it.
   touchHero() {
+    // staggered (mid-knockback or the freeze after it): no AI, no contact damage
     if (state.mode !== 'play' || this.harmless || this.airborne || this.frozenT > 0 || !this.contactDamage) return null;
+    if (this.knockT > 1e-9 || this.stunT > 0) return null;
     const result = hero.receiveHit({ damage: this.contactDamage, from: this, kind: 'contact', source: this });
     if (result === 'blocked') this.recoil();
     return result;
@@ -231,12 +252,16 @@ export class Enemy extends Entity {
     this.hp -= hit.damage ?? 1;
     if (hit.swingId !== undefined) this.hitSwing = hit.swingId;
     this.flashT = TUNING.sword.enemyFlash;
+    this.squashT = TUNING.enemy.hitSquash.time;
     if (hit.tiles !== undefined) {
-      // dealDamage: hit.tiles of stagger over hitKnockTime (a quick shove), then the stun
-      const tiles = this.boss ? 0 : hit.tiles;
+      // dealDamage: hit.tiles of stagger over hitKnockTime (a quick shove), then the stun.
+      // Bosses stand their ground by default; hit.bossStagger opts a specific
+      // part back in (the serpent's exposed head, once its body is gone).
+      const staggerBoss = this.boss && hit.bossStagger;
+      const tiles = this.boss && !staggerBoss ? 0 : hit.tiles;
       this.knockAway(hit.fromX ?? this.x, hit.fromZ ?? this.z, tiles, TUNING.enemy.hitKnockTime);
       this.stunT = Math.max(0, (hit.stun ?? 0) - (tiles > 0 ? TUNING.enemy.knockTime : 0));
-      if (this.boss) this.stunT = 0;
+      if (this.boss && !staggerBoss) this.stunT = 0;
     } else {
       // an M1 caller: knockback speed decaying while stunned
       this.stunT = hit.stun ?? 0.28;

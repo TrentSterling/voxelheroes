@@ -3,11 +3,18 @@
 // 6.5, 8.2, 8.7).
 
 export const enemy = {
-  knock: 0.8,
+  // A sword hit shoves a foe like ALttP: a real launch, not a nudge (fun
+  // audit: 0.8 tiles let a blob walk straight back into the hero 0.4 s
+  // later). knock is the launch distance, hitKnockTime the skid that covers
+  // it (Enemy.hurt), stagger the freeze once the skid ends; the two add up
+  // to the total no-AI/no-contact window (touchHero() checks knockT/stunT).
+  knock: 1.7,
   knockTime: 0.2, // recoil()'s guard-block bounce, and the stun-after-knock cancellation math (damage.js)
-  hitKnockTime: 0.12, // a sword hit's own knockback slide (Enemy.hurt): faster than knockTime
-  stagger: 0.25,
-  heavyKnock: 0.5,
+  hitKnockTime: 0.15, // a sword hit's own knockback slide (Enemy.hurt): faster than knockTime
+  stagger: 0.2,
+  heavyKnock: 1.0, // heavy foes still shove less than knock, just not to a standstill
+  wallBounce: 0.45, // a knocked-back foe that hits a wall reflects at this fraction of its speed
+  hitSquash: { time: 0.16, amount: 0.28 }, // squash-and-stretch on a hit (Enemy.hurt/stepSquash)
   alignTol: 0.5,
   stunBoomerang: 2.0,
   stunGrapple: 1.0,

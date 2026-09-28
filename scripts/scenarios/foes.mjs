@@ -662,7 +662,7 @@ export default async function foes(t) {
   t.expect(r.punish[0] === 'blocked' && r.punish[1] === 8, `hitting a dull part fires a ring of 8 orbs (${r.punish})`);
   t.expect(r.break[0] === 'killed' && r.break[1] === 5 && r.break[2] === 1 && near(r.break[3], r.speed0 + 0.5, 1e-6), `the glowing tail breaks in one hit, drops a heart and speeds it up 0.5 t/s (${r.break})`);
   t.expect(r.volley === 3, `it fires a fan of 3 (${r.volley})`);
-  t.expect(r.speedAlone === 6 && r.headHp === 24, `alone, the head is at 6 t/s with 24 HP (${r.speedAlone}, ${r.headHp})`);
+  t.expect(r.speedAlone === 4.2 && r.headHp === 24, `alone, the head is capped at 4.2 t/s (never outruns the hero) with 24 HP (${r.speedAlone}, ${r.headHp})`);
   t.expect(JSON.stringify(phases.slice(0, 2)) === '[1,2]', `phases change at 66% and 33% (${phases})`);
   t.expect(r.dead && defeated.length === 1 && r.container === 1 && r.coins === 250, `beaten: boss-defeated, a heart container and 250 coins (${defeated.length}, ${r.container}, ${r.coins})`);
 

@@ -1,6 +1,7 @@
-// The world: every screen of every area, parsed at startup. Only the current
-// area is built into voxel meshes and props (gameplay spec 4.1): loadArea()
-// builds it on a load, at black, and frees the area before it.
+// The world: every screen of every area, parsed at startup. What is built into voxel meshes and
+// props is what is near the hero: outdoors a ring of screens around him, streamed in and out as he
+// walks, across area edges (systems/streaming.js); anywhere else his area, built at black on a
+// load unless it was built ahead while he stood near its entrance (see "loads and streaming").
 //
 // World knows nothing about specific tiles. It parses each area's ASCII rows,
 // asks the tile registry (world/tiles.js) how to build each char, keeps the
@@ -20,6 +21,7 @@
 // 'crypt:0,1'), or from a global tile (world.locate(tx, tz)) through a coarse
 // spatial index. Each screen carries its footprint: w, h, x0, z0, x1, z1.
 import { state, setTileKeyCodec } from '../core/state.js';
+import { isManual } from '../core/loop.js';
 import { on, emit } from '../core/events.js';
 import { CAMERA_PRESETS } from '../core/camera.js';
 import { LIGHTING } from '../core/renderer.js';
@@ -31,6 +33,9 @@ import { edgeReport } from './links.js';
 // The spatial index: square cells of CELL tiles, each listing the screens
 // that overlap it.
 const CELL = 32;
+
+// Tilesets whose screens (outside rooms) stream as one seamless outdoors (see loadArea).
+export const OUTDOOR_TILESETS = ['overworld', 'town'];
 
 const cellKey = (cx, cz) => `${cx},${cz}`;
 
@@ -46,7 +51,7 @@ function solidExtent(at, tx, tz) {
   }
   return [tx, tz, tx + 1, tz + 1];
 }
-import { buildScreenTerrain, disposeScreenTerrain, buildBackdrops, marginScreens } from './terrain.js';
+import { buildScreenTerrain, screenTerrainSteps, disposeScreenTerrain, buildBackdrops, marginScreens, tilesKey } from './terrain.js';
 
 // Terrain layers and the mesh building live in terrain.js (tile kits: world/tiles/).
 export { LAYERS, registerLayer } from './terrain.js';
@@ -77,6 +82,7 @@ export class World {
   build(scene, areas) {
     this.scene = scene;
     for (const area of areas) this.addArea(area);
+    this.outdoorRects();
     this.validate();
     this.checkEdges();
     buildBackdrops(this);
@@ -148,6 +154,7 @@ export class World {
         def,
         name: def.name,
         tileset,
+        streams: !area.rooms && OUTDOOR_TILESETS.includes(tileset), // part of the seamless outdoors
         lighting: def.lighting ?? area.lighting ?? 'day',
         camera: def.camera ?? area.camera ?? null,
         base: tiles.map((r) => [...r]), // tiles as the map drew them (markers replaced)
@@ -161,101 +168,247 @@ export class World {
       this.index(screen);
       this.screens.set(screen.key, screen);
     }
-    // The area's bounding rect: follow cameras (A, D) clamp to it, not to the screen.
+    // The area's bounding rect: follow cameras (A, D) clamp to it, not to the screen (streamed
+    // screens get their neighbourhood's instead, once every area is in: build()).
     const own = [...this.screens.values()].filter((s) => s.area === area);
     const rect = { x0: Math.min(...own.map((s) => s.x0)), z0: Math.min(...own.map((s) => s.z0)), x1: Math.max(...own.map((s) => s.x1)), z1: Math.max(...own.map((s) => s.z1)), area };
     for (const s of own) s.areaRect = rect;
   }
 
-  // ---------------------------------------------------------------- loads
-  // Build area `id` (terrain meshes and props of all its screens) and free
-  // the one built before it. Only one area exists in the scene at a time;
-  // tiles, flags and edits of the others stay, and are built from on the
-  // next load. Returns true if it built anything.
-  // focus: the screen the hero lands on. Its terrain is meshed now (and any other screen the
-  // camera shows, by transitions.showScreens); the rest of the area waits in `pending` for buildPending() (frame-sliced, run during the
-  // loading card's hold) or ensureBuilt() (a screen about to be drawn). Meshing a whole dungeon at
-  // once froze the game for up to 1.5 s.
+  // Outdoors, a follow camera (A, D) clamps to the rect around a streamed screen and every streamed
+  // screen touching it, whatever their areas: the outdoors is one space, and past a screen with no
+  // neighbour the world ends there. The rect depends only on the hero's screen (not on what the
+  // ring has built so far), and the frame is less than a screen wide, so it never jumps as he
+  // crosses a line: the next screen's rect holds the same frame.
+  outdoorRects() {
+    for (const s of this.screens.values()) {
+      if (!s.streams) continue;
+      const near = this.screensNear(s, 1, (o) => o.streams);
+      s.areaRect = { x0: Math.min(...near.map((o) => o.x0)), z0: Math.min(...near.map((o) => o.z0)), x1: Math.max(...near.map((o) => o.x1)), z1: Math.max(...near.map((o) => o.z1)), area: s.area };
+    }
+  }
+
+  // ---------------------------------------------------------------- loads and streaming
+  // What exists in the scene. `live` screens have their props, and their terrain is built or on
+  // its way (a job in `pending`); only a live screen with built terrain is drawn (transitions.js).
+  //
+  //   outdoors  screens that stream (screen.streams: an overworld or town screen, not a room) are
+  //             made live and freed one by one around the hero by systems/streaming.js, across
+  //             area edges: areas are addresses there, not loads. `previews` are streamed screens
+  //             kept as scenery a ring further out (terrain only, no props, no people).
+  //   areas     any other area (a dungeon, a cave, a house) is live as a whole while the hero is in
+  //             it, or kept (`keep`, systems/streaming.js) while he is near its entrance, so the
+  //             fade into it has nothing left to build. The outdoor ring stays live meanwhile
+  //             (hidden), so the way back out is instant too.
+  //
+  // Terrain is built by jobs (terrain.js screenTerrainSteps) that pump() runs within a per-frame
+  // time budget, nearest (lowest priority number) first, meshing in workers where it can
+  // (world/meshing.js); ensureBuilt() finishes one now when it must be drawn this frame.
+
+  // The area the hero is in, and the screen he stands on: that screen is built now, and the rest
+  // of its area (not outdoors, where systems/streaming.js keeps the ring) is queued behind it.
+  // Returns true if the area changed.
   loadArea(id, focus = null) {
-    if (this.loaded === id) return false;
     if (!this.areas.has(id)) throw new Error(`loadArea: unknown area "${id}"`);
-    for (const s of this.screens.values()) if (s.area.id === this.loaded) this.unbuild(s);
-    for (const s of this.previews) this.unbuild(s);
-    this.previews.clear();
+    const changed = this.loaded !== id;
     this.loaded = id;
-    this.pending.clear();
     this.focus = focus;
-    const own = [];
+    if (focus?.streams) {
+      this.addLive(focus, -1);
+      this.ensureBuilt(focus);
+      return changed;
+    }
+    for (const s of [...this.live]) if (!s.streams && s.area.id !== id && !this.keep.has(s.area.id)) this.unbuild(s);
+    this.liveArea(id, focus);
+    if (focus) this.ensureBuilt(focus);
+    return changed;
+  }
+
+  // Make every screen of area `id` live, the ones nearest `focus` first (after anything already
+  // queued at priority `base` or less).
+  liveArea(id, focus = null, base = 0) {
     for (const s of this.screens.values())
-      if (s.area.id === id) {
-        own.push(s);
-        if (!focus || s === focus) this.buildScreen(s);
-        else this.pending.add(s);
-        this.buildProps(s);
-      }
-    // Previews: the terrain of other outdoor areas' screens that share an edge with this one, so a
-    // road that crosses into the next area runs on into its land instead of into the sky. Built
-    // with the rest in slices (terrain only: no props, no people); always drawn.
-    const OUTDOORS = ['overworld', 'town']; // caves and dungeons never preview or get previewed
-    if (own[0] && !own[0].area.rooms && OUTDOORS.includes(own[0].tileset)) {
-      const edge = (a, b) =>
-        (a.x0 < b.x1 && b.x0 < a.x1 && (a.z0 === b.z1 || a.z1 === b.z0)) || (a.z0 < b.z1 && b.z0 < a.z1 && (a.x0 === b.x1 || a.x1 === b.x0));
-      const other = (s) => s.area.id !== id && !s.area.rooms && OUTDOORS.includes(s.tileset) && !/^test-/.test(s.area.id);
-      for (const s of this.screens.values())
-        if (other(s) && own.some((o) => edge(o, s))) {
-          this.previews.add(s);
-          this.pending.add(s);
-        }
-      // the camera looks north, so a second row there fills the horizon above the first
-      const top = Math.min(...own.map((o) => o.z0));
-      for (const p of [...this.previews])
-        if (p.z1 <= top)
-          for (const s of this.screens.values())
-            if (other(s) && !this.previews.has(s) && s.z1 === p.z0 && s.x0 < p.x1 && p.x0 < s.x1) {
-              this.previews.add(s);
-              this.pending.add(s);
-            }
-    }
-    return true;
+      if (s.area.id === id) this.addLive(s, s === focus ? base - 1 : base + (focus ? this.screenDist(focus, s) : 0) / 100);
   }
 
-  previews = new Set(); // other areas' screens built as scenery next to the loaded one
-
-  pending = new Set();
+  previews = new Set(); // streamed screens kept as scenery (terrain only) past the live ring
+  keep = new Set(); // ids of other areas kept live near their entrances (systems/streaming.js)
+  live = new Set();
+  pending = new Set(); // screens with a terrain job queued or running
+  jobs = new Map(); // screen -> { steps, priority, waiting }
   focus = null;
+  // Build accounting: ms pump() spent this frame, the most it spent in any frame and in any one
+  // step, steps run, screens built, and builds that could not wait for pump() (ensureBuilt).
+  stats = { frameMs: 0, maxFrameMs: 0, maxStepMs: 0, steps: 0, builds: 0, now: 0 };
+  stepMs = 0.5; // a build step's running average
+  onBuilt = null; // fn(screen) once a job has put a screen's new terrain in (systems/streaming.js)
 
-  // Mesh pending screens, nearest the focus first, until `budgetMs` is spent (at least one).
-  // Returns how many are still pending.
-  buildPending(budgetMs = 8) {
-    if (!this.pending.size) return 0;
-    const t0 = performance.now();
-    const f = this.focus;
-    const d = (s) => (f ? Math.abs(s.x0 + s.x1 - f.x0 - f.x1) + Math.abs(s.z0 + s.z1 - f.z0 - f.z1) : 0);
-    const order = [...this.pending].sort((a, b) => this.previews.has(a) - this.previews.has(b) || d(a) - d(b)); // own screens first
-    for (const s of order) {
-      this.buildScreen(s);
-      if (performance.now() - t0 >= budgetMs) break;
+  isBuilt = (screen) => this.live.has(screen);
+
+  // Terrain queued (a lower priority number builds sooner) unless it is built already; props
+  // come with it (finished), so a screen is never seen half made.
+  addLive(screen, priority = 0) {
+    if (!this.live.has(screen)) {
+      this.live.add(screen);
+      this.previews.delete(screen);
     }
-    return this.pending.size;
+    if (screen.built && !screen.propsOn) this.buildProps(screen);
+    this.want(screen, priority);
   }
 
-  // Mesh a screen now if it is still waiting (it is about to be drawn).
-  ensureBuilt(screen) {
-    if (this.pending.has(screen)) this.buildScreen(screen);
-  }
-
-  isBuilt = (screen) => screen.area.id === this.loaded;
-
-  // Free a screen's meshes and props (its tiles stay).
-  unbuild(screen) {
-    disposeScreenTerrain(this, screen);
-    this.pending.delete(screen);
+  removeProps(screen) {
     for (const k of [...screen.props.keys()]) {
       const [x, z] = k.split(',').map(Number);
       this.removeProp(screen, x, z);
     }
+    screen.propsOn = false;
+  }
+
+  // Terrain only: a scenery screen (see previews).
+  addScenery(screen, priority = 0) {
+    if (this.live.has(screen)) return;
+    this.previews.add(screen);
+    this.want(screen, priority);
+  }
+
+  // Queue a screen's terrain build (or move a queued one up to `priority`) unless it is built.
+  want(screen, priority = 0) {
+    const job = this.jobs.get(screen);
+    if (job) job.priority = Math.min(job.priority, priority);
+    else if (!screen.built) this.queue(screen, priority);
+  }
+
+  queue(screen, priority) {
+    this.jobs.set(screen, { steps: screenTerrainSteps(this, screen, { worker: true }), priority, waiting: false });
+    this.pending.add(screen);
+  }
+
+  cancel(screen) {
+    const job = this.jobs.get(screen);
+    if (!job) return;
+    this.jobs.delete(screen);
+    this.pending.delete(screen);
+    job.steps.return?.();
+  }
+
+  // Run build steps, lowest priority number first, until `budgetMs` is spent (at least one step
+  // when anything can run). Returns how many screens are still pending.
+  pump(budgetMs = 3) {
+    const t0 = performance.now();
+    // a drawn screen's rebuild (a wall blown open: priority -2, flush) takes up to 8 ms a frame, so
+    // its new meshes follow the change within a frame or two
+    for (const j of this.jobs.values()) if (j.priority <= -2 && !j.waiting) budgetMs = Math.max(budgetMs, 8);
+    let ran = 0;
+    for (;;) {
+      let job = null;
+      let screen = null;
+      for (const [s, j] of this.jobs) if (!j.waiting && (!job || j.priority < job.priority)) [job, screen] = [j, s];
+      // stop before a step that would likely run past the budget (steps average stepMs)
+      if (!job || (ran && performance.now() - t0 + this.stepMs >= budgetMs)) break;
+      ran++;
+      const t1 = performance.now();
+      this.stepJob(screen, job);
+      const dt = performance.now() - t1;
+      this.stepMs += (dt - this.stepMs) * 0.1;
+      this.stats.maxStepMs = Math.max(this.stats.maxStepMs, dt);
+    }
+    const ms = performance.now() - t0;
+    this.stats.frameMs = ms;
+    this.stats.maxFrameMs = Math.max(this.stats.maxFrameMs, ms);
+    this.stats.steps += ran;
+    return this.pending.size;
+  }
+
+  stepJob(screen, job) {
+    let r;
+    try {
+      r = job.steps.next();
+    } catch (e) {
+      // a worker failed (world/meshing.js meshes on this thread from then on): start over here
+      if (job.retried) throw e;
+      this.jobs.set(screen, { steps: screenTerrainSteps(this, screen), priority: job.priority, waiting: false, retried: true });
+      return;
+    }
+    if (r.done) return this.finished(screen, job);
+    const wait = r.value?.wait;
+    if (wait) {
+      job.waiting = true;
+      wait.then(() => {
+        job.waiting = false;
+      });
+    }
+  }
+
+  finished(screen, job) {
+    if (this.jobs.get(screen) === job) {
+      this.jobs.delete(screen);
+      this.pending.delete(screen);
+    }
+    this.stats.builds++;
+    screen.shown = null; // new meshes: the visibility sync looks at them again
+    if (this.live.has(screen) && !screen.propsOn) this.buildProps(screen);
+    if (screen.built !== tilesKey(screen)) this.dirty.add(screen); // a tile changed while it was built
+    this.onBuilt?.(screen);
+  }
+
+  // Build a screen's terrain now if it is not built or a job is still on it (it is about to be
+  // drawn): on this thread, dropping the job (a worker's answer to it is ignored).
+  ensureBuilt(screen) {
+    const job = this.jobs.get(screen);
+    if (screen.built && !job) return false;
+    this.cancel(screen);
+    buildScreenTerrain(this, screen);
+    this.stats.now++;
+    this.finished(screen, job ?? null);
+    return true;
+  }
+
+  // The old name: run pending builds for `budgetMs`.
+  buildPending(budgetMs = 8) {
+    return this.pump(budgetMs);
+  }
+
+  // Free a screen's meshes and props (its tiles stay).
+  unbuild(screen) {
+    this.cancel(screen);
+    disposeScreenTerrain(this, screen);
+    this.removeProps(screen);
+    this.live.delete(screen);
+    this.previews.delete(screen);
     this.dirty.delete(screen);
     screen.shown = null;
+  }
+
+  // A live screen back to scenery: its props go, its terrain stays.
+  toScenery(screen) {
+    this.removeProps(screen);
+    this.live.delete(screen);
+    this.previews.add(screen);
+    screen.shown = null;
+  }
+
+  // How many screens apart two screens are: 0 the same one, 1 touching (corners too), 2 with one
+  // screen's worth of tiles between them, and so on (counted in `a`'s screen size).
+  screenDist(a, b) {
+    if (a === b) return 0;
+    const gx = Math.max(0, b.x0 - a.x1, a.x0 - b.x1);
+    const gz = Math.max(0, b.z0 - a.z1, a.z0 - b.z1);
+    return 1 + Math.max(Math.floor(gx / a.w), Math.floor(gz / a.h));
+  }
+
+  // Screens within `r` of `screen` (screenDist), found through the spatial index.
+  screensNear(screen, r, filter = null) {
+    const out = [];
+    const seen = new Set();
+    const [x0, z0, x1, z1] = [screen.x0 - r * screen.w, screen.z0 - r * screen.h, screen.x1 + r * screen.w, screen.z1 + r * screen.h];
+    for (let cx = Math.floor(x0 / CELL); cx <= Math.floor((x1 - 1) / CELL); cx++)
+      for (let cz = Math.floor(z0 / CELL); cz <= Math.floor((z1 - 1) / CELL); cz++)
+        for (const s of this.cells.get(cellKey(cx, cz)) ?? []) {
+          if (seen.has(s)) continue;
+          seen.add(s);
+          if (this.screenDist(screen, s) <= r && (!filter || filter(s))) out.push(s);
+        }
+    return out;
   }
 
   // Add a screen to the spatial index; two screens may never share a tile.
@@ -577,9 +730,18 @@ export class World {
       }
   }
 
-  // Re-mesh screens changed by setTile. Runs at the end of every update.
+  // Re-mesh screens changed by setTile. Runs at the end of every update. A drawn screen's rebuild
+  // is a job at the front of the queue: the old meshes stay until the new ones are all made, a
+  // few frames later. In manual mode (play-tests) it happens at once, as a test expects.
   flush() {
-    for (const screen of this.dirty) if (this.isBuilt(screen) && !this.pending.has(screen)) this.buildScreen(screen);
+    for (const screen of this.dirty) {
+      if (!this.live.has(screen) && !this.previews.has(screen)) continue;
+      if (isManual() || !screen.built) this.buildScreen(screen);
+      else {
+        this.cancel(screen);
+        this.queue(screen, -2);
+      }
+    }
     this.dirty.clear();
   }
 
@@ -593,33 +755,35 @@ export class World {
       const at = this.locate(tx, tz);
       if (at && getTile(at.screen.tileset, ch)) at.screen.tiles[at.lz][at.lx] = ch;
     }
-    for (const screen of this.screens.values()) {
-      if (!this.isBuilt(screen)) continue;
-      for (const k of [...screen.props.keys()]) {
-        const [x, z] = k.split(',').map(Number);
-        this.removeProp(screen, x, z);
-      }
+    for (const screen of this.live) {
+      if (!screen.propsOn) continue;
+      this.removeProps(screen);
       this.buildProps(screen);
-      if (screen.built !== screen.tiles.map((r) => r.join('')).join('\n')) this.dirty.add(screen);
+      if (screen.built !== tilesKey(screen)) this.dirty.add(screen);
     }
+    for (const screen of this.previews) if (screen.built !== tilesKey(screen)) this.dirty.add(screen);
     this.flush();
+    emit('world:reset', {}); // everyone's people start over (systems/streaming.js)
   }
 
   // ---------------------------------------------------------------- building
   // Mesh a screen's tiles (terrain.js): terrain, fine floor, detail and
   // water meshes plus fixtures such as lamp lights, all in screen.meshes.
   buildScreen(screen) {
-    this.pending.delete(screen);
+    this.cancel(screen);
     buildScreenTerrain(this, screen);
+    this.finished(screen, null);
   }
 
+  // A screen's props (bushes, doors, chests, flames): with its terrain, once that is built.
   buildProps(screen) {
+    screen.propsOn = true;
     for (let z = 0; z < screen.h; z++)
       for (let x = 0; x < screen.w; x++) if (getTile(screen.tileset, screen.tiles[z][x]).prop) this.addProp(screen, x, z);
   }
 
   addProp(screen, x, z) {
-    if (!this.isBuilt(screen)) return null; // built with its area on the next load
+    if (!screen.propsOn) return null; // built with the rest of the screen's props (buildProps)
     const ch = screen.tiles[z][x];
     const def = getTile(screen.tileset, ch);
     const tx = screen.x0 + x;
@@ -660,7 +824,7 @@ export class World {
 
   // ---------------------------------------------------------------- per frame
   update(t, dt) {
-    for (const s of this.screens.values()) for (const m of s.meshes) m.layer.tick?.(m.mesh, t, dt);
+    for (const s of this.live) if (s.shown) for (const m of s.meshes) m.layer.tick?.(m.mesh, t, dt);
     for (const obj of this.ticking) obj.userData.tick(t, dt);
   }
 }
@@ -682,5 +846,18 @@ setTileKeyCodec({
   },
 });
 
-// The screen the hero is on (or sliding into): its key is state.screenKey.
-export const currentScreen = () => (state.screenKey ? world.screens.get(state.screenKey) ?? null : null);
+// The screen the hero is on (or sliding into): its key is state.screenKey. While the entity
+// manager updates the people and foes of another live screen (entities/manager.js), it is that
+// screen instead: "my screen" to them (the bounds they keep to, the shots they fire).
+let simScreen = null;
+export const heroScreen = () => (state.screenKey ? world.screens.get(state.screenKey) ?? null : null);
+export const currentScreen = () => simScreen ?? heroScreen();
+export function withScreen(screen, fn) {
+  const was = simScreen;
+  simScreen = screen;
+  try {
+    return fn();
+  } finally {
+    simScreen = was;
+  }
+}

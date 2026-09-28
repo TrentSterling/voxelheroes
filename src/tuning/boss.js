@@ -13,11 +13,19 @@ export const boss = {
   // boss-serpent (D1, gameplay spec 8.6)
   serpent: {
     segments: 6, gap: 0.9, segmentSize: 1.2, headSize: 1.6,
-    speed: 3, speedPerLost: 0.5, speedMax: 6, turnRate: 100, // degrees per second of steady curving
+    speed: 3, speedPerLost: 0.5, speedMax: 4.2, turnRate: 100, // degrees per second of steady curving; capped so the exposed head never outruns the hero (4.5 t/s)
     wallMargin: 2.2, // tiles from the arena wall where it starts to turn in
     glowDelay: 2.5, ringCount: 8, ringSpeed: 5, ringDamage: 1,
     volleyEvery: 4, volleyCount: 3, volleySpread: 15, volleySpeed: 6, volleyDamage: 1, volleyTier: 3,
     headHp: 24, contact: 2, hitFlash: 0.3,
+    // a hit landed on the exposed head (body gone) actually staggers it,
+    // ALttP-style: 1.5 tiles of bounce, 0.6 s frozen once the bounce ends.
+    // headStagger is the raw hit.stun Enemy.hurt() nets against knockTime
+    // (TUNING.enemy.knockTime, same bookkeeping every hit does), so it is
+    // set 0.2 higher than the 0.6 s that actually lands.
+    headKnock: 1.5, headStagger: 0.8,
+    // the telegraphed lunge: a wind-up shake, then a fast straight dash it recovers from
+    lungeCooldown: 2.6, lungeTell: 0.5, lungeSpeed: 8, lungeTime: 0.55,
   },
   intro: { name: 1.2 }, // the name card lingers this long into the fight (s)
 };
