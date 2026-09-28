@@ -4,14 +4,15 @@
 export const pickups = { life: 8.5, blink: 1.5, bossDropLife: 15, heart: 2, magic: 1 };
 
 export const items = {
-  boomerang: { speed: 10, range: 6, returnSpeed: 12 },
-  bomb: { fuse: 2.0, radius: 1.5, damage: 6, maxOut: 2, capacity: [10, 20, 30, 40] },
+  boomerang: { speed: 10, range: 6, returnSpeed: 12, damage: 0, catch: 0.5, spin: 18 },
+  bomb: { fuse: 2.0, radius: 1.5, damage: 6, maxOut: 2, capacity: [10, 20, 30, 40], start: 10, place: 0.6, blinkFrom: 0.6, flash: 0.25, pickup: 1 },
   arrow: { speed: 12, damage: 4, capacity: [10, 30, 60, 99] },
   grapple: { speed: 16, range: 6, longRange: 11, pull: 12 },
   fireWand: { speed: 10, damage: 6, magic: 0 },
   book: { damage: 1 },
   useLock: 0.25,
   castLock: 0.4,
+  usePose: 0.25, // the item pose after a B item is used (s)
   bottles: 4,
 };
 

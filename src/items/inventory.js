@@ -16,6 +16,7 @@
 // add n ammo.
 import { state, defineState } from '../core/state.js';
 import { emit } from '../core/events.js';
+import { TUNING } from '../core/tuning.js';
 import { world } from '../world/world.js';
 import { spawn } from '../entities/manager.js';
 import { setGrantFallback } from '../systems/grants.js';
@@ -110,12 +111,26 @@ function itemContext(item, player) {
   };
 }
 
-// B pressed in play mode.
+// B pressed in play mode. Not while the hero cannot act (locked, held, in
+// a doorway: hero.canAct), and not within TUNING.items.useLock s of the last
+// tool (castLock s of the last spell: gameplay spec 9.1).
+// (The gate is hero.canAct, set by items/tools.js: inventory loads before
+// the hero module.)
+let lockedUntil = -Infinity;
+let gate = () => true;
+export function setItemGate(fn) {
+  gate = fn;
+}
+export const itemLockLeft = () => Math.max(0, lockedUntil - state.time);
 export function useSelectedItem(player) {
   const item = selectedItem();
   if (!item) return false;
+  if (!gate() || state.time < lockedUntil - 1e-9) return false;
   const used = !!item.use(itemContext(item, player));
-  if (used) emit('item-used', { id: item.id });
+  if (used) {
+    lockedUntil = state.time + (item.kind === 'spell' ? TUNING.items.castLock : TUNING.items.useLock);
+    emit('item-used', { id: item.id });
+  }
   return used;
 }
 

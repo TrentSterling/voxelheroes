@@ -1,6 +1,7 @@
 // The hero (art bible section 10, the measured body plan): 16 x 16 x 16 voxels at 1/16 tile, so
 // one tile tall. Whole-model poses swapped like sprite cels, never bent:
-//   stand | walk1 | walk2 | cheer (item get, victory) | swordOut (sword hand straight forward)
+//   stand | walk1 | walk2 | cheer (item get, victory) | swordOut (sword hand straight forward) |
+//   item (a B item in use: the free hand pushed forward and up)
 // plus windUp, a spare (the sword hand raised behind the head) kept for later sword moves.
 // attack, attack1 and attack2 are aliases of swordOut (the lab's latest body plan).
 //
@@ -31,7 +32,7 @@ import { CP } from './palette.js';
 import { model, modelMesh, PoseMesh, contactShadow } from './kit.js';
 
 export const V = 1 / 16;
-export const HERO_POSES = ['stand', 'walk1', 'walk2', 'cheer', 'swordOut', 'windUp'];
+export const HERO_POSES = ['stand', 'walk1', 'walk2', 'cheer', 'swordOut', 'windUp', 'item'];
 export const HERO_ALIASES = { idle: 'stand', walkA: 'walk1', walkB: 'walk2', raise: 'cheer', attack: 'swordOut', attack1: 'swordOut', attack2: 'swordOut' };
 export const HERO_SLOTS = {
   hair: CP.heroHair,
@@ -82,6 +83,12 @@ export function heroGrid(frame = 'stand', S = HERO_SLOTS, opts = {}) {
     // sword hand straight forward at hand height
     g.box(2, 5, 6, 4, 7, 12, S.tunic);
     g.box(2, 5, 12, 4, 7, 14, S.skin);
+    hand(12, 6);
+  } else if (frame === 'item') {
+    // a B item in use (a throw, a bomb set down): the free hand pushed
+    // forward and up at shoulder height, the other at the side
+    g.box(2, 7, 6, 4, 9, 12, S.tunic);
+    g.box(2, 7, 12, 4, 10, 14, S.skin);
     hand(12, 6);
   } else if (frame === 'windUp') {
     // sword hand raised beside and behind the head

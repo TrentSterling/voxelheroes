@@ -374,6 +374,7 @@ export class Player extends Entity {
     const set = this.posed?.pose;
     if (state.mode === 'dead') pose = 'stand';
     else if (set === 'cheer' || this.cheerT > 0) pose = 'cheer';
+    else if (set === 'item' && !out) pose = 'item';
     else if (set === 'item' || set === 'swordOut') pose = 'swordOut';
     else if (out) pose = 'swordOut';
     else if (set === 'guard' || this.guarding) pose = 'stand';

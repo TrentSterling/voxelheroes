@@ -22,6 +22,8 @@ import { state } from '../core/state.js';
 import { random } from '../core/random.js';
 import { spawn } from '../entities/manager.js';
 import { hasEntityType } from '../entities/registry.js';
+import { TUNING } from '../core/tuning.js';
+import { hasItem } from '../items/inventory.js';
 
 const warned = new Set();
 
@@ -41,6 +43,25 @@ export const DROP_TABLES = {
   ],
 };
 
+// The spec's packs (gameplay spec 8.7): [roll, [type, weight, when?]...].
+// Arrows and bombs drop only for a hero who owns the bow or bombs; otherwise
+// their weight goes to coin-1.
+const ownsBow = () => hasItem('bow');
+const ownsBombs = () => hasItem('bombs');
+const PACKS = {
+  'pack-a': [0.5, [['heart', 30], ['coin-1', 40], ['coin-10', 10], ['magic', 10], ['arrows-5', 5, ownsBow], ['bomb-1', 5, ownsBombs]]],
+  'pack-b': [0.6, [['arrows-5', 30, ownsBow], ['coin-1', 25], ['heart', 25], ['coin-10', 20]]],
+  'pack-c': [1.0, [['magic', 100]]],
+  'pack-d': [0.6, [['coin-10', 40], ['heart', 30], ['magic', 20], ['coin-100', 10]]],
+  'pack-e': [0.7, [['coin-100', 60], ['coin-10', 40]]],
+  bush: [TUNING.drops.bushRoll, [['coin-1', 50], ['heart', 30], ['arrows-5', 10, ownsBow], ['bomb-1', 10, ownsBombs]]],
+  pot: [TUNING.drops.potRoll, [['heart', 40], ['coin-1', 30], ['magic', 20], ['coin-10', 10]]],
+};
+function packTable([roll, rows]) {
+  const total = rows.reduce((s, r) => s + r[1], 0);
+  return rows.map(([type, w, when]) => (when ? { chance: (roll * w) / total, type, when, else: 'coin-1' } : { chance: (roll * w) / total, type }));
+}
+
 export function registerDropTable(name, entries) {
   DROP_TABLES[name] = entries;
 }
@@ -48,6 +69,11 @@ export function registerDropTable(name, entries) {
 export function addDrop(table, entry) {
   (DROP_TABLES[table] ??= []).push(entry);
 }
+
+for (const [name, pack] of Object.entries(PACKS)) if (name !== 'bush') registerDropTable(name, packTable(pack));
+// 'bush' keeps M1's table until the overworld's bushes move to the spec's
+// pack (the gate scenarios cut M1 bushes); the pack is here for them.
+registerDropTable('bush-pack', packTable(PACKS.bush));
 
 // Roll a table at (x, z); spawns the drop and returns its type, or null.
 export function rollDrop(table, x, z) {

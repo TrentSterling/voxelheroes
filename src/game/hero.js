@@ -406,6 +406,11 @@ registerGrant(
   { name: 'Bulwark Ring', fanfare: true }
 );
 
+// A B item or spell in use shows the item pose (CONTRACTS 8.8).
+on('item-used', () => {
+  if (state.mode === 'play' && posed?.pose !== 'cheer') hero.setPose('item', TUNING.items.usePose);
+});
+
 // An item get holds the prize overhead in the cheer pose (gameplay spec 12.2).
 const CHEER_TIME = 1.0;
 on('item-get', () => {
