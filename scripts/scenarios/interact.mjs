@@ -74,4 +74,91 @@ export default async function (t) {
   t.expect(r.afterBomb !== 'v', `a bomb breaks a pot (${r.afterBomb})`);
   t.expect(r.afterRegrow === 'v', 'pots are back on the next visit');
   await t.shot('interact-01-pot');
+
+  // find a tile char on any screen with open floor on one side: -> { key, x, z, from: [dx, dz] }
+  const find = (ch, rooms, both = true) =>
+    t.eval(([ch, rooms, both]) => {
+      const h = window.__voxelHeroes;
+      for (const s of h.world.screens.values()) {
+        if (!!s.area.rooms !== rooms || /^test-/.test(s.area.id)) continue;
+        for (let z = 2; z < s.h - 2; z++) for (let x = 2; x < s.w - 2; x++) {
+          if (s.tiles[z][x] !== ch) continue;
+          for (const [dx, dz] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+            const floor = (px, pz) => !h.world.isSolid(s.x0 + px, s.z0 + pz, h.player) && !h.world.tileDefAt(s.x0 + px, s.z0 + pz)?.hazard;
+            if (floor(x + dx, z + dz) && (!both || floor(x - dx, z - dz))) return { key: s.key, x, z, from: [dx, dz] };
+          }
+        }
+      }
+      return null;
+    }, [ch, rooms, both]);
+
+  // a signpost reads
+  const sign = await find('i', false);
+  t.expect(!!sign, `a signpost to read (${JSON.stringify(sign)})`);
+  if (sign) {
+    await t.teleport(sign.key, sign.x + sign.from[0] + 0.5, sign.z + sign.from[1] + 0.5);
+    const g = await t.eval(async (sign) => {
+      const h = window.__voxelHeroes;
+      h.player.yaw = Math.atan2(-sign.from[0], -sign.from[1]);
+      await h.tick();
+      h.input.tap('sword');
+      for (let i = 0; i < 10; i++) await h.tick();
+      const mode = h.state.mode;
+      const text = document.querySelector('#dialog')?.textContent ?? '';
+      for (let i = 0; i < 300 && h.state.mode === 'dialog'; i++) {
+        if (i % 20 === 0) h.input.tap('confirm');
+        await h.tick();
+      }
+      return { mode, text: text.slice(0, 80) };
+    }, sign);
+    t.expect(g.mode === 'dialog', `pressing A at a signpost reads it (${g.mode}: ${g.text})`);
+  }
+
+  // a statue pushes a tile and is back on the next visit
+  const st = await find('S', true);
+  t.expect(!!st, `a statue to push (${JSON.stringify(st)})`);
+  if (st) {
+    await t.teleport(st.key, st.x + st.from[0] + 0.5, st.z + st.from[1] + 0.5);
+    const p = await t.eval(async (st) => {
+      const h = window.__voxelHeroes;
+      const s = h.screen();
+      for (const e of h.entities) if (e.kind === 'enemy') e.remove();
+      const at = (x, z) => h.world.tile(s.x0 + x, s.z0 + z);
+      for (let i = 0; i < 50; i++) {
+        h.input.setStick(-st.from[0], -st.from[1]);
+        await h.tick();
+      }
+      h.input.setStick(0, 0);
+      const moved = at(st.x, st.z) !== 'S' && at(st.x - st.from[0], st.z - st.from[1]) === 'S';
+      h.world.regrow(s);
+      const back = at(st.x, st.z) === 'S' && at(st.x - st.from[0], st.z - st.from[1]) !== 'S';
+      return { moved, back };
+    }, st);
+    t.expect(p.moved, 'leaning on a statue slides it a tile');
+    t.expect(p.back, 'and it is back in place on the next visit');
+  }
+
+  // a pit drops the hero back to the room's door for a heart
+  const pit = await find('O', true, false);
+  t.expect(!!pit, `a pit to fall in (${JSON.stringify(pit)})`);
+  if (pit) {
+    await t.teleport(pit.key, pit.x + pit.from[0] + 0.5, pit.z + pit.from[1] + 0.5);
+    const f = await t.eval(async (pit) => {
+      const h = window.__voxelHeroes;
+      for (const e of h.entities) if (e.kind === 'enemy') e.remove();
+      h.setHp(h.state.maxHp);
+      const hp0 = h.state.hp;
+      let fell = false;
+      for (let i = 0; i < 90 && !fell; i++) {
+        h.input.setStick(-pit.from[0], -pit.from[1]);
+        await h.tick();
+        fell = h.state.hp < hp0;
+      }
+      h.input.setStick(0, 0);
+      const s = h.screen();
+      const onPit = h.world.tile(Math.floor(h.player.x), Math.floor(h.player.z)) === 'O';
+      return { lost: hp0 - h.state.hp, onPit, mode: h.state.mode };
+    }, pit);
+    t.expect(f.lost === 2 && !f.onPit, `walking into a pit costs a heart and puts him back at the door (${JSON.stringify(f)})`);
+  }
 }
