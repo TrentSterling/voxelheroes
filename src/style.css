@@ -461,3 +461,29 @@ body {
   padding: 6px 14px 4px;
   cursor: pointer;
 }
+
+/* Title key art (ui/screens/title.js): the boxel logo stands in the scene, so the panel becomes a
+   compact bar along the bottom and the dimming lifts to let the courtyard show. */
+body.title-mode #overlay {
+  place-items: end center;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(8, 17, 13, 0.88) 0%, rgba(8, 17, 13, 0.35) 38%, rgba(8, 17, 13, 0) 60%);
+}
+body.title-mode #overlay .panel {
+  width: min(920px, 100%);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'kicker kicker' 'msg start' 'controls controls';
+  align-items: center;
+  gap: 10px 24px;
+  background: rgba(10, 18, 14, 0.72);
+  backdrop-filter: blur(3px);
+}
+body.title-mode #overlay-title { display: none; }
+body.title-mode #overlay .kicker { grid-area: kicker; margin: 0; }
+body.title-mode #overlay-msg { grid-area: msg; max-width: 60ch; }
+body.title-mode #start { grid-area: start; }
+body.title-mode #overlay .controls { grid-area: controls; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+@media (max-width: 640px) {
+  body.title-mode #overlay .panel { grid-template-columns: 1fr; grid-template-areas: 'kicker' 'msg' 'start' 'controls'; }
+}
