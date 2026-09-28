@@ -17,6 +17,7 @@ import { world, currentScreen } from './world/world.js';
 import { allAreas } from './world/areas.js';
 import { player } from './entities/player.js';
 import { initParticles, updateParticles } from './systems/particles.js';
+import { updateCritters } from './systems/critters.js';
 import { placeAtStart, loadGame } from './systems/flow.js';
 import { applyScreenAmbience, syncScreenVisibility, shownRect } from './systems/transitions.js';
 import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
@@ -55,6 +56,7 @@ function update(dt) {
   if (input.pressed('mute')) toggleMuteUi();
   updateMode(dt);
   updateParticles(dt);
+  updateCritters(dt);
   world.flush();
   // Far screens of a fresh area: in 8 ms slices while the loading card holds, else 2 ms (at least
   // one screen per step either way).
