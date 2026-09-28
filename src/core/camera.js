@@ -8,16 +8,19 @@
 //   height      camera height above the ground, in tiles
 //   lead        the look-at point sits this many tiles north of the subject
 //   fixed       aim at the centre of the screen or room instead of the hero
+//   follow      the hero is the subject every tick, clamped to the area (or,
+//               in a room, to the room's rows; see CAMERA_PRESETS below)
 //   fitWidth    scale height with the room's width: height * (room width /
-//               fitWidth), at least minHeight (the gameplay spec's interior
-//               camera, 4.2; a 22-wide boss arena gets 17.5)
+//               fitWidth), at least minHeight (no built-in preset uses it
+//               since the art bible measured the interior rig)
 //   label       name for menus
 //   selectable  offered to the player as a camera choice (A-D, true); the
 //               dungeon and interior presets and every preset an area or a
 //               boss room registers for itself leave it false
 //
-// In the overworld the subject is the hero, clamped so the frame stays inside
-// the current screen where the frame is small enough: the ground at the
+// With a hold preset (B, C) the subject is the hero, clamped so the frame
+// stays inside the current screen where the frame is small enough (a follow
+// preset, A or D, uses the same clamp with the whole area as its rect): the ground at the
 // bottom edge never shows the screen to the south, and the frame's sides at
 // the hero's row never show the screens east or west, except for the few
 // tenths of a tile it takes to keep all of the hero in frame when he stands
@@ -40,18 +43,31 @@
 // his centre at each height, whichever way he faces, the sword left out.
 import * as THREE from 'three';
 import { camera, renderer, followSun } from './renderer.js';
-import { DEG } from './constants.js';
+import { DEG, GROUND_Y } from './constants.js';
+import { TUNING } from './tuning.js';
 
-// A, B and dungeon are measured on the reference shots; C and D are guesses
-// until clean captures exist (art bible section 14). Interior is the dungeon
-// camera scaled to the room's width (gameplay spec 4.2).
+// The poses are the art bible's (section 3, v1.8; appendix A). A, B, the
+// three dungeon rigs and the interior are measured on reference shots; C and
+// D are guesses until clean captures exist (art bible section 14). How each
+// one moves is the gameplay spec's (4.2; TUNING.camera.follow):
+//   follow  A, D: the hero is the subject every tick, clamped only to the
+//           area (not the screen); screens change without a slide
+//           (transitions.js followChange). In a room (the large-room and
+//           interior rigs) it is clamped to the room by frame rows instead
+//           (art bible section 9, roomSubjectZ).
+//   hold    B, C: the subject is clamped to the current screen, and crossing
+//           an edge slides (48 ticks). A screen with scroll: 'flip' holds in
+//           every preset.
+//   fixed   the standard dungeon room: aimed at the room centre (0.09 tile
+//           south of it, lead -0.09); rooms slide.
 export const CAMERA_PRESETS = {
-  A: { label: 'Type A', selectable: true, pitch: 21, fov: 44, height: 4.56, lead: 2.9 },
+  A: { label: 'Type A', selectable: true, pitch: 21, fov: 44, height: 4.56, lead: 2.9, follow: true },
   B: { label: 'Type B', selectable: true, pitch: 43.3, fov: 43.6, height: 11.2, lead: 0 },
   C: { label: 'Type C', selectable: true, pitch: 60, fov: 40, height: 16, lead: 0 },
-  D: { label: 'Type D', selectable: true, pitch: 18, fov: 44, height: 3.4, lead: 2.2 },
-  dungeon: { label: 'Dungeon', selectable: false, pitch: 41.5, fov: 28, height: 12.7, lead: 0, fixed: true },
-  interior: { label: 'Interior', selectable: false, pitch: 41.5, fov: 28, height: 12.7, fitWidth: 16, minHeight: 8, lead: 0, fixed: true },
+  D: { label: 'Type D', selectable: true, pitch: 18, fov: 44, height: 3.4, lead: 2.2, follow: true },
+  dungeon: { label: 'Dungeon', selectable: false, pitch: 43.055, fov: 37.38, height: 9.865, lead: -0.09, fixed: true },
+  'dungeon-big': { label: 'Large room', selectable: false, pitch: 52.978, fov: 37.07, height: 15.103, lead: 0, follow: true },
+  interior: { label: 'Interior', selectable: false, pitch: 50.278, fov: 38.54, height: 11.986, lead: 0, follow: true },
 };
 
 export const DEFAULT_PRESET = 'A';
@@ -154,12 +170,48 @@ export function fitCamera() {
 }
 
 // Pose the camera for preset p around a subject point (art bible's placeRig).
+// Height and aim are measured from the ground's top (GROUND_Y), where the
+// hero's feet and the dungeon floor are, so every "above the ground" below
+// is above GROUND_Y.
 export function poseCamera(cam, p, subject) {
   const pitch = p.pitch * DEG;
   const lookZ = subject.z - (p.lead ?? 0);
-  cam.position.set(subject.x, p.height, lookZ + p.height / Math.tan(pitch));
-  cam.lookAt(subject.x, 0, lookZ);
+  cam.position.set(subject.x, GROUND_Y + p.height, lookZ + p.height / Math.tan(pitch));
+  cam.lookAt(subject.x, GROUND_Y, lookZ);
 }
+
+// The subject z at which a point y above the ground at row z shows on frame
+// row `row` (0 top, 1 bottom). Moving the subject south raises the point in
+// the frame, so a point kept at or above a row gives a least subject z.
+export function subjectZForRow(p, row, y, z) {
+  const pitch = p.pitch * DEG;
+  const a = Math.atan((1 - 2 * row) * Math.tan((p.fov * DEG) / 2)); // above the view axis
+  const horiz = (p.height - y) / Math.tan(pitch - a); // camera to the point, along the ground
+  return z + horiz + (p.lead ?? 0) - p.height / Math.tan(pitch);
+}
+
+// A follow rig in a room (large rooms, boss arenas, interiors; art bible
+// section 9): the hero, clamped so the north wall's top edge stays at or
+// above frame row north / row, the black south wall's top at or below row
+// south / row, and the ends of the frame's bottom row on the floor between
+// the side walls. A room smaller than the view one way keeps it centred
+// that way.
+function roomSubject(pos, rect, p, aspect) {
+  const { clamp } = THREE.MathUtils;
+  const { north, south, row, wall, inset } = TUNING.camera.roomClamp;
+  const zMin = subjectZForRow(p, north / row, wall, rect.z0 + 1);
+  const zMax = subjectZForRow(p, south / row, wall, rect.z1 - 1);
+  const z = zMin <= zMax ? clamp(pos.z, zMin, zMax) : (zMin + zMax) / 2;
+  const hw = halfWidthAt(p, cameraFootprint(p, aspect).south, aspect); // the bottom row
+  const lo = rect.x0 + inset + hw;
+  const hi = rect.x1 - inset - hw;
+  const x = lo <= hi ? clamp(pos.x, lo, hi) : (rect.x0 + rect.x1) / 2;
+  return new THREE.Vector3(x, 0, z);
+}
+
+// Whether preset p follows the hero on this screen (A, D, and the room
+// follow rigs) or holds (B, C, the standard room, and any flip screen).
+export const followsHero = (p, screen) => !!p?.follow && !p.fixed && screen?.def?.scroll !== 'flip';
 
 // Half the frame's width, in tiles, on the row dz tiles south of the subject
 // (negative: north of it), at height y above the ground. Rows nearer the
@@ -231,6 +283,10 @@ export function sideReach(p = CAMERA_PRESETS[presetName], dz = 0, aspect = camer
 export function subjectFor(pos, rect, p = CAMERA_PRESETS[presetName], aspect = camera.aspect) {
   const { clamp } = THREE.MathUtils;
   p = lensFor(p, rect);
+  const follow = followsHero(p, rect);
+  if (follow && rect.area?.rooms) return roomSubject(pos, rect, p, aspect);
+  const screenRect = rect;
+  if (follow && rect.areaRect) rect = rect.areaRect; // follow: clamped to the area only
   const w = rect.x1 - rect.x0;
   const cx = (rect.x0 + rect.x1) / 2;
   const cz = (rect.z0 + rect.z1) / 2;
@@ -239,8 +295,11 @@ export function subjectFor(pos, rect, p = CAMERA_PRESETS[presetName], aspect = c
   let z;
   if (p.fixed) {
     z = Math.max(cz, pos.z + southReach(p) - south);
-    if (!rect.area?.rooms) z = Math.min(z, zMax);
+    if (!screenRect.area?.rooms) z = Math.min(z, zMax);
   } else z = zMax >= rect.z0 ? clamp(pos.z, rect.z0, zMax) : zMax;
+  // Following, all of the hero stays above the bottom edge even where the
+  // area ends with no area past it (the backdrop shows there).
+  if (follow) z = Math.max(z, pos.z + southReach(p) - south);
   const dz = pos.z - z; // the hero's row, from the subject
   const hw = halfWidthAt(p, dz, aspect); // the frame's half-width on the hero's row
   const hold = p.fixed && 4 * halfWidthAt(p, 0, aspect) >= w; // a fixed camera that holds the middle

@@ -1,4 +1,6 @@
-// The world: every screen of every area, built into voxel meshes at startup.
+// The world: every screen of every area, parsed at startup. Only the current
+// area is built into voxel meshes and props (gameplay spec 4.1): loadArea()
+// builds it on a load, at black, and frees the area before it.
 //
 // World knows nothing about specific tiles. It parses each area's ASCII rows,
 // asks the tile registry (world/tiles.js) how to build each char, keeps the
@@ -43,7 +45,7 @@ function solidExtent(at, tx, tz) {
   }
   return [tx, tz, tx + 1, tz + 1];
 }
-import { buildScreenTerrain, buildBackdrops, marginScreens } from './terrain.js';
+import { buildScreenTerrain, disposeScreenTerrain, buildBackdrops, marginScreens } from './terrain.js';
 
 // Terrain layers and the mesh building live in terrain.js (tile kits: world/tiles/).
 export { LAYERS, registerLayer } from './terrain.js';
@@ -67,6 +69,7 @@ export class World {
     this.ticking = new Set(); // props with userData.tick(t, dt)
     this.dirty = new Set(); // screens waiting to be re-meshed
     this.warned = new Set();
+    this.loaded = null; // the id of the one area whose meshes and props exist
   }
 
   // ---------------------------------------------------------------- setup
@@ -75,10 +78,6 @@ export class World {
     for (const area of areas) this.addArea(area);
     this.validate();
     this.checkEdges();
-    for (const screen of this.screens.values()) {
-      this.buildScreen(screen);
-      this.buildProps(screen);
-    }
     buildBackdrops(this);
     on('explosion', (explosion) => {
       for (const [tx, tz] of this.tilesInRadius(explosion.x, explosion.z, explosion.radius ?? 1))
@@ -161,6 +160,41 @@ export class World {
       this.index(screen);
       this.screens.set(screen.key, screen);
     }
+    // The area's bounding rect: follow cameras (A, D) clamp to it, not to the screen.
+    const own = [...this.screens.values()].filter((s) => s.area === area);
+    const rect = { x0: Math.min(...own.map((s) => s.x0)), z0: Math.min(...own.map((s) => s.z0)), x1: Math.max(...own.map((s) => s.x1)), z1: Math.max(...own.map((s) => s.z1)), area };
+    for (const s of own) s.areaRect = rect;
+  }
+
+  // ---------------------------------------------------------------- loads
+  // Build area `id` (terrain meshes and props of all its screens) and free
+  // the one built before it. Only one area exists in the scene at a time;
+  // tiles, flags and edits of the others stay, and are built from on the
+  // next load. Returns true if it built anything.
+  loadArea(id) {
+    if (this.loaded === id) return false;
+    if (!this.areas.has(id)) throw new Error(`loadArea: unknown area "${id}"`);
+    for (const s of this.screens.values()) if (s.area.id === this.loaded) this.unbuild(s);
+    this.loaded = id;
+    for (const s of this.screens.values())
+      if (s.area.id === id) {
+        this.buildScreen(s);
+        this.buildProps(s);
+      }
+    return true;
+  }
+
+  isBuilt = (screen) => screen.area.id === this.loaded;
+
+  // Free a screen's meshes and props (its tiles stay).
+  unbuild(screen) {
+    disposeScreenTerrain(this, screen);
+    for (const k of [...screen.props.keys()]) {
+      const [x, z] = k.split(',').map(Number);
+      this.removeProp(screen, x, z);
+    }
+    this.dirty.delete(screen);
+    screen.shown = null;
   }
 
   // Add a screen to the spatial index; two screens may never share a tile.
@@ -479,7 +513,7 @@ export class World {
 
   // Re-mesh screens changed by setTile. Runs at the end of every update.
   flush() {
-    for (const screen of this.dirty) this.buildScreen(screen);
+    for (const screen of this.dirty) if (this.isBuilt(screen)) this.buildScreen(screen);
     this.dirty.clear();
   }
 
@@ -494,6 +528,7 @@ export class World {
       if (at && getTile(at.screen.tileset, ch)) at.screen.tiles[at.lz][at.lx] = ch;
     }
     for (const screen of this.screens.values()) {
+      if (!this.isBuilt(screen)) continue;
       for (const k of [...screen.props.keys()]) {
         const [x, z] = k.split(',').map(Number);
         this.removeProp(screen, x, z);
@@ -517,6 +552,7 @@ export class World {
   }
 
   addProp(screen, x, z) {
+    if (!this.isBuilt(screen)) return null; // built with its area on the next load
     const ch = screen.tiles[z][x];
     const def = getTile(screen.tileset, ch);
     const tx = screen.x0 + x;

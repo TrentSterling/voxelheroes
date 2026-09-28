@@ -11,7 +11,7 @@ import { world, currentScreen } from '../world/world.js';
 import { moveBody } from '../systems/physics.js';
 import { startSwing, poseSword, tickSword, isSwinging } from '../systems/sword.js';
 import { tryInteract } from '../systems/interact.js';
-import { crossEdge, southLine } from '../systems/transitions.js';
+import { crossEdge, edgeCrossed } from '../systems/transitions.js';
 import { useSelectedItem, cycleItem } from '../items/inventory.js';
 import { Entity } from './entity.js';
 
@@ -86,13 +86,11 @@ export class Player extends Entity {
     }
     moveBody(this, vx * dt, vz * dt, null);
 
-    // Crossing the screen's edge slides to the next screen, or into the next
-    // area; at a south edge before any of him drops out of frame (southLine).
-    const s = currentScreen();
-    if (this.x < s.x0) crossEdge('west');
-    else if (this.x >= s.x1) crossEdge('east');
-    else if (this.z < s.z0) crossEdge('north');
-    else if (this.z >= s.z1 - southLine(s)) crossEdge('south');
+    // Crossing the screen's edge changes screen (a follow change past the
+    // dead band, or a slide), or loads the next area; at a south edge before
+    // any of him drops out of frame (transitions.js edgeCrossed).
+    const edge = edgeCrossed(currentScreen());
+    if (edge) crossEdge(edge);
 
     if (state.mode === 'play') this.touchTiles(mv, dt);
 

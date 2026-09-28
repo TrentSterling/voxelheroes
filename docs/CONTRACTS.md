@@ -20,6 +20,10 @@ briefs and the research drafts (`design/research/*.draft.md`) came before
 the spec: where they disagree with it, the spec and this file win (section 4,
 "Briefs and drafts against the spec").
 
+**Scope: the smaller world** (spec Q25, [PLAN.md](PLAN.md) "Scope"). The compact scope overrides the spec's full-size sections (4.1, 5.3, 6.8, 6.9, 10.5). The overworld is 4 x 3 areas of 3 x 3 screens of 16 x 16 tiles (48 x 48 tiles an area, about 108 screens; `TUNING.world.areas` [4, 3], `areaScreens` [3, 3]); 4 dungeons plus a short tower (about 100 rooms), D1 about 16 rooms; about 8 to 10 swords; tool chain boomerang, bombs, grapple, fire wand.
+
+**Cameras and screens (P0).** Presets A and D follow the hero, clamped only to the area, and change screen with no slide once his centre is `TUNING.scroll.followDeadband` (0.5) tiles past the edge ('room-enter' via `'follow'`). B, C, every standard dungeon room and any screen with `scroll: 'flip'` hold and slide (48 ticks, the hero carried 1.0 tile in). Rigs per context are the art bible's (v1.8, sections 3 and 9): `dungeon` (43.055°, 37.38°, 9.865, lead -0.09, fixed on the room centre), `dungeon-big` and `boss` (52.978°, 37.07°, 15.103, following the hero, clamped by frame rows, `TUNING.camera.roomClamp`), `interior` (50.278°, 38.54°, 11.986, following the same way). A load is 15 + 60 + 15 ticks (the hold is `TUNING.load.cardOff` with loading art off), shows `cardForArea` on the black (`ui/loadcard.js`), and builds only the new area (`world.loadArea`; the old one is freed).
+
 Contents: [1 Working in parallel](#1-working-in-parallel) ·
 [2 Ownership](#2-ownership) · [3 Units and conventions](#3-units-and-conventions) ·
 [4 TUNING](#4-tuning) · [5 State](#5-state) · [6 Events](#6-events) ·
@@ -826,8 +830,9 @@ Override `onHitWall`, `onHitHero`, `onHitEnemy` (return false to fly on),
   the arena map (the boss and tombstone markers, `camera: 'boss'`), the doors
   that shut on entry, the north door that opens on `boss-defeated
   { dungeon }`, and the reward room: the orb to take (`completeDungeon`), the
-  `npc-sage` marker and the warp tile. The `'boss'` preset (pitch 41.5, fov
-  28, height `TUNING.camera.bossHeight`, fixed) and `'boss-intro'` (30%
+  `npc-sage` marker and the warp tile. The `'boss'` preset (the art bible's
+  large-room rig: pitch 52.978, fov 37.07, height `TUNING.camera.bossHeight`
+  15.103, following the hero inside the arena) and `'boss-intro'` (30%
   closer) are registered once in `game/camera-presets.js`; nobody registers
   them again (a second registration silently replaces the first). A stream
   may register a test dungeon (`test-<stream>-*`) from its own test-area
@@ -1298,8 +1303,8 @@ request.
   keys and progress, spells (`spell-*`), pickups, swords (`blade-*`), enemies,
   bosses (`boss-*`), places (`castle`, `v1`-`v3`, `inn-1`-`inn-3`, `cabin`,
   `trader`, `graveyard`, `volcano`, `lost-woods`, `d1`-`d7`).
-- **Area ids**: overworld areas `ow-<col>-<row>` (spec 3: col 1-7, row 1-5,
-  e.g. `ow-4-3`); villages, which are lattice areas, by place id (`v1`);
+- **Area ids**: overworld areas `ow-<col>-<row>` (compact scope: col 1-4, row 1-3,
+  e.g. `ow-2-2`); villages, which are lattice areas, by place id (`v1`);
   interiors by place id (`inn-1`, `v1-smith`); dungeons by dungeon id (`d1`,
   with `d1-boss` for an arena of its own); test areas `test-<stream>-<name>`.
   Every new area sets `kind` (8.15).
@@ -1338,10 +1343,10 @@ between rooms and outdoor areas (their far band of scenery).
 
 | Columns | For | Owner |
 |---|---|---|
-| 0-99 | the overworld lattice (spec 3, 4.1): 7 x 5 areas of 4 x 4 screens of 16 x 16 tiles, edge to edge. Area (c, r) (1-based) sets `screen: [16, 16]` and `origin: [(c - 1) 4, (r - 1) 4]`, so the lattice fills columns 0-27. Villages are lattice areas at their cell: V1 is area `v1` at (5, 3), origin `[16, 8]`. The M1 `overworld` (3 x 2 screens of 16 x 11) moves to origin `[90, 0]` (columns 90-92) in overworld's `world/areas/overworld.js` before any lattice area is added: the gate scenarios reach it by area and local tile only | overworld |
+| 0-99 | the overworld lattice (spec 3, 4.1, in the compact scope): 4 x 3 areas of 3 x 3 screens of 16 x 16 tiles, edge to edge. Area (c, r) (1-based) sets `screen: [16, 16]` and `origin: [(c - 1) 3, (r - 1) 3]`, so the lattice fills columns 0-11. Villages are lattice areas at their cell (V1 is area `v1`; overworld picks its cell). The M1 `overworld` (3 x 2 screens of 16 x 11) moves to origin `[90, 0]` (columns 90-92) in overworld's `world/areas/overworld.js` before any lattice area is added: the gate scenarios reach it by area and local tile only | overworld |
 | 100-199 | outdoor places off the lattice, reached only by warps (none in M2) | overworld |
 | 200-299 | dungeons, 16 x 12 rooms: dungeon d at `[200 + 10 d, 0]`, floor f in local rows `11 f` to `11 f + 9`; boss arenas (22 x 16) as areas of their own placed by tile in the dungeon's free columns. The crypt is dungeon 0 at `[200, 0]` (M1 had it at `[0, 10]`; M1 saves are moved on load), D1 at `[210, 0]` | dungeon |
-| 300-399 | interiors (houses, shops, inns, caves), entered by door warps: building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`; smaller rooms by tile at `[(300 + 2 (k % 50)) 16, 24 floor(k / 50)]`. They use feat/world's `interior` camera preset (fixed, fitted to the room's width) | overworld |
+| 300-399 | interiors (houses, shops, inns, caves), entered by door warps: building k at `[300 + 2 (k % 50), 2 floor(k / 50)]`; smaller rooms by tile at `[(300 + 2 (k % 50)) 16, 24 floor(k / 50)]`. They use the `interior` camera preset (the art bible's interior rig, following the hero inside the room) | overworld |
 | 400-409 | sword yard | hero |
 | 410-419 | overworld enemy field | foes-overworld |
 | 420-429 | dungeon enemy and boss rooms | foes-dungeon |

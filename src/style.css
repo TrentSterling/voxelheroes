@@ -126,6 +126,42 @@ body {
   pointer-events: none;
 }
 
+#load-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  color: #f2ecd8;
+}
+
+#load-card[hidden] {
+  display: none;
+}
+
+#load-card-art {
+  max-width: min(640px, 90%);
+  max-height: 60%;
+  image-rendering: pixelated;
+}
+
+#load-card-title {
+  margin: 0;
+  font: 700 28px var(--pixel, sans-serif);
+  letter-spacing: 0.04em;
+}
+
+#load-card-text {
+  margin: 0;
+  max-width: 36em;
+  font: 15px var(--pixel, sans-serif);
+  color: #bdb6a0;
+}
+
 #mute {
   pointer-events: auto;
   font: 600 13px var(--pixel);

@@ -28,6 +28,7 @@ import {
   subjectFor,
 } from '../core/camera.js';
 import { world, currentScreen } from '../world/world.js';
+import { loadCardView } from '../ui/loadcard.js';
 import { allAreas } from '../world/areas.js';
 import { edgeReport } from '../world/links.js';
 import { listTilesets, registerTile } from '../world/tiles.js';
@@ -308,6 +309,8 @@ export function installTestHook({ update, render }) {
         flags: [...state.flags],
         inventory: JSON.parse(JSON.stringify(state.inventory)),
         overlay: overlayVisible(),
+        loadCard: loadCardView(),
+        loadedArea: world.loaded,
         dialog: dialogOpen(),
         particles: liveParticles(),
         time: +state.time.toFixed(3),

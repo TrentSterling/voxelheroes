@@ -5,8 +5,10 @@
 
 export const world = {
   overworldScreen: [16, 16],
-  areaScreens: [4, 4],
-  areas: [7, 5],
+  // The smaller world (spec Q25, docs/PLAN.md "Scope"): 4 x 3 areas of 3 x 3
+  // screens, about 108 screens, in place of the spec's 7 x 5 areas of 4 x 4.
+  areaScreens: [3, 3],
+  areas: [4, 3],
   dungeonRoom: [16, 12],
   dungeonFloor: [14, 10],
   sideWallInset: 0.5,
@@ -18,8 +20,15 @@ export const world = {
 
 // Camera poses live in the art bible and src/core/camera.js; this is how each follows.
 export const camera = {
-  follow: { A: 'hero', B: 'screen', C: 'screen', D: 'hero' },
-  bossHeight: 17.5,
+  // 'hero': the subject is the hero (clamped to the area, or to a room's rows);
+  // 'screen': held on the screen, slides; 'room': fixed on the room centre, slides.
+  follow: { A: 'hero', B: 'screen', C: 'screen', D: 'hero', dungeon: 'room', 'dungeon-big': 'hero', boss: 'hero', interior: 'hero' },
+  // Follow rigs in rooms (art bible 9): frame rows at 720p the north wall's top
+  // edge stays above (north) and the black south wall's top below (south);
+  // wall is the walls' height and inset the side walls' inner face from the
+  // room edge, in tiles.
+  roomClamp: { north: 16, south: 659, row: 720, wall: 2, inset: 1.5 },
+  bossHeight: 15.103, // the large-room rig (art bible 3, DGN_BIG)
   interiorMinHeight: 8,
   bossIntro: { in: 1.5, out: 0.5, zoom: 0.3 },
 };

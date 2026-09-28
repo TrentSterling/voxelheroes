@@ -17,6 +17,7 @@ import { placeAtStart, loadGame } from './systems/flow.js';
 import { applyScreenAmbience, syncScreenVisibility, shownRect } from './systems/transitions.js';
 import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
 import { initOverlay } from './ui/overlay.js';
+import { initLoadCard } from './ui/loadcard.js';
 import { installTestHook } from './debug/testhook.js';
 
 mountRenderer(document.getElementById('game'));
@@ -26,6 +27,7 @@ look.bind({ hero: player, cameraPreset: currentCameraPreset, cameraPresetName: c
 initInput();
 input.onGesture(initAudio); // browsers only allow sound after a key press or tap
 initOverlay();
+initLoadCard();
 initParticles(scene);
 world.build(scene, allAreas());
 scene.add(player.object);

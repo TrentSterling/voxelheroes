@@ -3,8 +3,10 @@
 // second registerCameraPreset silently replaces the first). Contracts owns
 // this file; world owns core/camera.js.
 //
-//   'boss'        the boss arena (gameplay spec 4.2): pitch 41.5, fov 28,
-//                 height TUNING.camera.bossHeight (17.5), fixed on the arena.
+//   'boss'        the boss arena: the art bible's large-room rig (section 3,
+//                 DGN_BIG: pitch 52.978, fov 37.07, height
+//                 TUNING.camera.bossHeight, 15.103), following the hero,
+//                 clamped to the arena (section 9).
 //                 Arena screens say camera: 'boss' (D1's and foes-dungeon's
 //                 test arena alike).
 //   'boss-intro'  the intro's push-in: the same lens TUNING.camera.bossIntro.zoom
@@ -20,13 +22,6 @@ import { registerCameraPreset } from '../core/camera.js';
 
 const C = TUNING.camera;
 
-registerCameraPreset('boss', { label: 'Boss arena', selectable: false, pitch: 41.5, fov: 28, height: C.bossHeight, lead: 0, fixed: true });
-registerCameraPreset('boss-intro', {
-  label: 'Boss intro',
-  selectable: false,
-  pitch: 41.5,
-  fov: 28,
-  height: C.bossHeight * (1 - C.bossIntro.zoom),
-  lead: 0,
-  fixed: true,
-});
+const BIG = { pitch: 52.978, fov: 37.07, lead: 0, follow: true, fixed: false };
+registerCameraPreset('boss', { label: 'Boss arena', selectable: false, ...BIG, height: C.bossHeight });
+registerCameraPreset('boss-intro', { label: 'Boss intro', selectable: false, ...BIG, height: C.bossHeight * (1 - C.bossIntro.zoom) });

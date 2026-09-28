@@ -24,6 +24,8 @@ The signature things a player of the original would expect to find (with the gam
 
 ## Scope: the smaller world
 
+The compact scope below overrides the gameplay spec's full-size sections (4.1, 5.3, 6.8, 6.9, 10.5).
+
 Trent chose a smaller world (spec Q25, 2026-09-28): fewer, smaller areas and dungeons, so a complete game from title screen to ending lands sooner. Mechanics and look still follow the original 1:1. Where the gameplay spec gives full-size counts (sections 4.1, 5.3, 6.8, 6.9, 10.5), these win:
 
 | | Original (spec) | Ours |
@@ -35,7 +37,7 @@ Trent chose a smaller world (spec Q25, 2026-09-28): fewer, smaller areas and dun
 | Swords | 12 to 16 | about 8 to 10 |
 | Places | castle, 3 villages, 3 inns, lone houses, graveyard, volcano, lost woods | castle, 1 village (shops, smith, inn), a second inn, graveyard, a small lost woods (5 exits), caves |
 
-`TUNING.world.areaScreens` becomes [3, 3] and `areas` [4, 3] when the overworld stream builds its areas.
+`TUNING.world.areaScreens` is [3, 3] and `areas` [4, 3] (set in P0; [CONTRACTS.md](CONTRACTS.md) carries the numbers).
 
 ## Milestones
 

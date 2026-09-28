@@ -565,6 +565,13 @@ function disposeMeshes(scene, list) {
   }
 }
 
+// Free a screen's terrain meshes (its area is unloaded; world.loadArea).
+export function disposeScreenTerrain(world, screen) {
+  disposeMeshes(world.scene, screen.meshes ?? []);
+  screen.meshes = [];
+  screen.built = null;
+}
+
 // (Re)build a screen's terrain meshes. They go into world.scene and screen.meshes as
 // { name, mesh, layer } (fixtures included), which is what shows and hides a screen.
 export function buildScreenTerrain(world, screen) {

@@ -1,5 +1,11 @@
 // Moving between screens and areas, and what happens on arrival.
 //
+//   follow With a follow preset (A, D) outdoors, the camera tracks the hero
+//          across screen lines, so a screen change inside an area is only
+//          bookkeeping (followChange): no slide, no input lock. It fires when
+//          the hero's centre is TUNING.scroll.followDeadband (0.5) tiles past
+//          the edge, a 1-tile dead band against flip-flopping. Via 'follow'.
+//          A screen with scroll: 'flip' (and every room) slides instead.
 //   slide  The hero walks off an edge into another screen of the same area:
 //          the camera slides over (SLIDE_TIME, ease in-out) while the hero
 //          is carried a tile in (SLIDE_STEP from the edge; in a room,
@@ -8,9 +14,10 @@
 //          bottom edge, which is held on the screen's edge (southLine).
 //   fade   The hero walks off an edge into another area, or takes a warp
 //          (doorway, stairs): fade to black, move, fade back in. Mode 'warp'.
-//          Arriving in another area is a load: FADE_OUT, AREA_HOLD seconds
-//          of black while the loading card shows ('area-enter' starts it),
-//          FADE_IN. A warp inside one area (stairs between the floors of a
+//          Arriving in another area is a load: FADE_OUT, loadHold() seconds
+//          of black while the loading card shows ('area-enter' starts it;
+//          ui/loadcard.js), FADE_IN. At black the old area is freed and the
+//          new one built (world.loadArea): only the current area exists. A warp inside one area (stairs between the floors of a
 //          dungeon, warp tiles) fades out and in over WARP_FADE each, with
 //          no card.
 // Gameplay pauses in both modes; only the hero's walk animates. Input is
@@ -24,24 +31,26 @@
 //   'area-enter'   { area, from, via }   another area is reached, at the start
 //                                        of the black hold (via 'edge' | 'warp')
 //   'room-enter'   { area, screen, via } every screen or room entered, once its
-//                                        spawns are in (via 'slide' | 'edge' |
+//                                        spawns are in (via 'slide' | 'follow' | 'edge' |
 //                                        'warp' | 'start' | 'respawn' | 'load' | 'teleport')
 //   'screen-enter' { screen }            just before 'room-enter' (the M1 name)
 //   'warp'         { dest }              a warp starts; dest { screen, x, z, yaw }
 //
-// Drawing: in room areas only the current room is drawn (both rooms during a
-// slide), so everything outside it is black; elsewhere the screens of the
-// hero's group of joined areas (world/links.js) are drawn so the low cameras
-// see the land beyond the screen, except those wholly south of the current
-// screen: the camera never looks there, and the trees on the next screen's
-// first row would otherwise poke up at the frame's bottom edge.
+// Drawing: only the current area is built (world.loadArea). In room areas
+// only the current room is drawn (both rooms during a slide), so everything
+// outside it is black. Outdoors a follow preset draws every screen of the
+// area; a hold preset draws them all except those wholly south of the
+// current screen: the camera never looks there, and the trees on the next
+// screen's first row would otherwise poke up at the frame's bottom edge.
 import { state, registerSaveField } from '../core/state.js';
+import { TUNING } from '../core/tuning.js';
 import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
 import { applyLighting } from '../core/renderer.js';
 import {
   CAMERA_PRESETS,
+  followsHero,
   lensFor,
   playerCameraPresets,
   setCameraPreset,
@@ -53,7 +62,6 @@ import {
 } from '../core/camera.js';
 import { world, currentScreen, WALL_INSET } from '../world/world.js';
 import { DIRS } from '../world/grid.js';
-import { areaGroups } from '../world/links.js';
 import { clearScreenEntities } from '../entities/manager.js';
 import { player } from '../entities/player.js';
 import { showBanner } from '../ui/banner.js';
@@ -62,14 +70,24 @@ import { setFade } from '../ui/overlay.js';
 import { clearDistance } from './physics.js';
 import { spawnScreen } from './spawner.js';
 
-export const SLIDE_TIME = 0.8; // seconds for the slide to the next screen or room (48 ticks)
-export const SLIDE_STEP = 1; // tiles the hero ends up inside the next screen or area
-export const ROOM_STEP = 1; // in a room: tiles inside the floor, past the doorway's wall
-export const FADE_OUT = 0.25; // a load (into another area): seconds to black
-export const AREA_HOLD = 1; // a load: seconds of black for the loading card
-export const FADE_IN = 0.25; // a load: seconds back from black (1.5 s, 90 ticks, in all)
-export const WARP_FADE = 0.3; // a warp inside one area: seconds to black, and again back
+const S = TUNING.scroll;
+const L = TUNING.load;
+export const SLIDE_TIME = S.duration; // seconds for the slide to the next screen or room (0.8, 48 ticks)
+export const SLIDE_STEP = S.carry; // tiles the hero ends up inside the next screen or area
+export const ROOM_STEP = S.carry; // in a room: tiles inside the floor, past the doorway's wall
+export const FADE_OUT = L.fade; // a load (into another area): seconds to black
+export const AREA_HOLD = L.cardMin; // a load: seconds of black for the loading card (art on)
+export const FADE_IN = L.fade; // a load: seconds back from black (1.5 s, 90 ticks, in all)
+export const WARP_FADE = L.innerFade; // a warp inside one area: seconds to black, and again back
 export const WARP_HOLD = 0; // a warp inside one area: seconds of black in between
+
+// A load's black hold: the card's time, shorter with loading art off
+// (settings.loadingArt), and never so long that the load passes maxTotal.
+export const loadHold = () => Math.min(state.settings.loadingArt === false ? L.cardOff : L.cardMin, L.maxTotal - 2 * L.fade);
+
+// Whether the camera follows the hero on this screen (A or D outdoors, and
+// the large-room and interior rigs) rather than holding and sliding.
+export const followsOn = (screen) => followsHero(CAMERA_PRESETS[presetNameFor(screen)], screen);
 
 // The preset a screen is seen with: its own (dungeons fix one) or the player's.
 export const presetNameFor = (screen) => screen.camera ?? state.settings.camera;
@@ -77,6 +95,7 @@ export const presetNameFor = (screen) => screen.camera ?? state.settings.camera;
 // Put the hero at local tile coordinates (x, z) of a screen and aim the
 // camera at the hero within that screen.
 export function placeAt(screen, x, z, yaw = player.yaw) {
+  world.loadArea(screen.area.id); // only the current area is built
   state.screenKey = screen.key;
   player.x = screen.x0 + x;
   player.z = screen.z0 + z;
@@ -140,14 +159,12 @@ export function enterScreen(via = 'teleport') {
 }
 
 // ---------------------------------------------------------------- drawing
-let groups = null; // area id -> Set of the areas drawn with it
 let byArea = null; // area id -> its screens
 const shown = new Set();
 
 // The screens drawn while the hero is on `screen` (see the top).
 function around(screen) {
-  if (!groups) {
-    groups = areaGroups(world);
+  if (!byArea) {
     byArea = new Map();
     for (const s of world.screens.values()) {
       if (!byArea.has(s.area.id)) byArea.set(s.area.id, []);
@@ -155,10 +172,8 @@ function around(screen) {
     }
   }
   if (screen.area.rooms) return [screen];
-  const out = [];
-  for (const area of groups.get(screen.area.id))
-    if (!area.rooms) for (const s of byArea.get(area.id)) if (s.z0 < screen.z1) out.push(s);
-  return out;
+  const all = byArea.get(screen.area.id);
+  return followsOn(screen) ? all : all.filter((s) => s.z0 < screen.z1);
 }
 
 // Draw the screens around `screen`, and during a slide also those around
@@ -214,6 +229,32 @@ export function southLine(screen) {
   return p.fixed && screen.area.rooms ? 0 : southReach(p);
 }
 
+// The screen past `from`'s edge `dir`, level with the hero, or null.
+function neighbour(from, dir) {
+  const [ux, uz] = DIRS[dir];
+  const past = 1e-6; // a hair past the west and north edges (x0 and z0 belong to this screen)
+  const next = world.screenAt(ux > 0 ? from.x1 : ux < 0 ? from.x0 - past : player.x, uz > 0 ? from.z1 : uz < 0 ? from.z0 - past : player.z);
+  return next && next !== from ? next : null;
+}
+
+// A follow change (no slide) rather than a slide or a load: following on
+// both screens, same area.
+const softEdge = (from, next) => !!next && next.area === from.area && followsOn(from) && followsOn(next);
+
+// The edge of screen s the hero has crossed ('north', 'south', 'east',
+// 'west'), or null. Where a follow change waits for the dead band it takes
+// his centre that far past the edge; otherwise it is the edge itself (the
+// south line at a south edge).
+export function edgeCrossed(s, x = player.x, z = player.z) {
+  const band = S.followDeadband;
+  const soft = (dir) => softEdge(s, neighbour(s, dir));
+  if (x < s.x0) return !soft('west') || x < s.x0 - band ? 'west' : null;
+  if (x >= s.x1) return !soft('east') || x >= s.x1 + band ? 'east' : null;
+  if (z < s.z0) return !soft('north') || z < s.z0 - band ? 'north' : null;
+  if (z >= s.z1 - southLine(s)) return !soft('south') ? 'south' : z >= s.z1 + band ? 'south' : null;
+  return null;
+}
+
 // The hero's centre has left the current screen through `dir` ('north',
 // 'south', 'east' or 'west'), or reached its south line. Slide to the screen
 // past that edge, level with him, or fade into that screen's area. Returns
@@ -221,10 +262,10 @@ export function southLine(screen) {
 export function crossEdge(dir) {
   const from = currentScreen();
   if (!from || !DIRS[dir]) return false;
-  const [ux, uz] = DIRS[dir];
-  const past = 1e-6; // a hair past the west and north edges (x0 and z0 belong to this screen)
-  const next = world.screenAt(ux > 0 ? from.x1 : ux < 0 ? from.x0 - past : player.x, uz > 0 ? from.z1 : uz < 0 ? from.z0 - past : player.z);
-  if (!next || next === from) return false;
+  const [, uz] = DIRS[dir];
+  const next = neighbour(from, dir);
+  if (!next) return false;
+  if (softEdge(from, next)) return followChange(next);
   // This tick's step (or a knock) may have taken him a little past the south
   // line; he leaves from the line, so no frame shows him cut off.
   if (uz > 0) player.z = Math.min(player.z, from.z1 - southLine(from));
@@ -252,6 +293,17 @@ function landing(next, dir) {
   const past = ux > 0 ? player.x - next.x0 : ux < 0 ? next.x1 - player.x : uz > 0 ? player.z - next.z0 : next.z1 - player.z;
   const step = clearDistance(player, ux, uz, Math.max(0, dist - past));
   return { x: player.x + ux * step, z: player.z + uz * step };
+}
+
+// ---------------------------------------------------------------- follow change
+// The hero is on `next` now; the camera, which follows him, does not move.
+function followChange(next) {
+  clearScreen();
+  world.regrow(next);
+  state.screenKey = next.key;
+  showScreens(next);
+  enterScreen('follow');
+  return true;
 }
 
 // ---------------------------------------------------------------- slide
@@ -301,7 +353,7 @@ export function startFade(dest, { via = 'warp', walkTo = null } = {}) {
     from,
     areaChange,
     out: areaChange ? FADE_OUT : WARP_FADE,
-    hold: areaChange ? AREA_HOLD : WARP_HOLD,
+    hold: areaChange ? loadHold() : WARP_HOLD,
     in: areaChange ? FADE_IN : WARP_FADE,
     walk: walkTo ? { x0: player.x, z0: player.z, x1: walkTo.x, z1: walkTo.z } : null,
     moved: false,
