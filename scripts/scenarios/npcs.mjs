@@ -158,4 +158,16 @@ export default async function (t) {
     return { gained: h.state.forage.wildflower - n0 };
   });
   t.expect(w.none || w.gained === 1, `cutting a flower tile picks one wildflower, not two from the same tile (${JSON.stringify(w)})`);
+
+  // a night at the inn starts the next morning
+  const inn = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    h.state.clock.min = 21 * 60;
+    const day0 = h.state.clock.day;
+    h.game.vitals.addCoins(50);
+    const r = h.game.services.innRest('inn-1');
+    await h.tick();
+    return { ok: r.ok, reason: r.reason, day: h.state.clock.day - day0, min: h.state.clock.min };
+  });
+  t.expect(inn.ok && inn.day === 1 && Math.floor(inn.min) === 6 * 60, `resting at the inn starts the next day at 6:00 (${JSON.stringify(inn)})`);
 }
