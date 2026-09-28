@@ -8,7 +8,16 @@
 // Point lights: three.js shades every lit fragment with every point light in the scene, and the world
 // keeps every screen built, so lamps far from the camera are switched off (their layer 0 bit is
 // cleared, which leaves `visible` to content). Lamps never cast shadows.
+//
+// The lit shaders compile one variant per distinct COUNT of currently-enabled point lights (three
+// bakes NUM_POINT_LIGHTS into the program), so simply toggling lamps on and off as the hero walks
+// recompiles every material the first time a new count is seen. MAX_LIT_LAMPS zero-intensity padding
+// lights (below) keep that count constant: cullLamps enables at most MAX_LIT_LAMPS real lamps and
+// tops the rest up with padding, so the enabled count is always exactly MAX_LIT_LAMPS and the
+// programs compile once, ever.
 import * as THREE from 'three';
+
+export const MAX_LIT_LAMPS = 8; // "keep rooms to a few lamps" (above); higher than any real room needs
 
 const _v = new THREE.Vector3();
 const _x = new THREE.Vector3();
@@ -29,6 +38,18 @@ export class LightRig {
     scene.add(this.hemi, this.sun, this.sun.target);
     this.lamps = [];
     this.lampScanAge = Infinity;
+    // Zero-intensity padding lights: always in the scene, layer 0 disabled until cullLamps tops the
+    // enabled count up to MAX_LIT_LAMPS. Contribute nothing (intensity 0) but hold a light "slot" so
+    // the program cache key never changes.
+    this.padLamps = Array.from({ length: MAX_LIT_LAMPS }, () => {
+      const l = new THREE.PointLight(0xffffff, 0, 0.001, 2);
+      l.name = 'lamp-pad';
+      l.castShadow = false;
+      l.userData.isPad = true; // scanLamps skips these: they are not real lamps to cull
+      l.layers.disable(0);
+      scene.add(l);
+      return l;
+    });
   }
 
   // Colours, intensities and the shadow setup of a look (L = look.lights), capped by quality.
@@ -76,24 +97,33 @@ export class LightRig {
     this.sun.target.updateMatrixWorld();
   }
 
-  // Switch point lights on only near the view (rect in world x / z, grown by `margin`).
+  // Switch point lights on only near the view (rect in world x / z, grown by `margin`), capped to
+  // MAX_LIT_LAMPS (nearest first) and topped up with padding lights so the enabled count never
+  // changes (see the class comment: keeps the lit shaders' program count from recompiling).
   cullLamps(rect, margin = 2) {
     if (++this.lampScanAge > 30) this.scanLamps();
+    const cx = (rect.x0 + rect.x1) / 2;
+    const cz = (rect.z0 + rect.z1) / 2;
+    const near = [];
     for (const l of this.lamps) {
       if (!l.parent) continue;
       l.castShadow = false;
       l.getWorldPosition(_v);
-      const near = _v.x > rect.x0 - margin && _v.x < rect.x1 + margin && _v.z > rect.z0 - margin && _v.z < rect.z1 + margin;
-      if (near) l.layers.enable(0);
+      const inRange = _v.x > rect.x0 - margin && _v.x < rect.x1 + margin && _v.z > rect.z0 - margin && _v.z < rect.z1 + margin;
+      if (inRange) near.push({ l, d2: (_v.x - cx) ** 2 + (_v.z - cz) ** 2 });
       else l.layers.disable(0);
     }
+    near.sort((a, b) => a.d2 - b.d2);
+    const on = Math.min(near.length, MAX_LIT_LAMPS);
+    near.forEach(({ l }, i) => l.layers[i < on ? 'enable' : 'disable'](0));
+    this.padLamps.forEach((l, i) => l.layers[i < MAX_LIT_LAMPS - on ? 'enable' : 'disable'](0));
   }
 
   scanLamps() {
     this.lampScanAge = 0;
     this.lamps.length = 0;
     this.scene.traverse((o) => {
-      if (o.isPointLight || o.isSpotLight) this.lamps.push(o);
+      if ((o.isPointLight || o.isSpotLight) && !o.userData.isPad) this.lamps.push(o);
     });
   }
 }

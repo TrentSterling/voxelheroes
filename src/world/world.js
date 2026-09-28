@@ -628,8 +628,14 @@ export class World {
     if (!obj) return null;
     obj.traverse((o) => {
       if (!o.isMesh || o.userData.noShadow) return;
-      o.castShadow = true;
       o.receiveShadow = true;
+      // Flat decor (moss, cracks, rune circles, puddle decals: under 0.1 units of local geometry
+      // height) casts no shadow anyone could see, so it skips the shadow-map draw entirely; geometry
+      // is shared across placements of the same prop, so the bounding-box compute is amortised.
+      const geo = o.geometry;
+      const box = geo?.boundingBox ?? (geo?.computeBoundingBox(), geo?.boundingBox);
+      const flat = box && box.max.y - box.min.y < 0.1;
+      o.castShadow = !flat;
     });
     this.scene.add(obj);
     screen.props.set(`${x},${z}`, obj);

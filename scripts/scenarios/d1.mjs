@@ -1,7 +1,8 @@
 // D1 and the overworld slice (M2 stream 3; gameplay spec 5, 6.1-6.9, the
-// compact scope of docs/PLAN.md). A new game with the prologue starts in the
-// castle courtyard, where the king arms the hero; the bot walks the road
-// (Castle Road, Mossbrook, Barrowfield) to the barrow door, then plays D1:
+// compact scope of docs/PLAN.md). A new game with the prologue starts in
+// Mossbrook Square; the bot walks south through Castle Road to Crownhold,
+// where the king arms the hero, then back north and west (Mossbrook,
+// Barrowfield) to the barrow door, then plays D1:
 // the kill-all key room and its lock-in shutters, the map chest, the
 // push-block puzzle, the small-key doors, the boomerang after a lock-in
 // fight, a boomerang wall switch, the dark room, the blade traps, the second
@@ -15,7 +16,7 @@
 // the barrow outside, a D1 room, the boss fight.
 import { clearFoes } from '../lib/helpers.mjs';
 
-export const description = 'D1 and the overworld slice: castle start and the king, the road through Mossbrook to the barrow, every D1 room, keys, doors, switches, boomerang, boss, orb.';
+export const description = 'D1 and the overworld slice: the Mossbrook start, the road south to the king at Crownhold and back, then west through Mossbrook to the barrow, every D1 room, keys, doors, switches, boomerang, boss, orb.';
 
 const near = (a, b, eps = 0.1) => Math.abs(a - b) <= eps;
 
@@ -87,10 +88,10 @@ export default async function d1(t) {
   await install(t);
   let s;
 
-  // ---------------------------------------------------------------- a new game in the castle
+  // ---------------------------------------------------------------- a new game in Mossbrook
   await t.step(0.3);
   s = await snap(t);
-  t.expect(s.mode === 'title' && s.area === 'ow-4-3' && s.screenName === 'Crownhold Courtyard', 'the title stands over the castle courtyard, where the game starts');
+  t.expect(s.mode === 'title' && s.area === 'v1' && s.screenName === 'Mossbrook Square', 'the title stands over Mossbrook Square, where the game starts');
   let r = await t.eval(() => {
     const g = window.__voxelHeroes.game;
     g.progress.startNewGame({ name: 'Bo', class: 'balanced', prologue: true });
@@ -99,7 +100,15 @@ export default async function d1(t) {
   });
   await t.step(0.5);
   s = await snap(t);
-  t.expect(s.mode === 'play' && s.screenName === 'Crownhold Courtyard' && near(s.lx, 8) && near(s.lz, 9) && r.equipped === null, 'a new game (prologue) starts unarmed in the courtyard, before the king');
+  t.expect(s.mode === 'play' && s.screenName === 'Mossbrook Square' && near(s.lx, 8) && near(s.lz, 14) && r.equipped === null, 'a new game (prologue) starts unarmed in Mossbrook Square');
+
+  // ---------------------------------------------------------------- south to Crownhold: the king arms the hero
+  await t.eval(() => window.__d1.safe());
+  await go(t, 'south', 'Mossbrook Lane');
+  await go(t, 'south', 'Castle Road');
+  await go(t, 'south', 'Crownhold Courtyard');
+  s = await snap(t);
+  t.expect(s.area === 'ow-4-3', 'south of Castle Road lies Crownhold, the king who sent for the hero');
   await t.walkTo(7.5, 6.7);
   await t.eval(() => window.__voxelHeroes.game.hero.hero.setFacing('north'));
   await t.tap('sword');
@@ -111,12 +120,12 @@ export default async function d1(t) {
   r = await t.eval(() => ({ equipped: window.__voxelHeroes.state.swords.equipped, shield: window.__voxelHeroes.state.gear.shield, mode: window.__voxelHeroes.state.mode }));
   t.expect(r.equipped === 'blade-start' && r.shield >= 1 && r.mode === 'play', `the king arms the hero: blade and shield (${r.equipped}, shield ${r.shield})`);
 
-  // ---------------------------------------------------------------- the road to the barrow
+  // ---------------------------------------------------------------- back through Mossbrook, then west to the barrow
   await t.eval(() => window.__d1.safe());
   await go(t, 'north', 'Castle Road');
   await go(t, 'north', 'Mossbrook Lane');
   s = await snap(t);
-  t.expect(s.area === 'v1', 'north of the castle road lies Mossbrook (a load into the village)');
+  t.expect(s.area === 'v1', 'north of the castle road lies Mossbrook again');
   await go(t, 'north', 'Mossbrook Square');
   r = await t.eval(() => ['npc-shop', 'npc-smith', 'npc-inn'].map((k) => window.__d1.of(k).length));
   t.expect(r.every((n) => n === 1), 'the square has the shopkeeper, the smith and the innkeeper');

@@ -244,6 +244,13 @@ body {
   color: var(--muted);
 }
 
+.title-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 #start {
   font: 700 18px var(--pixel);
   color: #1c1405;
@@ -257,6 +264,19 @@ body {
 #start:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 var(--gold-deep);
+}
+
+#start-secondary {
+  font: 600 13px var(--pixel);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  padding: 6px 14px 5px;
+  cursor: pointer;
+}
+
+#start-secondary:active {
+  transform: translateY(2px);
 }
 
 .controls {
@@ -476,13 +496,15 @@ body.title-mode #overlay .panel {
   grid-template-areas: 'kicker kicker' 'msg start' 'controls controls';
   align-items: center;
   gap: 10px 24px;
-  background: rgba(10, 18, 14, 0.72);
-  backdrop-filter: blur(3px);
+  /* No backdrop-filter: blurring the live WebGL canvas through the panel every frame is a
+     full-screen GPU blur on top of the post stack. The same frosted-glass read comes from a darker
+     gradient (the tone #overlay's own gradient above already uses), no live blur needed. */
+  background: linear-gradient(180deg, rgba(10, 18, 14, 0.88) 0%, rgba(8, 17, 13, 0.8) 100%);
 }
 body.title-mode #overlay-title { display: none; }
 body.title-mode #overlay .kicker { grid-area: kicker; margin: 0; }
 body.title-mode #overlay-msg { grid-area: msg; max-width: 60ch; }
-body.title-mode #start { grid-area: start; }
+body.title-mode .title-actions { grid-area: start; }
 body.title-mode #overlay .controls { grid-area: controls; display: flex; flex-wrap: wrap; gap: 4px 18px; }
 @media (max-width: 640px) {
   body.title-mode #overlay .panel { grid-template-columns: 1fr; grid-template-areas: 'kicker' 'msg' 'start' 'controls'; }
@@ -491,3 +513,8 @@ body.title-mode #overlay .controls { grid-area: controls; display: flex; flex-wr
 /* tront.xyz About pill: title screen only, so it never covers the touch stick in play */
 body:not(.title-mode) .tront-about { display: none; }
 body.title-mode .tront-about { top: 52px; bottom: auto; }
+/* Title on a touch screen: no pad over the panel, and no keyboard legend */
+@media (pointer: coarse) {
+  body.title-mode #touch { display: none; }
+  body.title-mode #overlay .controls { display: none; }
+}

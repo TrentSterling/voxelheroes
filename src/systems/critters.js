@@ -23,6 +23,12 @@ const GROUND_CHARS = ['.', ',', 'p', 'd', 's']; // grass, flowers, path, dirt, s
 const FLOWER_CHARS = ['.', ',']; // grass and flowers: where butterflies flutter
 const MAX = { butterfly: 3, bird: 2, chicken: 4 };
 const CHIMNEY_Y = 2.95; // tiles above the ground: just over a Mossbrook roof ridge (town.js's house(), WALL_TOP + roof rise)
+// Screens busy enough (market stalls, the throne) to earn a bit more ambient life than the fields.
+const HUB_SCREENS = new Set(['Mossbrook Square', 'Crownhold Courtyard']);
+const hubBonus = (screen) => (HUB_SCREENS.has(screen.name) ? 1 : 0);
+// Farmland gets chickens and chimney smoke same as the village: v1 itself, or any screen named
+// "... Pasture" (Crownhold's West/East Pasture).
+const isFarmland = (screen) => screen.area.id === 'v1' || /pasture/i.test(screen.name ?? '');
 
 let live = []; // every critter and chimney timer on the current screen
 
@@ -87,7 +93,8 @@ function houseClusters(screen) {
 function spawnButterflies(screen, rand) {
   const spots = tilesWhere(screen, FLOWER_CHARS);
   if (!spots.length) return;
-  const n = Math.min(spots.length, MAX.butterfly, 2 + Math.floor(rand() * 2));
+  const bonus = hubBonus(screen);
+  const n = Math.min(spots.length, MAX.butterfly + bonus, 2 + bonus + Math.floor(rand() * 2));
   for (const [lx, lz] of pickSpots(spots, rand, n)) {
     const ax = screen.x0 + lx + 0.5;
     const az = screen.z0 + lz + 0.5;
@@ -102,7 +109,8 @@ function spawnButterflies(screen, rand) {
 function spawnBirds(screen, rand) {
   const spots = tilesWhere(screen, GROUND_CHARS);
   if (!spots.length) return;
-  const n = Math.min(spots.length, MAX.bird, Math.floor(rand() * (MAX.bird + 1)));
+  const bonus = hubBonus(screen);
+  const n = Math.min(spots.length, MAX.bird + bonus, Math.floor(rand() * (MAX.bird + bonus + 1)));
   for (const [lx, lz] of pickSpots(spots, rand, n)) {
     const x = screen.x0 + lx + 0.5;
     const z = screen.z0 + lz + 0.5;
@@ -152,7 +160,7 @@ function spawnScreen(screen) {
   const rand = rng(seedOf(screen.key));
   spawnButterflies(screen, rand);
   spawnBirds(screen, rand);
-  if (screen.area.id === 'v1') {
+  if (isFarmland(screen)) {
     spawnChickens(screen, rand);
     spawnChimneys(screen, rand);
   }

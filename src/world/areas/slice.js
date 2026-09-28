@@ -3,8 +3,8 @@
 // tiles, edge to edge, and the secret cave under Cliff Hollow.
 //
 //        col 3 (x 6-8)          col 4 (x 9-11)
-//   row 2   ow-3-2 Barrowfield  v1 Mossbrook (village)
-//   row 3                       ow-4-3 Crownhold (the castle; the game starts here)
+//   row 2   ow-3-2 Barrowfield  v1 Mossbrook (village; the game starts in its Square)
+//   row 3                       ow-4-3 Crownhold (the castle; the king who sent for you)
 //
 // The road: Crownhold Courtyard (1,1) -> Castle Road (1,0) -> Mossbrook Lane
 // (1,2) -> the Square (1,1) -> West Gate (0,1) -> Barrow Road (2,1) ->
@@ -16,15 +16,16 @@
 // Markers: G = a spawn group of the area's roster (entities/spawn-group.js).
 // People stand by spawnsAt (entities/npcs/slice.js). Tiles: world/tiles/
 // overworld.js and town.js (H house, h its door, M castle wall, m gate).
-import { registerArea } from '../areas.js';
+import { registerArea, START } from '../areas.js';
 import { registerPlace } from '../../game/places.js';
 import { registerPrologue } from '../../game/progress.js';
 
 // The D1 door and the spot outside it (CONTRACTS 8.10: both pinned).
 export const D1_ENTRANCE = { area: 'd1', screen: [3, 9], x: 8, z: 10.4, yaw: Math.PI };
 export const D1_EXIT = { area: 'ow-3-2', screen: [1, 2], x: 8, z: 9, yaw: 0 };
-// Where a new game starts: the castle courtyard, facing the king.
-export const CASTLE_START = { area: 'ow-4-3', screen: [1, 1], x: 8, z: 9, yaw: Math.PI };
+// Where the king waits: just past the courtyard gate (registerPlace 'castle' below).
+// A new game starts at areas.js's START (Mossbrook) instead; there is no second copy of it here.
+const CROWNHOLD_GATE = { area: 'ow-4-3', screen: [1, 1], x: 8, z: 9, yaw: Math.PI };
 
 const field = (of, count = [1, 2], extra = {}) => ({ type: 'group', of, count, ...extra });
 
@@ -64,6 +65,9 @@ registerArea({
     '1,0': {
       name: "Castle Road",
       spawns: {},
+      spawnsAt: {
+        '12,10': { type: 'npc', name: 'Cobb', palette: { tunic: 0x5a7a4a, tunicLight: 0x7a9a6a, cap: 0x8a6a3a }, wander: 2, lines: ['Flour for the castle kitchens. Long walk on a hot day.'] },
+      },
       rows: [
         'TTTTTTppppTTTTTT',
         'TTT...pppp...TTT',
@@ -129,16 +133,16 @@ registerArea({
       name: "Crownhold Courtyard",
       spawns: {},
       spawnsAt: {
-        '7,5': { type: 'npc-king' },
-        '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 0, schedule: 'always', lines: ['The king has been waiting for you.', 'Mossbrook is north, up the road past the gate.'] },
-        '10,7': { type: 'npc', name: 'Guard Pell', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 0, schedule: 'always', lines: ['West of the village the old barrow has woken.', 'Things crawl out of it at night. Mind yourself.'] },
+        '7,5': { type: 'npc-king', wander: 1 },
+        '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 2, schedule: 'always', lines: ['The king has been waiting for you.', 'Straight ahead. He is expecting you.'] },
+        '10,7': { type: 'npc', name: 'Guard Pell', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 2, schedule: 'always', lines: ['West of the village the old barrow has woken.', 'Things crawl out of it at night. Mind yourself.'] },
       },
       rows: [
         'TTTTTT....TTTTTT',
         'TMMMMMMmmMMMMMMT',
         'TM,,,..pp..,,,MT',
-        'TM.MMMMMMMMMM.MT',
-        'TM.MMMMMMMMMM.MT',
+        'TM.MMMM..MMMM.MT',
+        'TM.MMMM..MMMM.MT',
         'TM............MT',
         'TM............MT',
         'TM..f..pp..f..MT',
@@ -356,6 +360,7 @@ registerArea({
         '13,9': { type: 'npc', name: 'Old Tobin', personality: 'grumpy', palette: { tunic: 0x5a5a6a, tunicLight: 0x7a7a8a, hair: 0xc8c8c8, cap: 0x3a3a44, extras: ['beard', ['hood', 0x6a4a34]] }, lines: ['Another adventurer. Wonderful.', 'Stay off my bench.'] },
         '5,14': { type: 'npc', name: 'Nell', personality: 'gossip', palette: { tunic: 0xa04a7a, tunicLight: 0xc06a9a, hair: 0x3a2418, cap: 0xe8d8b0, extras: ['bun', ['scarf', 0x3a8a9a]] }, lines: ['Oh! You must be the one the king sent for!', 'Everyone is talking about you. Well, I am.'] },
         '12,14': { type: 'npc', name: 'Rowan', personality: 'worker', palette: { tunic: 0x7a5a3a, tunicLight: 0x9a7a5a, hair: 0x8a3a20, cap: 0x5a7a3a, extras: ['straw-hat'] }, lines: ['Mind the fence posts, I just set them.'] },
+        '2,4': { type: 'npc', name: 'Tam', palette: { tunic: 0x4a7a4a, tunicLight: 0x6a9a6a }, lines: ['Cut the bushes! Sometimes there are coins under them.'] },
       },
       rows: [
         'TTTTTTppppTTTTTT',
@@ -421,7 +426,6 @@ registerArea({
     '1,2': {
       name: "Mossbrook Lane",
       spawnsAt: {
-        '3,8': { type: 'npc', name: 'Tam', palette: { tunic: 0x4a7a4a, tunicLight: 0x6a9a6a }, lines: ['Cut the bushes! Sometimes there are coins under them.'] },
         '13,4': { type: 'npc', name: 'Old Wick', lines: ['They say the barrow west of here keeps a throwing blade', 'that comes back to your hand.'] },
       },
       rows: [
@@ -713,8 +717,8 @@ registerArea({
   },
 });
 
-registerPlace({ id: 'castle', name: 'Crownhold Castle', kind: 'castle', order: 10, spot: CASTLE_START });
+registerPlace({ id: 'castle', name: 'Crownhold Castle', kind: 'castle', order: 10, spot: CROWNHOLD_GATE });
 registerPlace({ id: 'v1', name: 'Mossbrook', kind: 'village', order: 20, spot: { area: 'v1', screen: [1, 2], x: 8, z: 12, yaw: Math.PI } });
 registerPlace({ id: 'inn-1', name: 'The Mossy Kettle', kind: 'inn', order: 21, spot: { area: 'v1', screen: [1, 1], x: 5.5, z: 10, yaw: 0 } });
 registerPlace({ id: 'cave-barrow', name: 'Hollow Cave', kind: 'cave', order: 60, spot: { area: 'ow-3-2', screen: [0, 0], x: 6.5, z: 5.6, yaw: 0 }, area: 'cave-barrow' });
-registerPrologue({ spot: CASTLE_START });
+registerPrologue({ spot: START });

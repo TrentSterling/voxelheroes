@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../constants.js';
 import { state } from '../state.js';
 import { on } from '../events.js';
-import { applyMaterialLook, setFlatMaterials, setWaterTime, materialValues, setSeams } from '../materials.js';
+import { applyMaterialLook, setFlatMaterials, setWaterTime, materialValues, setSeams, getMaterial } from '../materials.js';
 import { LOOK_DAY, LOOK_CRYPT, DOF_PRESETS, QUALITY_LEVELS, QUALITY_ORDER, dofForCamera, mergeLook, fromLegacy } from './presets.js';
 import { gradientEnvironment } from './environment.js';
 import { LightRig, makeLampLightFrom } from './lights.js';
@@ -252,6 +252,36 @@ export function createLook({ renderer, scene, camera }) {
     lastFrame = { dof, focusDistance, exposure: exp, path: Q.post ? 'post' : Q.flat ? 'flat' : 'direct', ms: performance.now() - t0 };
   }
 
+  // Boot warm-up (main.js, behind the title): link every shader program the current scene can
+  // predict before the player can act, via KHR_parallel_shader_compile, so neither the first play
+  // frame nor the first room whose look differs structurally from the start has to stall to compile.
+  // renderer.compileAsync(scene, camera) finds every material already in the scene graph (the voxel
+  // kinds are shared singletons used everywhere, so warming the start screen's meshes warms them
+  // all) and, as a side effect of the render() call inside it that seeds the shadow map's light list,
+  // primes the depth/distance materials three.js generates for shadow-casting objects. Two things the
+  // outdoor start screen never has of its own are added as throwaway, invisible meshes so compile()
+  // (a plain scene.traverse, visibility does not matter) finds them too: the 'fine' and 'prop' kinds
+  // (dungeon floors and stone props, materials.js), which otherwise cold-compile on the first dungeon
+  // entered; and the polished floor's Reflector shader, which otherwise waits for the first room with
+  // reflect > 0 (a crypt).
+  function warmUp() {
+    const rect = { x0: 0, x1: 1, z0: 0, z1: 1 };
+    mirror.update({ enabled: true, strength: 0, blur: 0, tint: [1, 1, 1], rect, floorY: GROUND_Y, width: 2, height: 2 });
+    const stubs = ['fine', 'prop'].map((kind) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001), getMaterial(kind));
+      m.visible = false;
+      scene.add(m);
+      return m;
+    });
+    const done = renderer.compileAsync(scene, camera).catch(() => {});
+    mirror.update({ enabled: false });
+    for (const m of stubs) {
+      scene.remove(m);
+      m.geometry.dispose();
+    }
+    return done;
+  }
+
   // content may narrow the mirror for the current room; it resets on the next screen
   on('screen-enter', () => {
     mirror.override = null;
@@ -283,6 +313,7 @@ export function createLook({ renderer, scene, camera }) {
       Object.assign(bound, opts);
     },
     render,
+    warmUp,
     sampleFrame: (now) => watchdog.sample(now),
     // pin: false lets the frame-time watchdog lower it again (the default pins it, like ?look=)
     setQuality: (level, { pin = true } = {}) => setQuality(level, { pin }),

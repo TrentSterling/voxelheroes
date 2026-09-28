@@ -101,7 +101,7 @@ export default async function contractsM2(t) {
   await t.press('Enter');
   await t.step(1.1);
   s = await t.state();
-  t.expect(s.mode === 'play' && s.screenName === 'Crownhold Courtyard', 'the game starts in the castle courtyard (START, M2)');
+  t.expect(s.mode === 'play' && s.screenName === 'Mossbrook Square', 'the game starts in Mossbrook Square (START, M2)');
   // the checks below play on the M1 fixtures, from the Crossroads
   await t.teleport('Crossroads', 8, 5.5);
   await t.step(0.2);
@@ -407,7 +407,7 @@ export default async function contractsM2(t) {
   t.expect(r.yaws === 'south,east,north,west', 'facingFromYaw: the cardinal nearest a yaw (0 faces south)');
   t.expect(r.set === 'east' && r.facing === 'east' && r.vec.x === 1 && r.vec.z === 0 && r.south === 'south', 'setFacing turns the attack facing (east: +x)');
   t.expect(r.toward === 'north' && r.towardFacing === 'north' && /setFacing: north, east, south, west/.test(r.bad), 'faceToward faces the cardinal nearest a point; setFacing takes only the four');
-  t.expect(near(r.local[0], 8, 0.01) && near(r.local[1], 9, 0.01) && r.full, `position() gives local tiles, at START in the castle courtyard (${r.local})`);
+  t.expect(near(r.local[0], 8, 0.01) && near(r.local[1], 14, 0.01) && r.full, `position() gives local tiles, at START in Mossbrook Square (${r.local})`);
 
   await kb.down('Shift');
   await t.step(DT);
@@ -1270,6 +1270,9 @@ export default async function contractsM2(t) {
     out.camera = h.camera.get();
     S.setSetting('camera', 'A');
     // An applier that throws only warns (expected warning below); the option is still stored.
+    // autosave starts false here (whatever TUNING.options.autosave defaults to) so registering
+    // and then flipping it are each a real change: one call apiece.
+    S.setSetting('autosave', false);
     let calls = 0;
     S.registerSettingApplier('autosave', (on) => {
       calls++;

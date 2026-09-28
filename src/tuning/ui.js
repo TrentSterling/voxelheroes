@@ -18,7 +18,7 @@ export const options = {
   cornerAssist: true,
   spinAssist: false,
   dashHold: false,
-  autosave: false,
+  autosave: true,
   largeText: false,
 
   look: 'auto',

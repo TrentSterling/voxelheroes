@@ -4,20 +4,32 @@ import { state } from '../core/state.js';
 import { $ } from './dom.js';
 
 let action = null;
+let secondaryAction = null;
 
-// onAction runs when the panel's button is clicked.
-export function showOverlay({ title, msg, button, kicker, onAction = null }) {
+// onAction runs when the panel's main button is clicked. secondary, when given
+// ({ label, onAction }), shows a second, lesser button beside it (the title
+// screen's "New adventure" next to Continue); left out, that button hides.
+export function showOverlay({ title, msg, button, kicker, onAction = null, secondary = null }) {
   $('overlay-title').textContent = title;
   $('overlay-msg').textContent = msg;
   $('start').textContent = button;
   document.querySelector('#overlay .kicker').textContent = kicker;
   $('overlay').hidden = false;
   action = onAction;
+  setSecondary(secondary);
 }
 
 // Keep the panel's current content but change what its button does.
 export function setOverlayAction(onAction) {
   action = onAction;
+}
+
+function setSecondary(secondary) {
+  const el = $('start-secondary');
+  if (!el) return; // an older markup without the second button: the main one still works
+  secondaryAction = secondary?.onAction ?? null;
+  el.textContent = secondary?.label ?? '';
+  el.hidden = !secondary;
 }
 
 export function hideOverlay() {
@@ -34,6 +46,7 @@ export const overlayView = () => ({
   title: $('overlay-title')?.textContent ?? '',
   message: $('overlay-msg')?.textContent ?? '',
   button: $('start')?.textContent ?? '',
+  secondary: $('start-secondary')?.hidden === false ? $('start-secondary').textContent : null,
 });
 
 // k: 0 (clear) to 1 (black). at: [x, y] in CSS px of the view, an iris closing on that point (the
@@ -61,5 +74,8 @@ export function initOverlay() {
   // A dialog box open over the panel has to be answered first.
   $('start').addEventListener('click', () => {
     if (overlayVisible() && state.mode !== 'dialog') action?.();
+  });
+  $('start-secondary')?.addEventListener('click', () => {
+    if (overlayVisible() && state.mode !== 'dialog') secondaryAction?.();
   });
 }

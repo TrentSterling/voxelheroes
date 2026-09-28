@@ -37,13 +37,16 @@ initOverlay();
 initLoadCard();
 initCheats();
 initParticles(scene);
-world.build(scene, allAreas());
+world.build(scene, allAreas()); // parses every area's tiles; only the far backdrop meshes trickle in (terrain.js)
 scene.add(player.object);
 initHud();
 placeAtStart();
 applyScreenAmbience(currentScreen());
 setAreaLabel(currentScreen().name);
 setMode('title');
+// Warm every shader program the start screen can predict (main-pass materials, shadow/depth
+// materials, the polished-floor reflector) while the title card, not gameplay, eats the stall.
+look.warmUp();
 
 // One simulation step. Every mode shares the world animation, particles and
 // camera; the mode decides what else moves.

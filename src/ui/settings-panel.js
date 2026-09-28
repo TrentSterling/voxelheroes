@@ -11,6 +11,7 @@ const ROWS = [
   { key: 'blur', label: 'Blur', options: [[0, 'Off'], [0.5, 'Low'], [1, 'Full']] },
   { key: 'bloom', label: 'Glow', options: [[true, 'On'], [false, 'Off']] },
   { key: 'seams', label: 'Voxel grid', options: [[true, 'On'], [false, 'Off']] },
+  { key: 'autosave', label: 'Autosave', options: [[true, 'On'], [false, 'Off']] },
   { key: 'camera', label: 'Camera', options: [['A', 'A'], ['B', 'B'], ['C', 'C'], ['D', 'D']] },
   { key: 'brightness', label: 'Brightness', range: [0.5, 1.5, 0.05] },
   { key: 'volume', label: 'Volume', range: [0, 1, 0.05] },

@@ -38,7 +38,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DenseGrid, meshVoxels, FACE_ALL, FACE_NZ } from '../core/vox.js';
 import { rng } from '../core/voxel.js';
-import { getMaterial, makeWaterMaterial } from '../core/materials.js';
+import { getMaterial, getBackdropMaterial, makeWaterMaterial } from '../core/materials.js';
 import { SCREEN_W, SCREEN_H, GROUND_Y } from '../core/constants.js';
 import { on } from '../core/events.js';
 import { getTile } from './tiles.js';
@@ -649,6 +649,7 @@ export const backdropTile = (tx, tz) => backdropTiles.get(tkey(tx, tz)) ?? null;
 
 const CHUNK = 8;
 const QUARTER = CHUNK / 2;
+const BACKDROP_SLICE_MS = 8; // time budget per chunk-meshing slice (buildBackdrops), boot and area loads alike
 
 // Fill and mesh the backdrop around every area whose tileset has one. Meshes go into world.scene
 // and world.backdrop ({ name, mesh, layer } like screen meshes). Call after the screens are built.
@@ -723,7 +724,13 @@ export function buildBackdrops(world) {
     for (const r of rects) gap = Math.min(gap, Math.max(r.x0 - (x0 + n), x0 - r.x1, r.z0 - (z0 + n), z0 - r.z1, 0));
     return gap;
   };
-  for (const { cx, cz } of chunks.values()) {
+  // Meshing every area's backdrop chunks in one synchronous pass is the one long task before the
+  // title ever draws (all areas are parsed at boot, not just the starting one): buildChunk() below
+  // does the actual voxel meshing, and pump() runs it in BACKDROP_SLICE_MS slices, one macrotask
+  // apart, like world.buildPending's screen streaming. The first slice runs inline so the area the
+  // player starts in already has some backdrop the instant the title shows; the rest trickles in
+  // behind it while the title card holds, well before the player can walk close enough to notice.
+  const buildChunk = ({ cx, cz }) => {
     const X0 = cx * CHUNK;
     const Z0 = cz * CHUNK;
     const Q = QUARTER;
@@ -746,7 +753,15 @@ export function buildBackdrops(world) {
         solidVoid: true,
         coarse: far,
         faces: far ? FACE_ALL & ~FACE_NZ : FACE_ALL,
-        terrainLayer: far ? { castShadow: false } : null,
+        // No backdrop tile is ever inside a screen, so the hero cutaway can never need to punch a
+        // hole in one: every part (near, full-res quarters included, not just the coarse far ones)
+        // gets the no-cutaway terrain material (materials.js), or its huge on-screen coverage pays
+        // the hero-dissolve discard's per-sample MSAA cost for nothing. Far parts also skip casting
+        // AND receiving shadows: they sit outside the sun's 44-tile shadow box already (so the PCF
+        // lookup there is meaningless) and are DOF-blurred, so the 4096-map PCF taps (5 texture reads
+        // plus the shadow-coord work) buy nothing over their huge screen coverage. Near parts keep
+        // receiveShadow, so the sun's shadow does not visibly cut off at the play area's edge.
+        terrainLayer: far ? { castShadow: false, receiveShadow: false, material: getBackdropMaterial() } : { material: getBackdropMaterial() },
       });
       for (const m of meshes) {
         m.mesh.name = `backdrop ${x0},${z0} ${m.name}`;
@@ -754,6 +769,13 @@ export function buildBackdrops(world) {
         world.backdrop.push(m);
       }
     }
-  }
+  };
+  const queue = [...chunks.values()];
+  const pump = () => {
+    const t0 = performance.now();
+    while (queue.length && performance.now() - t0 < BACKDROP_SLICE_MS) buildChunk(queue.shift());
+    if (queue.length) setTimeout(pump, 0);
+  };
+  pump();
   return world.backdrop;
 }

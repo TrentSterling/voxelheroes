@@ -154,25 +154,45 @@ function patchVoxelShader(shader, U, cut = false) {
 // A MeshStandardMaterial with vertex colours and the bevel and seam shader. The shader hook is a
 // method, not an instance property, so clone() (new this.constructor().copy(this)) keeps it; the
 // clone shares the kind's uniforms, so it follows look changes and setSeams().
+//
+// `cutaway` (default: on for every kind but 'character') adds the hero dissolve-circle discard from
+// setCutaway(). That `discard` defeats early-Z and, worse, forces the driver to shade every MSAA
+// sample instead of once per covered pixel (a 4x fragment-cost multiplier at the look's 4x MSAA):
+// cheap over the small, close play-area terrain, ruinous over the far backdrop, which is coarse but
+// covers most of the screen.
+//
+// `procedural` (default on) is the bevel-tilt-normal and edge/seam-grid shading itself: several
+// dFdx/dFdy-built cotangent-frame vectors, a cross product and a couple of smoothstep/fwidth calls
+// per fragment. voxFlat (materials' own flat-quality switch) only zeroes their effect at runtime, a
+// uniform the driver cannot fold away, so the ALU still runs every fragment even at 'flat' quality.
+// getBackdropMaterial() below turns cutaway AND procedural off: the far backdrop is always outside
+// the cutaway's ~1 tile radius and always DOF-blurred, so neither buys anything there, and a plain
+// MeshStandardMaterial fragment (lighting + shadow only) over its huge screen coverage is what
+// actually made it cheap (see terrain.js buildBackdrops).
 export class VoxelMaterial extends THREE.MeshStandardMaterial {
-  constructor(params = {}, kind = 'terrain') {
+  constructor(params = {}, kind = 'terrain', { cutaway, procedural = true } = {}) {
     super({ vertexColors: true, metalness: 0, roughness: 0.48, ...params });
     this.isVoxelMaterial = true; // (type stays 'MeshStandardMaterial': three picks the shader by type)
     this.kind = kind;
     this.voxelUniforms = BAGS[kind] ?? BAGS.terrain;
+    this.cutaway = cutaway ?? kind !== 'character';
+    this.procedural = procedural;
     // Missing attributes: plain face (no bevel, no seam) and white vertex colour.
     this.defaultAttributeValues = { faceUv: [0.5, 0.5], color: [1, 1, 1] };
   }
   onBeforeCompile(shader) {
-    patchVoxelShader(shader, this.voxelUniforms, this.kind !== 'character');
+    if (this.procedural) patchVoxelShader(shader, this.voxelUniforms, this.cutaway);
   }
   customProgramCacheKey() {
-    return this.kind === 'character' ? 'voxel-bevel-seam-v1' : 'voxel-bevel-seam-cut-v1';
+    if (!this.procedural) return 'voxel-plain-v1';
+    return this.cutaway ? 'voxel-bevel-seam-cut-v1' : 'voxel-bevel-seam-v1';
   }
   copy(source) {
     super.copy(source);
     this.kind = source.kind;
     this.voxelUniforms = source.voxelUniforms;
+    this.cutaway = source.cutaway;
+    this.procedural = source.procedural;
     this.defaultAttributeValues = { ...source.defaultAttributeValues };
     return this;
   }
@@ -183,12 +203,19 @@ const SHARED = {
   character: new VoxelMaterial({}, 'character'),
   fine: new VoxelMaterial({}, 'fine'),
   prop: new VoxelMaterial({}, 'prop'),
+  // The far backdrop (terrain.js buildBackdrops): terrain's own roughness, no cutaway, no bevel/seam.
+  backdrop: new VoxelMaterial({}, 'terrain', { cutaway: false, procedural: false }),
 };
 
 export function getMaterial(kind = 'terrain') {
   const m = SHARED[kind];
   if (!m) throw new Error(`Unknown material kind "${kind}"`);
   return m;
+}
+
+// The far backdrop's terrain-look material, without the hero cutaway discard (see VoxelMaterial).
+export function getBackdropMaterial() {
+  return SHARED.backdrop;
 }
 
 export function makeCharacterMaterial() {
@@ -383,6 +410,7 @@ export function applyMaterialLook(look) {
   applyBag(BAGS.fine, look.fineMaterial ?? base);
   applyBag(BAGS.prop, merge(look.propMaterial));
   for (const kind of MATERIAL_KINDS) SHARED[kind].roughness = BAGS[kind].voxRoughness.value;
+  SHARED.backdrop.roughness = SHARED.terrain.roughness; // shares BAGS.terrain, just not its cutaway
   applyWater({ ...WATER_DEFAULTS, ...(look.water ?? {}) });
 }
 

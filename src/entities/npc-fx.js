@@ -11,6 +11,27 @@ import { camera, renderer } from '../core/renderer.js';
 const EMOTE_COLOR = { '!': '#e0402f', '?': '#3a6fd8', '♥': '#e0407a', '♪': '#2e9a4a', '…': '#5a5a5a', '✦': '#d89a1a' };
 const FONT = '"Pixelify Sans", "Courier New", monospace';
 
+// The canvas rect, read once per animation frame no matter how many bubbles ask: every bubble's
+// update() used to call getBoundingClientRect() itself, interleaved with the style writes below, so
+// N bubbles forced N read/write/read/write layout thrashes instead of one read and N writes. Cached
+// here and dropped on the next rAF (scheduled the first time it is asked for in a frame), so it is
+// recomputed at most once per frame and self-heals after a resize without anyone calling in.
+let cachedRect = null;
+let rectResetQueued = false;
+function canvasRect() {
+  if (!cachedRect) {
+    cachedRect = renderer.domElement.getBoundingClientRect();
+    if (!rectResetQueued && typeof requestAnimationFrame === 'function') {
+      rectResetQueued = true;
+      requestAnimationFrame(() => {
+        cachedRect = null;
+        rectResetQueued = false;
+      });
+    }
+  }
+  return cachedRect;
+}
+
 let layer = null;
 function root() {
   if (layer) return layer;
@@ -84,7 +105,7 @@ export class Bubble {
       _p.y += this.height;
       _p.project(camera);
       on = _p.z < 1;
-      const c = renderer.domElement.getBoundingClientRect();
+      const c = canvasRect();
       sx = c.left + ((_p.x + 1) / 2) * c.width;
       sy = c.top + ((1 - _p.y) / 2) * c.height;
     }

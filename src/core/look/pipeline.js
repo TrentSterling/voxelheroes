@@ -233,6 +233,56 @@ const AddShader = {
     }`,
 };
 
+// ---------------------------------------------------------------- GTAO upsample
+// GTAO at half resolution (GTAO_SCALE), joint-bilateral upsampled back to full res: the raymarch and
+// its Poisson denoise are the two most expensive full-screen taps in the stack, and AO is low
+// frequency enough that a naive bilinear upsample would only cost a faint softening at object edges.
+// Instead this samples the four half-res AO texels around each full-res pixel and re-weights the
+// usual bilinear weights by how close each one's own depth is to the pixel's (a small exp falloff),
+// so edges that a straight bilinear blend would leak occlusion across snap back to the nearer depth.
+// Output is the same multiplicative blend GTAOPass's own GTAOBlendShader does (mix(1, ao, intensity)),
+// applied with the same CustomBlending trick so it lands directly on the scene colour already copied
+// into the destination target.
+const GTAO_SCALE = 0.5;
+const GtaoUpsampleShader = {
+  uniforms: {
+    tAo: { value: null },
+    tDepth: { value: null },
+    aoTexel: { value: new THREE.Vector2(1, 1) }, // 1 / (half-res AO target size)
+    cameraNear: { value: 0.5 },
+    cameraFar: { value: 400 },
+    depthSigma: { value: 0.5 },
+    intensity: { value: 1 },
+  },
+  vertexShader: QUAD_VERTEX,
+  fragmentShader: /* glsl */ `
+    #include <packing>
+    uniform sampler2D tAo;
+    uniform highp sampler2D tDepth;
+    uniform vec2 aoTexel;
+    uniform float cameraNear, cameraFar, depthSigma, intensity;
+    varying vec2 vUv;
+    float viewZ(vec2 uv) { return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, cameraNear, cameraFar); }
+    void main() {
+      float refZ = viewZ(vUv);
+      vec2 h = vUv / aoTexel - 0.5;
+      vec2 base = floor(h) * aoTexel + 0.5 * aoTexel;
+      vec2 f = fract(h);
+      vec2 taps[4] = vec2[4](base, base + vec2(aoTexel.x, 0.0), base + vec2(0.0, aoTexel.y), base + aoTexel);
+      float bw[4] = float[4]((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
+      vec3 acc = vec3(0.0);
+      float wsum = 0.0;
+      for (int i = 0; i < 4; i++) {
+        float dz = abs(viewZ(taps[i]) - refZ);
+        float w = bw[i] * exp(-dz / depthSigma) + bw[i] * 1e-3; // tiny floor: never fully zero out
+        acc += texture2D(tAo, taps[i]).rgb * w;
+        wsum += w;
+      }
+      vec3 ao = acc / max(wsum, 1e-5);
+      gl_FragColor = vec4(mix(vec3(1.0), ao, intensity), 1.0);
+    }`,
+};
+
 // ---------------------------------------------------------------- final grade (lab)
 const GradeShader = {
   uniforms: {
@@ -333,6 +383,16 @@ export class LookPipeline {
       new THREE.MeshBasicMaterial({ toneMapped: false, blending: THREE.AdditiveBlending, transparent: true, depthTest: false, depthWrite: false })
     );
 
+    this.gtaoUpsampleQ = quad(GtaoUpsampleShader, {
+      transparent: true,
+      blending: THREE.CustomBlending,
+      blendSrc: THREE.DstColorFactor,
+      blendDst: THREE.ZeroFactor,
+      blendEquation: THREE.AddEquation,
+      blendSrcAlpha: THREE.DstAlphaFactor,
+      blendDstAlpha: THREE.ZeroFactor,
+      blendEquationAlpha: THREE.AddEquation,
+    });
     this.prepQ = quad(DofPrepareShader);
     this.tileQ = quad(DofTileShader);
     this.dilateQ = quad(DofDilateShader);
@@ -371,16 +431,42 @@ export class LookPipeline {
     this.dofPyr.setSize(w, h);
     this.bloomPyr.setSize(w, h);
     for (const rt of [...this.dofBlur, this.bloomOut]) rt.setSize(hw, hh);
-    this.gtao?.setSize(w, h);
+    if (this.gtao) this.gtao.setSize(Math.max(1, Math.round(w * GTAO_SCALE)), Math.max(1, Math.round(h * GTAO_SCALE)));
   }
 
   ensureGtao() {
     if (this.gtao) return this.gtao;
-    const g = new GTAOPass(this.scene, this.camera, this.w, this.h);
-    g.setGBuffer(this.sceneRT.depthTexture); // normals rebuilt from depth: no normal pass
-    g.output = GTAOPass.OUTPUT.Default;
+    const gw = Math.max(1, Math.round(this.w * GTAO_SCALE));
+    const gh = Math.max(1, Math.round(this.h * GTAO_SCALE));
+    const g = new GTAOPass(this.scene, this.camera, gw, gh);
+    g.setGBuffer(this.sceneRT.depthTexture); // full-res depth; normals rebuilt from it, no normal pass
+    // GTAOPass's own output (Default) copies the scene then bilinear-blends the AO onto it; instead
+    // we copy the scene ourselves and blend with a depth-aware upsample (GtaoUpsampleShader) below.
+    g.output = GTAOPass.OUTPUT.Off;
     this.gtao = g;
     return g;
+  }
+
+  // Depth-aware upsample of the half-res GTAO result, blended onto `dst` (already holding the scene
+  // colour, see render()) in place: see GtaoUpsampleShader.
+  blendGtao(g, dst, intensity, radius) {
+    const u = this.gtaoUpsampleQ.material.uniforms;
+    u.tAo.value = g.gtaoMap;
+    u.tDepth.value = this.sceneRT.depthTexture;
+    u.aoTexel.value.set(1 / g.width, 1 / g.height);
+    u.cameraNear.value = this.camera.near;
+    u.cameraFar.value = this.camera.far;
+    u.depthSigma.value = Math.max(0.15, radius * 0.5);
+    u.intensity.value = intensity;
+    const { renderer } = this;
+    renderer.setRenderTarget(dst);
+    // dst already holds the copied scene colour (render()'s this.copy() call): autoClear would wipe
+    // it right before the multiplicative blend reads it back as the CustomBlending dst factor,
+    // leaving a blank target (same guard as the bloom/glare add passes below).
+    const ac = renderer.autoClear;
+    renderer.autoClear = false;
+    this.gtaoUpsampleQ.render(renderer);
+    renderer.autoClear = ac;
   }
 
   gatherQuad(samples) {
@@ -401,10 +487,11 @@ export class LookPipeline {
     let src = this.sceneRT;
     if (Q.ao && L.ao && L.ao.intensity > 0) {
       const g = this.ensureGtao();
-      g.blendIntensity = L.ao.intensity;
       g.updateGtaoMaterial({ radius: L.ao.radius, distanceExponent: L.ao.distanceExponent, thickness: L.ao.thickness, scale: L.ao.scale ?? 1, samples: L.ao.samples ?? 16 });
       g.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
-      g.render(renderer, this.aoRT, this.sceneRT);
+      g.render(renderer, null, null); // output is Off: only fills gtaoMap (half res)
+      this.copy(this.sceneRT, this.aoRT);
+      this.blendGtao(g, this.aoRT, L.ao.intensity, L.ao.radius ?? 1);
       src = this.aoRT;
       passes += 4;
     }
@@ -609,7 +696,7 @@ export class LookPipeline {
     let bytes = px * (hf * 4 + 4 * 4) + px * (hf + 4); // MSAA colour + depth-stencil, resolved colour + depth
     bytes += px * hf * 2; // DOF prepare + result
     bytes += Math.ceil(px / (DOF_TILE * DOF_TILE)) * hf * 2; // tile CoC maps
-    if (ao) bytes += px * hf * 3; // AO result, GTAO + denoise targets
+    if (ao) bytes += px * hf + (px * GTAO_SCALE * GTAO_SCALE) * hf * 2; // aoRT (full res) + half-res GTAO + denoise
     if (bloom) bytes += (px / 4) * hf * (1 + 2 * 1.33); // bright pass + blur mips
     if (glare) bytes += (px / 4) * hf * 7;
     return bytes;

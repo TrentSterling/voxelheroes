@@ -5,6 +5,10 @@
 // walls into soft warm pools, and `look.reflectTint` is the polish's own colour. The clip bias
 // (0.001) stays smaller than the lift, or the floor would reflect itself and the room would brighten.
 //
+// The reflection target renders the whole scene a second time every frame, so it is drawn at half
+// the canvas resolution and without MSAA (REFLECT_SCALE): the 24-tap blur above already softens it
+// well past the point a second full-res, 4x MSAA draw would buy anything.
+//
 // The mirror covers the room the camera is on (the screen rectangle around the camera subject), so
 // during a slide between rooms it spans both. Where the visible surface lies more than
 // MIRROR_HOLE_DEPTH below the floor (pits, moats, water) nothing is added: a plane just under the
@@ -44,21 +48,25 @@ const FloorShader = {
 export const MIRROR_LIFT = 0.002;
 export const MIRROR_CLIP_BIAS = 0.001;
 export const MIRROR_HOLE_DEPTH = 0.02;
+export const REFLECT_SCALE = 0.5; // reflection render target vs. the canvas (half res, no MSAA)
+
+const reflectSize = (w, h) => [Math.max(1, Math.round(w * REFLECT_SCALE)), Math.max(1, Math.round(h * REFLECT_SCALE))];
 
 export class FloorMirror {
   constructor(scene) {
     this.scene = scene;
     this.mesh = null;
-    this.size = [0, 0];
+    this.size = [0, 0]; // the caller's (full canvas) size; the render target itself is REFLECT_SCALE of this
     this.override = null;
   }
 
   create(w, h) {
+    const [rw, rh] = reflectSize(w, h);
     const mesh = new Reflector(new THREE.PlaneGeometry(1, 1), {
-      textureWidth: w,
-      textureHeight: h,
+      textureWidth: rw,
+      textureHeight: rh,
       clipBias: MIRROR_CLIP_BIAS,
-      multisample: 4,
+      multisample: 0,
       shader: FloorShader,
     });
     const mat = mesh.material;
@@ -106,7 +114,8 @@ export class FloorMirror {
     }
     if (!this.mesh) this.create(width, height);
     else if (this.size[0] !== width || this.size[1] !== height) {
-      this.mesh.getRenderTarget().setSize(width, height);
+      const [rw, rh] = reflectSize(width, height);
+      this.mesh.getRenderTarget().setSize(rw, rh);
       this.size = [width, height];
     }
     const r = this.override ?? rect;
@@ -122,8 +131,10 @@ export class FloorMirror {
     if (!m.parent) this.scene.add(this.holes, m);
   }
 
-  // Approximate GPU memory of the reflection target (4x MSAA half float + depth, resolved colour).
+  // Approximate GPU memory of the reflection target (half res, no MSAA: half-float colour + depth).
   memory() {
-    return this.mesh?.parent ? this.size[0] * this.size[1] * (8 * 4 + 4 * 4 + 8) : 0;
+    if (!this.mesh?.parent) return 0;
+    const [rw, rh] = reflectSize(...this.size);
+    return rw * rh * (8 + 4);
   }
 }
