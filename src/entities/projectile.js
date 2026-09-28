@@ -46,7 +46,8 @@ import { GROUND_Y } from '../core/constants.js';
 import { state } from '../core/state.js';
 import { sfx } from '../core/audio.js';
 import { TUNING } from '../core/tuning.js';
-import { world } from '../world/world.js';
+import { world, currentScreen } from '../world/world.js';
+import { followsHero, currentCameraPreset } from '../core/camera.js';
 import { burst } from '../systems/particles.js';
 import { hero } from '../game/hero.js';
 import { dealDamage } from '../game/damage.js';
@@ -123,7 +124,13 @@ export class Projectile extends Entity {
 
   animate(_dt) {}
 
+  // Hold presets and rooms: the shot dies at the screen's edge. Follow
+  // presets (A, D outdoors): 20 tiles from the hero (spec 4.3), since the
+  // frame crosses screen lines with him.
   outOfScreen() {
+    const s = currentScreen();
+    if (s && !s.area.rooms && followsHero(currentCameraPreset(), s))
+      return Math.hypot(this.x - player.x, this.z - player.z) > TUNING.scroll.projectileRange;
     const r = currentRect();
     return !r || this.x < r.x0 || this.x > r.x1 || this.z < r.z0 || this.z > r.z1;
   }

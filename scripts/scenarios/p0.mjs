@@ -67,6 +67,53 @@ export default async function p0(t) {
   await t.step(0.3);
   await t.shot('p0-overworld-A');
 
+  // ---------------------------------------------------------------- follow: shots and leashes
+  // In A a shot flies on past the screen line and dies 20 tiles from the
+  // hero; in B it dies at the screen's edge. An enemy stays on its screen
+  // while the hero stands in the dead band past its edge.
+  const shotRun = (preset) =>
+    t.eval(async (preset) => {
+      const h = window.__voxelHeroes;
+      h.camera.choose(preset);
+      h.teleport('Crossroads', 12, 5.5, { yaw: Math.PI / 2 });
+      for (const e of h.entities) if (e.kind === 'enemy' || e.kind === 'projectile') e.remove();
+      const { Projectile } = h.game.projectile;
+      if (!h.api.entityTypes?.().includes?.('p0-bolt')) {
+        try {
+          h.api.registerEntity('p0-bolt', (o) => new Projectile(o, { owner: 'hero', damage: 0, speed: 8, passWalls: true, range: 100 }));
+        } catch {}
+      }
+      const x1 = h.screen().x1;
+      const shot = h.spawn('p0-bolt', 12.5, 5.5, { dir: { x: 1, z: 0 } });
+      let last = shot.x;
+      for (let i = 0; i < 400 && !shot.removed; i++) {
+        last = shot.x;
+        await h.tick();
+      }
+      return { past: +(last - x1).toFixed(2), fromHero: +(last - h.player.x).toFixed(2), removed: shot.removed };
+    }, preset);
+  let shotA = await shotRun('A');
+  t.expect(shotA.removed && shotA.past > 2 && Math.abs(shotA.fromHero - 20) < 0.2, `camera A: a shot flies on past the screen line and dies 20 tiles from the hero (${shotA.fromHero} from him, ${shotA.past} past the line)`);
+  const shotB = await shotRun('B');
+  t.expect(shotB.removed && shotB.past <= 0.2, `camera B: a shot dies at the screen's edge (${shotB.past} past it)`);
+  const leash = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    h.camera.choose('A');
+    h.teleport('Crossroads', 12, 5.5);
+    for (const e of h.entities) if (e.kind === 'enemy' || e.kind === 'projectile') e.remove();
+    const s = h.screen();
+    h.player.x = s.x1 + 0.3; // in the dead band, still on the Crossroads
+    const foe = h.spawn('slime', 14.5, 5.5);
+    let maxX = -Infinity;
+    for (let i = 0; i < 240; i++) {
+      h.player.invT = 10;
+      await h.tick();
+      maxX = Math.max(maxX, foe.x);
+    }
+    return { key: h.state.screenKey, was: s.key, past: +(maxX - s.x1).toFixed(3), r: foe.r ?? 0 };
+  });
+  t.expect(leash.key === leash.was && leash.past <= 1e-3, `  an enemy stays on its screen while the hero is in the dead band (its furthest ${leash.past} past the edge)`);
+
   // ---------------------------------------------------------------- B: hold and slide
   await t.eval(() => {
     const h = window.__voxelHeroes;

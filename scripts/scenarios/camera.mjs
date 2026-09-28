@@ -8,6 +8,9 @@
 //     an open south edge he goes on to the next screen as soon as any of him
 //     would drop below the frame (the screen's south line), and all of him
 //     stays in frame on every tick of that slide too;
+//   - follow presets (A, D) take the whole area where the rules below say
+//     "screen" (P0: they clamp to the area and change screen with no slide);
+//     the interior rig follows the hero inside its room;
 //   - the ground at the frame's bottom edge never lies past the screen's
 //     south edge outdoors, and the screens south of the current one are
 //     not drawn;
@@ -64,7 +67,13 @@ const checkSpots = (t, key, spots) =>
         const s = g.screen();
         if (g.world.tileDefAt(s.x0 + Math.floor(lx), s.z0 + Math.floor(lz))?.onEnter) continue;
         const line = g.camera.rules.southLine();
-        const fixed = !!g.camera.lens().fixed;
+        const lens = g.camera.lens();
+        const fixed = !!lens.fixed;
+        // Follow presets clamp to the area, not the screen (A, D outdoors);
+        // in a room they keep the art bible's row clamp instead.
+        const follow = !!lens.follow && !fixed;
+        const b = follow && !s.area.rooms ? s.areaRect : s;
+        const bw = b.x1 - b.x0;
         for (const [face, yaw] of Object.entries(facings)) {
           const at = `${s.name} ${lx},${lz} facing ${face}`;
           g.teleport(key, lx, lz, { yaw });
@@ -88,18 +97,19 @@ const checkSpots = (t, key, spots) =>
           cams.push([lx, lz, +(g.camera.target.x - s.x0).toFixed(3), +(g.camera.target.z - s.z0).toFixed(3)]);
           look(at);
           // The bottom edge (a room's camera follows him down into its south doorway).
+          if (follow && s.area.rooms) continue; // the room row clamp: checked by the room checks
           if (!(fixed && s.area.rooms && lz > s.h - 1))
             for (const nx of [-1, 0, 1]) {
               const q = g.camera.groundAt(nx, -1);
-              if (!q || q.z > s.z1 + 1e-3) fail(`${at}: the bottom edge shows ${q ? `z ${(q.z - s.z0).toFixed(3)}` : 'sky'}`);
+              if (!q || q.z > b.z1 + 1e-3) fail(`${at}: the bottom edge shows ${q ? `z ${(q.z - s.z0).toFixed(3)}` : 'sky'}`);
             }
           // The sides on the hero's row: how far past each screen edge they show.
-          const [, row] = g.camera.project(g.player.x, 0, g.player.z);
+          const [, row] = g.camera.project(g.player.x, g.camera.groundY ?? 0, g.player.z);
           const L = g.camera.groundAt(-1, row);
           const R = g.camera.groundAt(1, row);
-          const past = { west: s.x0 - L.x, east: R.x - s.x1 };
-          const by = { west: lx, east: s.w - lx }; // how far he stands from each edge
-          if (R.x - L.x >= s.w) {
+          const past = { west: b.x0 - L.x, east: R.x - b.x1 };
+          const by = { west: g.player.x - b.x0, east: b.x1 - g.player.x }; // how far he stands from each edge
+          if (R.x - L.x >= bw) {
             if (!fixed && Math.abs(past.west - past.east) > 1e-3 && by.west > 1 && by.east > 1)
               fail(`${at}: the frame is wider than the screen but not centred (${past.west.toFixed(3)}, ${past.east.toFixed(3)})`);
           } else
@@ -147,7 +157,8 @@ const walkOff = (t, dir) =>
   t.eval((dir) => {
     const g = window.__voxelHeroes;
     const [ux, uz] = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] }[dir];
-    const out = { walked: 0, ticks: 0, worst: 0, worstAt: '', worstStep: 0, after: 0, off: 0, started: '', mode: '', screen: '' };
+    const out = { walked: 0, ticks: 0, worst: 0, worstAt: '', worstStep: 0, after: 0, off: 0, started: '', mode: '', screen: '', changed: false, follow: false };
+    const from = g.screen();
     const look = (at) => {
       const m = g.camera.heroInFrame().worst;
       if (m > out.worst) {
@@ -162,7 +173,7 @@ const walkOff = (t, dir) =>
     };
     g.input.setStick(ux, uz);
     try {
-      while (g.state.mode === 'play' && out.walked < 600) {
+      while (g.state.mode === 'play' && g.screen() === from && out.walked < 600) {
         g.update(1 / 60);
         out.walked++;
         look(`walking tick ${out.walked}`);
@@ -187,14 +198,18 @@ const walkOff = (t, dir) =>
     out.off = g.camera.expected().distanceTo(g.camera.target);
     out.mode = g.state.mode;
     out.screen = g.screen().name;
+    out.changed = g.screen() !== from;
+    out.follow = !!g.camera.lens().follow && !g.camera.lens().fixed && !g.screen().area.rooms;
     return out;
   }, dir);
 
+// A hold preset (and every room) slides; a follow preset (A, D outdoors)
+// changes screen in play, with no slide.
 async function slide(t, dir, label, to = null) {
   const f = await walkOff(t, dir);
   t.expect(
-    f.started === 'scroll' && f.mode === 'play' && (!to || f.screen === to) && f.worst <= WHOLE && f.worstStep < 1.2 && f.after < 1e-6 && f.off < 1e-6,
-    `  ${label} ${dir} to ${f.screen}: all of the hero in frame on all ${f.walked + f.ticks} ticks (worst ${f.worst.toFixed(3)}, ${f.worstAt}), camera step at most ${f.worstStep.toFixed(3)}, lands clean`
+    (f.follow ? f.started === 'play' && f.changed : f.started === 'scroll') && f.mode === 'play' && (!to || f.screen === to) && f.worst <= WHOLE && f.worstStep < 1.2 && f.after < 1e-6 && f.off < 1e-6,
+    `  ${label} ${dir} to ${f.screen} (${f.follow ? 'follow change' : 'slide'}): all of the hero in frame on all ${f.walked + f.ticks} ticks (worst ${f.worst.toFixed(3)}, ${f.worstAt}), camera step at most ${f.worstStep.toFixed(3)}, lands clean`
   );
 }
 
@@ -239,19 +254,28 @@ export default async function cameraScenario(t) {
   const OUTDOOR = { north: [0.01, 0.35, 0.7], south: [0.01, 0.2, 0.4, 0.6, 0.8, 1], west: [0.01, 0.35, 0.7], east: [0.01, 0.35, 0.7] };
   const ROOM = { north: [0.01, 0.5, 1], south: [0.01, 0.5, 1], west: [0.01, 0.5, 1, 1.5], east: [0.01, 0.5, 1, 1.5] };
 
-  // From Cairn Ridge its own row of the overworld is drawn, and nothing
-  // wholly south of it (the Crossroads row).
-  await t.teleport('overworld:1,0', 8, 5.5);
-  const drawn = await t.eval(() => {
-    const g = window.__voxelHeroes;
-    const s = g.screen();
-    const keys = [...g.world.screens.keys()].filter((k) => g.transitions.shown(k)).sort();
-    return { keys, south: keys.filter((k) => g.world.screen(k).z0 >= s.z1) };
-  });
+  // From Cairn Ridge in B (a hold preset) its own row of the overworld is
+  // drawn, and nothing wholly south of it (the Crossroads row); in A (a
+  // follow preset) the camera crosses screen lines, so the whole area is.
+  // Either way nothing of another area.
+  const drawnFrom = async (preset) => {
+    await t.eval((n) => window.__voxelHeroes.camera.choose(n), preset);
+    await t.teleport('overworld:1,0', 8, 5.5);
+    return t.eval(() => {
+      const g = window.__voxelHeroes;
+      const s = g.screen();
+      const keys = [...g.world.screens.keys()].filter((k) => g.transitions.shown(k)).sort();
+      const area = [...g.world.screens.values()].filter((o) => o.area === s.area).map((o) => o.key);
+      return { keys, south: keys.filter((k) => g.world.screen(k).z0 >= s.z1), all: area.every((k) => keys.includes(k)), others: keys.filter((k) => !area.includes(k)) };
+    });
+  };
+  let drawn = await drawnFrom('B');
   t.expect(
-    ['overworld:0,0', 'overworld:1,0', 'overworld:2,0'].every((k) => drawn.keys.includes(k)) && drawn.south.length === 0,
-    `from Cairn Ridge its own row is drawn and nothing south of it (${drawn.keys.join(', ')})`
+    ['overworld:0,0', 'overworld:1,0', 'overworld:2,0'].every((k) => drawn.keys.includes(k)) && drawn.south.length === 0 && drawn.others.length === 0,
+    `B: from Cairn Ridge its own row is drawn and nothing south of it (${drawn.keys.join(', ')})`
   );
+  drawn = await drawnFrom('A');
+  t.expect(drawn.all && drawn.others.length === 0, `A: from Cairn Ridge every screen of its area is drawn, and nothing else (${drawn.keys.join(', ')})`);
 
   for (const vp of VIEWPORTS) {
     await t.page.setViewportSize({ width: vp.width, height: vp.height });
@@ -338,14 +362,15 @@ export default async function cameraScenario(t) {
     await t.walkTo(8.6, 9.5);
     await slide(t, 'south', 'Key Vault', 'Sunken Gate');
 
-    // The interior camera, fitted to the 12 x 9 Hedge Burrow.
+    // The interior rig (art bible 1.8: 50.278, 38.54, 11.986) in the 12 x 9
+    // Hedge Burrow: it follows the hero, clamped to the room by frame rows.
     await t.teleport('test-burrow:0,0', 6, 4.5);
     s = await t.state();
     const lens = await t.eval(() => window.__voxelHeroes.camera.lens().height);
-    t.expect(s.cam.preset === 'interior' && Math.abs(lens - (12.7 * 12) / 16) < 1e-6, `${vp.name}: the Burrow uses the interior camera, ${lens.toFixed(3)} high for a room 12 wide`);
+    t.expect(s.cam.preset === 'interior' && Math.abs(lens - 11.986) < 1e-6, `${vp.name}: the Burrow uses the interior camera, ${lens.toFixed(3)} high`);
     const res = await checkSpots(t, 'test-burrow:0,0', grid(10.5, 8, r, 1.5, 1));
     report(t, `${vp.name} interior Burrow`, res);
-    checkRoomCamera(t, vp, 'Burrow', { w: 12, h: 9 }, res.cams);
+    t.expect(res.cams.every(([, , x, z]) => x >= 0 && x <= 12 && z >= 0 && z <= 9), `  ${vp.name} Burrow: the camera's subject stays inside the room on every spot`);
     await t.teleport('test-burrow:0,0', 1.8, 6.5, { yaw: -Math.PI / 2 });
     await clearFoes(t);
     await t.step(0.2);

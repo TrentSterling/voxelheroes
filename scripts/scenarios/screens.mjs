@@ -59,8 +59,14 @@ export default async function screens(t) {
     const st = await t.state();
     t.expect(st.screenName === s.name && st.mode === 'play' && st.size[0] === s.w && st.size[1] === s.h, `${s.name} (${s.key}, ${s.w} x ${s.h})`);
     if (s.rooms) {
+      // Standard rooms hold the middle; the large-room and interior rigs
+      // follow the hero inside the room (art bible 1.8, section 9).
       const fixed = await t.eval((n) => !!window.__voxelHeroes.camera.presets[n]?.fixed, st.cam.preset);
-      t.expect(fixed && near(st.cam.x, s.w / 2) && near(st.cam.z, s.h / 2), `  the ${st.cam.preset} camera looks at the middle of ${s.name} (${st.cam.x}, ${st.cam.z})`);
+      if (fixed) t.expect(near(st.cam.x, s.w / 2) && near(st.cam.z, s.h / 2), `  the ${st.cam.preset} camera looks at the middle of ${s.name} (${st.cam.x}, ${st.cam.z})`);
+      else {
+        const inFrame = await t.eval(() => window.__voxelHeroes.camera.heroInFrame().out === 0);
+        t.expect(st.cam.x >= 0 && st.cam.x <= s.w && st.cam.z >= 0 && st.cam.z <= s.h && inFrame, `  the ${st.cam.preset} camera follows the hero inside ${s.name} (${st.cam.x}, ${st.cam.z})`);
+      }
     }
     await t.shot(`${s.area}-${s.lx}-${s.ly}`);
   }

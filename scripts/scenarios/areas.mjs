@@ -1,6 +1,8 @@
 // Travel between areas on the test hedgerows (src/world/areas/test-borders.js):
 // Hedgerows (2 x 2 screens) with Far Hedges east of it and Low Fields south
-// of it. Walking between screens of one area slides; walking across into
+// of it. Walking between screens of one area changes screen: in the default
+// camera A, which follows the hero, with no slide once he is 0.5 tile past
+// the edge (a hold preset, B or C, slides; see p0.mjs); walking across into
 // another area fades to black, fires 'area-enter', holds the black for the
 // loading card and fades in. Every crossing is walked with the arrow keys and
 // checked for its events, timing and where the hero lands. A cave door leads
@@ -19,8 +21,10 @@ const KEYS = { north: 'ArrowUp', south: 'ArrowDown', east: 'ArrowRight', west: '
 const APPROACH = { north: [8, 3], south: [8, 8], east: [13, 5.5], west: [3, 5.5] };
 
 // Walk off the current screen through `dir` into screen `to` (a name) of area
-// `area` (a name). kind: 'slide' or 'fade'.
+// `area` (a name). kind: 'slide' (inside one area: a follow change in camera
+// A) or 'fade'.
 async function cross(t, tr, dir, to, area, kind, { shot } = {}) {
+  if (kind === 'slide' && (await t.eval(() => !!window.__voxelHeroes.camera.lens().follow))) return follow(t, tr, dir, to, area, { shot });
   const before = await t.state();
   const fromName = await t.eval((id) => window.__voxelHeroes.world.areas.get(id).name, before.area);
   const areaEvents = (await t.events('area-enter')).length;
@@ -61,6 +65,42 @@ async function cross(t, tr, dir, to, area, kind, { shot } = {}) {
     return { inFrame: Math.abs(nx) < 1 && Math.abs(ny) < 1, off: e.distanceTo(g.camera.target) };
   });
   t.expect(view.inFrame && view.off < 1e-6, '  the hero is in frame and the camera already follows him');
+  if (shot) {
+    await t.step(0.3);
+    await t.shot(shot);
+  }
+}
+
+// Walk over a screen line inside one area with a follow camera: the change
+// fires in play, no slide and no 'area-enter', with the hero's centre
+// followDeadband (0.5) tiles past the edge; the camera follows him through.
+async function follow(t, tr, dir, to, area, { shot } = {}) {
+  const areaEvents = (await t.events('area-enter')).length;
+  await t.walkTo(...APPROACH[dir]);
+  const [ax, az] = APPROACH[dir];
+  const modes = new Set();
+  await t.page.keyboard.down(KEYS[dir]);
+  try {
+    for (let i = 0; i < 240; i++) {
+      await t.step(TICK);
+      const st = await t.state();
+      modes.add(st.mode);
+      if (st.screenName === to) break;
+    }
+  } finally {
+    await t.page.keyboard.up(KEYS[dir]);
+  }
+  const s = await t.state();
+  const enter = (await t.events('room-enter')).at(-1);
+  t.expect(s.screenName === to && enter.screen === to && enter.area === area && enter.via === 'follow' && [...modes].every((m) => m === 'play'), `follow change ${dir} into ${to}: 'room-enter' via follow, no slide (modes ${[...modes].join(', ')})`);
+  t.expect((await t.events('area-enter')).length === areaEvents, "  no 'area-enter' inside one area");
+  const band = 0.5;
+  const pos = { north: [ax, s.size[1] - band, 1], south: [ax, band, 1], east: [band, az, 0], west: [s.size[0] - band, az, 0] }[dir];
+  const along = pos[2] ? s.lz : s.lx;
+  const want = pos[2] ? pos[1] : pos[0];
+  t.expect(Math.abs(along - want) <= 0.1, `  the hero's centre is ${Math.abs(along - want).toFixed(3)} from 0.5 tile past the edge when it fires`);
+  const off = await t.eval(() => window.__voxelHeroes.camera.expected().distanceTo(window.__voxelHeroes.camera.target));
+  t.expect(off < 1e-6, '  the camera follows him through');
   if (shot) {
     await t.step(0.3);
     await t.shot(shot);
@@ -134,11 +174,14 @@ export default async function areasScenario(t) {
       shown: [...g.world.screens.keys()].filter((k) => g.transitions.shown(k)),
       inFrame: [feet, head].every(([x, y]) => Math.abs(x) < 0.95 && Math.abs(y) < 0.95),
       blocked: g.world.blocked(p.x, p.z, p.r, p),
+      want: g.camera.expected().z - scr.z0,
     };
   });
   t.expect(s.size.join() === '12,9' && burrow.x0 === 476 * 16 && burrow.z0 === 0, `  a 12 x 9 room with its corner at tile ${burrow.x0}, ${burrow.z0} (at: [476 * 16, 0])`);
   t.expect(near(s.lx, 6) && near(s.lz, 7.4) && !burrow.blocked, `  the hero stands at ${s.lx}, ${s.lz}, clear of the walls`);
-  t.expect(s.cam.preset === 'interior' && near(s.cam.x, 6) && near(s.cam.z, 4.5), `  the interior camera centres on the room (${s.cam.x}, ${s.cam.z})`);
+  // The interior rig follows the hero clamped by frame rows (art bible 1.8,
+  // section 9); a room smaller than the view is centred between its walls.
+  t.expect(s.cam.preset === 'interior' && near(s.cam.x, 6) && near(s.cam.z, burrow.want, 0.01) && s.cam.z > 4 && s.cam.z < 5.5, `  the interior camera centres on the room between its walls (${s.cam.x}, ${s.cam.z})`);
   t.expect(burrow.inFrame && burrow.shown.join() === 'test-burrow:0,0', `  the hero is in frame and only the Burrow is drawn (${burrow.shown.join(', ')})`);
   await t.step(0.3);
   await t.shot('02-burrow');

@@ -8,6 +8,7 @@
 // promise continuations run (code after `await showDialog(...)`), the way the
 // real loop does between two animation frames. update() is one bare tick.
 import * as THREE from 'three';
+import { GROUND_Y } from '../core/constants.js';
 import { state, serializeState } from '../core/state.js';
 import { input } from '../core/input.js';
 import { on, once, off, emit } from '../core/events.js';
@@ -225,13 +226,15 @@ export function installTestHook({ update, render }) {
         const v = new THREE.Vector3(x, y, z).project(camera3d);
         return [v.x, v.y, v.z];
       },
-      // Normalised device point -> the ground (y = 0) it shows, or null above the horizon.
+      // The ground's top (feet rest here; the camera is posed from it).
+      groundY: GROUND_Y,
+      // Normalised device point -> the ground (its top, y = GROUND_Y) it shows, or null above the horizon.
       groundAt(nx, ny) {
         camera3d.updateMatrixWorld();
         const o = camera3d.position.clone();
         const d = new THREE.Vector3(nx, ny, 0.5).unproject(camera3d).sub(o);
         if (d.y >= -1e-9) return null;
-        const t = -o.y / d.y;
+        const t = (GROUND_Y - o.y) / d.y;
         return { x: o.x + d.x * t, z: o.z + d.z * t };
       },
     },

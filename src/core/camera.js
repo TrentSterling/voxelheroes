@@ -195,17 +195,22 @@ export function subjectZForRow(p, row, y, z) {
 // above frame row north / row, the black south wall's top at or below row
 // south / row, and the ends of the frame's bottom row on the floor between
 // the side walls. A room smaller than the view one way keeps it centred
-// that way.
+// that way. Keeping all of the hero in frame wins over all of these.
 function roomSubject(pos, rect, p, aspect) {
   const { clamp } = THREE.MathUtils;
   const { north, south, row, wall, inset } = TUNING.camera.roomClamp;
   const zMin = subjectZForRow(p, north / row, wall, rect.z0 + 1);
   const zMax = subjectZForRow(p, south / row, wall, rect.z1 - 1);
-  const z = zMin <= zMax ? clamp(pos.z, zMin, zMax) : (zMin + zMax) / 2;
-  const hw = halfWidthAt(p, cameraFootprint(p, aspect).south, aspect); // the bottom row
+  const { south: bottom } = cameraFootprint(p, aspect);
+  let z = zMin <= zMax ? clamp(pos.z, zMin, zMax) : (zMin + zMax) / 2;
+  z = Math.max(z, pos.z + southReach(p) - bottom); // all of the hero above the bottom edge wins
+  const hw = halfWidthAt(p, bottom, aspect); // the bottom row
   const lo = rect.x0 + inset + hw;
   const hi = rect.x1 - inset - hw;
-  const x = lo <= hi ? clamp(pos.x, lo, hi) : (rect.x0 + rect.x1) / 2;
+  let x = lo <= hi ? clamp(pos.x, lo, hi) : (rect.x0 + rect.x1) / 2;
+  // ... and so does all of him inside the frame's sides (a narrow frame: a phone held upright)
+  const reach = sideReach(p, pos.z - z, aspect);
+  x = reach > 0 ? clamp(x, pos.x - reach, pos.x + reach) : pos.x;
   return new THREE.Vector3(x, 0, z);
 }
 

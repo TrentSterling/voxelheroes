@@ -98,7 +98,7 @@ export class Enemy extends Entity {
       this.holder.scale.setScalar(this.growT);
     }
 
-    const bounds = currentScreen(); // a rect: enemies stay on their screen
+    const bounds = currentScreen(); // a rect: enemies stay on their screen (also while the hero is in a follow change's dead band, past its edge)
     const toP = { x: player.x - this.x, z: player.z - this.z };
     const dist = Math.hypot(toP.x, toP.z);
 
