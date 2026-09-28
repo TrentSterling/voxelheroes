@@ -9,7 +9,6 @@ import { hero } from '../../game/hero.js';
 import { Enemy } from '../enemy.js';
 import { spawn } from '../manager.js';
 import { registerEntity } from '../registry.js';
-import { player } from '../player.js';
 import { wander, flier, aligned, faceDir, tell, stepTell } from '../ai.js';
 
 const R = (id) => TUNING.enemy.roster[id];
@@ -77,10 +76,7 @@ class Gazer extends Enemy {
     if (dir && this.cool <= 0 && facing) {
       this.gaze = dir;
       const t = TUNING.enemy.ai.gazeParalyze;
-      hero.addStatus('paralyzed', t);
-      // hold his walking off while he is held (the hero reads the status for presses)
-      player.knockT = Math.max(player.knockT, t);
-      player.kx = player.kz = 0;
+      hero.addStatus('paralyzed', t); // player.js holds his walking, hero.canAct his presses
       tell(this, t);
       return;
     }

@@ -162,6 +162,7 @@ body {
   color: #bdb6a0;
 }
 
+#settings-btn,
 #mute {
   pointer-events: auto;
   font: 600 13px var(--pixel);
@@ -174,6 +175,7 @@ body {
 }
 
 #mute:focus-visible,
+#settings-btn:focus-visible,
 #start:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 3px;
@@ -417,4 +419,45 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   #banner { animation: none; }
+}
+
+/* Settings panel (ui/settings-panel.js) */
+#settings {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 17, 13, 0.6);
+  pointer-events: auto;
+}
+#settings[hidden] { display: none; }
+.settings-panel {
+  box-sizing: border-box;
+  width: min(380px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  background: #10201a;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: #e8e2cc;
+  font: 15px var(--pixel, sans-serif);
+}
+.settings-panel h2 { margin: 0; font-size: 20px; color: var(--gold); }
+.settings-rows { display: grid; gap: 8px; }
+.settings-row { display: grid; grid-template-columns: 1fr 1.3fr; align-items: center; gap: 12px; }
+.settings-row select, .settings-row input { width: 100%; font: inherit; accent-color: var(--gold); }
+.settings-row select { background: #1a2e26; color: inherit; border: 1px solid var(--line); padding: 3px 6px; }
+.settings-close {
+  justify-self: end;
+  font: 700 15px var(--pixel);
+  color: #1c1405;
+  background: var(--gold);
+  border: 0;
+  padding: 6px 14px 4px;
+  cursor: pointer;
 }

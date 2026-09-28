@@ -176,13 +176,14 @@ export function dofForCamera(name, preset) {
 
 // ---------------------------------------------------------------- quality levels
 //   high    everything
-//   medium  no GTAO, 32 DOF samples, no glare
+//   medium  no GTAO, no glare
+//   dofMode 'pyramid' / bloomMode 'dual': the dual-filter blur (dual-filter.js); drop them for the lab's gather and UnrealBloomPass
 //   low     no post pass: direct render with ACES and the bevel material (no polished floor)
 //   flat    no post, no tone mapping, flat materials (no bevel, edge light or seams): for debugging
 export const QUALITY_LEVELS = {
-  high: { post: true, ao: true, dofSamples: 96, bloom: true, glare: true, reflect: true, msaa: 4, shadowMapMax: 4096 },
-  medium: { post: true, ao: false, dofSamples: 32, bloom: true, glare: false, reflect: true, msaa: 4, shadowMapMax: 4096 },
-  low: { post: false, ao: false, dofSamples: 0, bloom: false, glare: false, reflect: false, msaa: 0, shadowMapMax: 2048 },
+  high: { post: true, ao: true, dofMode: 'pyramid', bloomMode: 'dual', dofSamples: 96, bloom: true, glare: true, reflect: true, msaa: 4, shadowMapMax: 4096, maxPixels: 2560 * 1440 },
+  medium: { post: true, ao: false, dofMode: 'pyramid', bloomMode: 'dual', dofSamples: 32, bloom: true, glare: false, reflect: true, msaa: 4, shadowMapMax: 4096, maxPixels: 1920 * 1080 },
+  low: { post: false, ao: false, dofSamples: 0, bloom: false, glare: false, reflect: false, msaa: 0, shadowMapMax: 2048, maxPixels: 2560 * 1440 },
   flat: { post: false, ao: false, dofSamples: 0, bloom: false, glare: false, reflect: false, msaa: 0, shadowMapMax: 2048, flat: true },
 };
 export const QUALITY_ORDER = ['high', 'medium', 'low', 'flat'];

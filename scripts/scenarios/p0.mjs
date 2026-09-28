@@ -37,7 +37,7 @@ export default async function p0(t) {
   await t.eval(() => window.__voxelHeroes.start());
   await t.step(1.1);
   let s = await t.state();
-  t.expect(s.loadedArea === 'overworld', `only the current area is built at the start (${s.loadedArea})`);
+  t.expect(s.loadedArea === 'ow-4-3', `only the current area is built at the start, the castle's (${s.loadedArea})`);
 
   // ---------------------------------------------------------------- A: follow
   await t.eval(() => {

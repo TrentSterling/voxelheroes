@@ -25,6 +25,9 @@ export const options = {
   textSpeed: 'normal',
   brightness: 1,
   saturation: 1,
+  renderScale: 1,
+  bloom: true,
+  blur: 0.5, // Trent found the full art-bible blur too heavy (2026-09-28)
   volume: 0.8,
   music: 0.7,
   sfx: 0.9,

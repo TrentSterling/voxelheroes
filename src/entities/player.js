@@ -68,6 +68,9 @@ export class Player extends Entity {
     this.kx = 0;
     this.kz = 0;
     this.knockT = 0;
+    // status lookup, set by game/hero.js (hero.hasStatus): player.js reads
+    // 'paralyzed' for walking without importing the API module
+    this.statusOf = null;
     this.lockT = 0; // no walking, sword, item or dash
     this.stallT = 0; // a dash crash's stall
     this.guarding = false;
@@ -234,6 +237,9 @@ export class Player extends Entity {
       vx = this.kx;
       vz = this.kz;
       if (this.dashing) this.stopDash();
+    } else if (this.paralyzed()) {
+      // held fast (a gazer's stare): no walking, no dash, facing kept
+      if (this.dashing) this.stopDash();
     } else if (this.dashing) {
       this.stepDash(dt, stick);
       vx = this.dashVx;
@@ -260,6 +266,10 @@ export class Player extends Entity {
     tickSword(this, dt, stick.dir);
     this.animate(dt, moving);
     this.lastYaw = this.yaw;
+  }
+
+  paralyzed() {
+    return !!this.statusOf?.('paralyzed');
   }
 
   // ---- the dash (spec 7.9)
@@ -330,8 +340,16 @@ export class Player extends Entity {
     this.tileFields(tx, tz, dt);
     // Walking into the tile ahead: locked doors, chests, push blocks.
     if (state.mode === 'play' && mv.dir >= 0 && !this.thrust && !this.dashing) {
-      const fx = Math.floor(this.x + Math.sin(this.yaw) * (this.r + 0.15));
-      const fz = Math.floor(this.z + Math.cos(this.yaw) * (this.r + 0.15));
+      let reach = this.r + 0.15;
+      let fx = Math.floor(this.x + Math.sin(this.yaw) * reach);
+      let fz = Math.floor(this.z + Math.cos(this.yaw) * reach);
+      // a room's side walls stand half a tile in from their tiles (WALL_INSET):
+      // a door in one is half a tile further on
+      if (!world.isSolid(fx, fz, this)) {
+        reach += 0.5;
+        fx = Math.floor(this.x + Math.sin(this.yaw) * reach);
+        fz = Math.floor(this.z + Math.cos(this.yaw) * reach);
+      }
       world.trigger(fx, fz, 'onPush', { player: this, dt });
     }
   }

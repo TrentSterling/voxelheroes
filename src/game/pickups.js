@@ -14,9 +14,8 @@
 //
 // 'pickup' carries wasFull for heart and magic pickups: whether life (a
 // heart) or magic (a magic jar) was already full before it was collected
-// (the star special: a heart at full life). collectPickup fills it in; the
-// items stream adds it to Pickup's walked-over emit in M2 (until then it is
-// missing there: read undefined as not known).
+// (the star special: a heart at full life). collectPickup and Pickup's
+// walked-over emit both fill it in (undefined for other types).
 import { emit } from '../core/events.js';
 import { random } from '../core/random.js';
 import { TUNING } from '../core/tuning.js';

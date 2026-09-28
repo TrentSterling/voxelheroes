@@ -23,5 +23,12 @@ import { registerCameraPreset } from '../core/camera.js';
 const C = TUNING.camera;
 
 const BIG = { pitch: 52.978, fov: 37.07, lead: 0, follow: true, fixed: false };
-registerCameraPreset('boss', { label: 'Boss arena', selectable: false, ...BIG, height: C.bossHeight });
-registerCameraPreset('boss-intro', { label: 'Boss intro', selectable: false, ...BIG, height: C.bossHeight * (1 - C.bossIntro.zoom) });
+// Depth of field (core/look/presets.js DOF_PRESETS fields). Without a block of
+// their own both fell back to camera A's strong blur: the arena read soft, and
+// the push-in (which frames the boss while the focus stays on the hero's
+// feet) blurred the boss out. The arena gets the dungeon room's nearly sharp
+// band; the push-in a wide in-focus band so hero and boss both stay sharp.
+const BOSS_DOF = { focusOffset: 0, focusRange: 4, farRamp: 9, nearRamp: 7, farMaxBlur: 4, nearMaxBlur: 3 };
+const INTRO_DOF = { focusOffset: 0, focusRange: 7, farRamp: 12, nearRamp: 10, farMaxBlur: 3, nearMaxBlur: 2 };
+registerCameraPreset('boss', { label: 'Boss arena', selectable: false, ...BIG, height: C.bossHeight, dof: BOSS_DOF });
+registerCameraPreset('boss-intro', { label: 'Boss intro', selectable: false, ...BIG, height: C.bossHeight * (1 - C.bossIntro.zoom), dof: INTRO_DOF });

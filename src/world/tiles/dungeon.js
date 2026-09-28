@@ -193,7 +193,7 @@ function sconces(ctx, pos) {
   }
 }
 
-function buildWall(ctx) {
+export function buildWall(ctx) {
   const pos = roomPos(ctx);
   const { X0 } = ctx;
   if (!pos) return northWall(ctx, X0, X0 + BPT);

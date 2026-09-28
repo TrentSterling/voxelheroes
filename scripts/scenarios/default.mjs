@@ -1,10 +1,12 @@
-// The M1 smoke play-through. Every step is played with the keyboard or the
-// bot helpers (no teleports until the extras at the end), so it exercises
-// scrolling, warps, combat, pickups, the key, the locked door and the chest.
+// The M1 smoke play-through. The game starts in the castle courtyard of the
+// overworld slice (M2); one teleport takes the hero to the M1 Crossroads, and
+// from there every step is played with the keyboard or the bot helpers (no
+// teleports until the extras at the end), so it exercises scrolling, warps,
+// combat, pickups, the key, the locked door and the chest.
 import { clearFoes } from '../lib/helpers.mjs';
 
 export const description =
-  'Title, Crossroads, a fight in Rattlestone Hollow, Cairn Ridge, the crypt (key, locked door, chest) and out by the stairs; then pause, dialog, save/load (tiles saved by place), game over, and loading an M1 save made after the crypt.';
+  'Title and the castle start, Crossroads, a fight in Rattlestone Hollow, Cairn Ridge, the crypt (key, locked door, chest) and out by the stairs; then pause, dialog, save/load (tiles saved by place), game over, and loading an M1 save made after the crypt.';
 
 const near = (a, b, eps = 0.1) => Math.abs(a - b) <= eps;
 
@@ -28,7 +30,7 @@ export default async function defaultScenario(t) {
   await t.step(0.5);
   s = await t.state();
   t.expect(s.mode === 'title' && s.overlay, 'the game opens on the title panel');
-  t.expect(s.screenName === 'Crossroads', 'the hero idles on the Crossroads behind it');
+  t.expect(s.screenName === 'Crownhold Courtyard', 'the hero idles in the castle courtyard behind it');
   await t.shot('01-title');
 
   await t.press('Enter');
@@ -36,7 +38,11 @@ export default async function defaultScenario(t) {
   s = await t.state();
   t.expect(s.mode === 'play' && !s.overlay, 'Enter starts the game');
   t.expect(s.hp === 6 && s.maxHp === 6 && s.gems === 0 && s.keys === 0, 'a new game has 3 hearts, no gems and no keys');
-  t.expect(near(s.lx, 8, 0.01) && near(s.lz, 5.5, 0.01), 'the hero starts in the middle of the Crossroads');
+  t.expect(s.screenName === 'Crownhold Courtyard' && near(s.lx, 8, 0.01) && near(s.lz, 9, 0.01), 'the hero starts in the castle courtyard, before the king');
+  await t.teleport('Crossroads', 8, 5.5);
+  await t.step(0.2);
+  s = await t.state();
+  t.expect(s.screenName === 'Crossroads', 'the M1 play-through goes on from the Crossroads');
   await t.shot('02-crossroads');
 
   // ---------------------------------------------------------------- Rattlestone Hollow
@@ -226,7 +232,7 @@ export default async function defaultScenario(t) {
   await t.press('Enter');
   await t.step(1.1);
   s = await t.state();
-  t.expect(s.mode === 'play' && s.screenName === 'Crossroads' && s.hp === s.maxHp, 'Try again: back on the Crossroads with full health');
+  t.expect(s.mode === 'play' && s.screenName === 'Crownhold Courtyard' && s.hp === s.maxHp, 'Try again: back at the start, the castle courtyard, with full health');
   await t.shot('15-try-again');
 
   // ---------------------------------------------------------------- an M1 save

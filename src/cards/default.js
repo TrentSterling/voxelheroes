@@ -9,3 +9,6 @@ import { registerLoadingCard } from '../game/cards.js';
 
 registerLoadingCard({ id: 'card-overworld', title: 'The Open Country', areas: ['overworld'], order: 10 });
 registerLoadingCard({ id: 'card-road', title: 'On the Road', areas: '*', order: 999 });
+registerLoadingCard({ id: 'card-castle', title: 'Crownhold', areas: ['ow-4-3'], order: 11, text: 'The castle and its pastures.' });
+registerLoadingCard({ id: 'card-v1', title: 'Mossbrook', areas: ['v1'], order: 12, text: 'Rest at the inn, and it is there you will wake.' });
+registerLoadingCard({ id: 'card-ow-3-2', title: 'Barrowfield', areas: ['ow-3-2', 'cave-barrow'], order: 13, text: 'The old barrow lies to the south.' });

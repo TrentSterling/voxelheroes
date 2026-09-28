@@ -56,6 +56,8 @@ export default async function screens(t) {
     const spot = await middleSpot(t);
     if (spot) await t.teleport(s.key, spot.x, spot.z, { yaw: 0 });
     await t.step(0.8);
+    // a boss arena opens with its 2 s intro (boss-intro mode): let it play out
+    if ((await t.state()).mode === 'boss-intro') await t.waitFor((x) => x.mode === 'play', { seconds: 4 });
     const st = await t.state();
     t.expect(st.screenName === s.name && st.mode === 'play' && st.size[0] === s.w && st.size[1] === s.h, `${s.name} (${s.key}, ${s.w} x ${s.h})`);
     if (s.rooms) {

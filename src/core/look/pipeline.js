@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { DualPyramid } from './dual-filter.js';
 
 const DEG = Math.PI / 180;
 export const DOF_TILE = 16;
@@ -142,6 +143,63 @@ const DofGatherShader = {
     }`,
 };
 
+// Fast depth of field (Q.dofMode 'pyramid'): the sharp image and five dual-filter blur levels
+// (B_n about 2^n px wide at full size) mixed per pixel by the circle of confusion. A handful of
+// low-resolution passes instead of the 96-tap full-resolution gather.
+const DofPyramidShader = {
+  uniforms: {
+    tPrep: { value: null },
+    tB1: { value: null }, tB2: { value: null }, tB3: { value: null }, tB4: { value: null }, tB5: { value: null },
+    ...cocUniforms(),
+  },
+  vertexShader: QUAD_VERTEX,
+  fragmentShader: /* glsl */ `
+    uniform highp sampler2D tPrep;
+    uniform sampler2D tB1, tB2, tB3, tB4, tB5;
+    ${COC_PARS}
+    varying vec2 vUv;
+    vec3 level(int i) {
+      if (i <= 1) return texture2D(tB1, vUv).rgb;
+      if (i == 2) return texture2D(tB2, vUv).rgb;
+      if (i == 3) return texture2D(tB3, vUv).rgb;
+      if (i == 4) return texture2D(tB4, vUv).rgb;
+      return texture2D(tB5, vUv).rgb;
+    }
+    void main() {
+      vec4 c0 = texture2D(tPrep, vUv);
+      float c = coc(c0.a);
+      if (c < 0.5) { gl_FragColor = vec4(c0.rgb, 1.0); return; }
+      float f = clamp(log2(max(c, 1.0)), 0.0, 5.0);
+      vec3 col;
+      if (c < 2.0) col = mix(c0.rgb, texture2D(tB1, vUv).rgb, clamp((c - 0.5) / 1.5, 0.0, 1.0));
+      else {
+        int i = int(floor(f));
+        col = mix(level(i), level(i + 1), fract(f));
+      }
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+};
+
+// Bloom bright pass (dual-filter bloom): the soft-knee threshold of the lab's glare, at half size.
+const BloomBrightShader = {
+  uniforms: { tColor: { value: null }, threshold: { value: 0.88 }, knee: { value: 0.1 }, halfTexel: { value: new THREE.Vector2() } },
+  vertexShader: QUAD_VERTEX,
+  fragmentShader: /* glsl */ `uniform sampler2D tColor; uniform float threshold, knee; uniform vec2 halfTexel; varying vec2 vUv;
+    vec3 bright(vec3 c) {
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      return c * smoothstep(threshold, threshold + knee, l);
+    }
+    void main() {
+      vec3 c = bright(texture2D(tColor, vUv).rgb) * 4.0;
+      c += bright(texture2D(tColor, vUv - halfTexel).rgb);
+      c += bright(texture2D(tColor, vUv + halfTexel).rgb);
+      c += bright(texture2D(tColor, vUv + vec2(halfTexel.x, -halfTexel.y)).rgb);
+      c += bright(texture2D(tColor, vUv - vec2(halfTexel.x, -halfTexel.y)).rgb);
+      gl_FragColor = vec4(c / 8.0, 1.0);
+    }`,
+};
+const BLOOM_FACTORS = [1.0, 0.8, 0.6, 0.4, 0.2]; // UnrealBloomPass's mip weights
+
 // ---------------------------------------------------------------- star glare (lab)
 const BrightShader = {
   uniforms: { tColor: { value: null }, threshold: { value: 3.2 }, knee: { value: 0.5 } },
@@ -265,6 +323,15 @@ export class LookPipeline {
 
     this.gtao = null; // built on first use (high quality only)
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.55, 0.88);
+    this.dofPyr = new DualPyramid(5);
+    this.dofBlur = [0, 1, 2, 3].map(() => halfTarget(1, 1)); // B2..B5 at half size
+    this.dofPyrQ = quad(DofPyramidShader);
+    this.bloomPyr = new DualPyramid(5);
+    this.bloomOut = halfTarget(1, 1);
+    this.bloomBrightQ = quad(BloomBrightShader);
+    this.bloomAddQ = new FullScreenQuad(
+      new THREE.MeshBasicMaterial({ toneMapped: false, blending: THREE.AdditiveBlending, transparent: true, depthTest: false, depthWrite: false })
+    );
 
     this.prepQ = quad(DofPrepareShader);
     this.tileQ = quad(DofTileShader);
@@ -301,6 +368,9 @@ export class LookPipeline {
     const G = this.glareRT;
     for (const rt of [G.bright, G.ping, G.pong, ...G.dirs]) rt.setSize(hw, hh);
     this.bloom.setSize(w, h);
+    this.dofPyr.setSize(w, h);
+    this.bloomPyr.setSize(w, h);
+    for (const rt of [...this.dofBlur, this.bloomOut]) rt.setSize(hw, hh);
     this.gtao?.setSize(w, h);
   }
 
@@ -339,7 +409,10 @@ export class LookPipeline {
       passes += 4;
     }
 
-    if (f.dof && Q.dofSamples > 0) {
+    if (f.dof && Q.dofMode === 'pyramid') {
+      passes += this.renderDofPyramid(src, f.dof, f.focusDistance);
+      src = this.dofRT;
+    } else if (f.dof && Q.dofSamples > 0) {
       this.renderDof(src, f.dof, f.focusDistance, Q.dofSamples);
       src = this.dofRT;
       passes += 4;
@@ -349,7 +422,9 @@ export class LookPipeline {
       passes += 1;
     }
 
-    if (Q.bloom && L.bloom && L.bloom.strength > 0) {
+    if (Q.bloom && L.bloom && L.bloom.strength > 0 && Q.bloomMode === 'dual') {
+      passes += this.renderBloomDual(src, L.bloom);
+    } else if (Q.bloom && L.bloom && L.bloom.strength > 0) {
       const b = this.bloom;
       b.strength = L.bloom.strength;
       b.radius = L.bloom.radius;
@@ -422,6 +497,62 @@ export class LookPipeline {
     setCoc(u);
     renderer.setRenderTarget(this.dofRT);
     gq.render(renderer);
+  }
+
+  // Returns the number of passes.
+  renderDofPyramid(src, D, focusDistance) {
+    const { renderer, camera } = this;
+    const scale = this.h / 720;
+    const p = this.prepQ.material.uniforms;
+    p.tColor.value = src.texture;
+    p.tDepth.value = this.sceneRT.depthTexture;
+    p.cameraNear.value = camera.near;
+    p.cameraFar.value = camera.far;
+    renderer.setRenderTarget(this.prepRT);
+    this.prepQ.render(renderer);
+
+    const P = this.dofPyr;
+    P.down(renderer, this.prepRT.texture, this.w, this.h);
+    let passes = 1 + P.passes;
+    const u = this.dofPyrQ.material.uniforms;
+    u.tPrep.value = this.prepRT.texture;
+    u.tB1.value = P.levels[0].texture;
+    [u.tB2, u.tB3, u.tB4, u.tB5].forEach((t, i) => {
+      P.passes = 0;
+      t.value = P.blurTo(renderer, i + 2, this.dofBlur[i]).texture;
+      passes += P.passes;
+    });
+    u.focusDistance.value = focusDistance;
+    u.focusRange.value = D.focusRange;
+    u.farRamp.value = D.farRamp;
+    u.nearRamp.value = D.nearRamp;
+    u.farMaxBlur.value = D.farMaxBlur * scale;
+    u.nearMaxBlur.value = D.nearMaxBlur * scale;
+    renderer.setRenderTarget(this.dofRT);
+    this.dofPyrQ.render(renderer);
+    return passes + 1;
+  }
+
+  // Dual-filter bloom: bright pass at half size, five levels down, weighted sum back up, added
+  // into src. Same strength / radius / threshold meaning as UnrealBloomPass.
+  renderBloomDual(src, B) {
+    const { renderer } = this;
+    const P = this.bloomPyr;
+    const bu = this.bloomBrightQ.material.uniforms;
+    bu.tColor.value = src.texture;
+    bu.threshold.value = B.threshold;
+    bu.halfTexel.value.set(0.5 / this.w, 0.5 / this.h);
+    P.down(renderer, src.texture, this.w, this.h, this.bloomBrightQ);
+    const r = B.radius ?? 0;
+    const weights = BLOOM_FACTORS.map((f) => (f + (1.2 - f - f) * r) * (B.strength ?? 0));
+    const out = P.sumUp(renderer, weights, this.bloomOut);
+    this.bloomAddQ.material.map = out.texture;
+    renderer.setRenderTarget(src);
+    const ac = renderer.autoClear;
+    renderer.autoClear = false;
+    this.bloomAddQ.render(renderer);
+    renderer.autoClear = ac;
+    return P.passes + 1;
   }
 
   renderGlare(src, gq) {

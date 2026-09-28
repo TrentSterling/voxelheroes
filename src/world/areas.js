@@ -81,7 +81,8 @@ export const ROOM_SCREEN = [16, 12]; // dungeon rooms (art bible section 9)
 // Where a new game starts, and where the hero gets back up after falling
 // (a spot: area, local screen, and local tile coordinates; x and z default
 // to the middle of the screen).
-export const START = { area: 'overworld', screen: [1, 1] };
+// The castle courtyard of the overworld slice (world/areas/slice.js CASTLE_START).
+export const START = { area: 'ow-4-3', screen: [1, 1], x: 8, z: 9, yaw: Math.PI };
 
 const areas = new Map();
 

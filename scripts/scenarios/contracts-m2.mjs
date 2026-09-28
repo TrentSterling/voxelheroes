@@ -101,7 +101,12 @@ export default async function contractsM2(t) {
   await t.press('Enter');
   await t.step(1.1);
   s = await t.state();
-  t.expect(s.mode === 'play' && s.screenName === 'Crossroads', 'the game starts at the Crossroads');
+  t.expect(s.mode === 'play' && s.screenName === 'Crownhold Courtyard', 'the game starts in the castle courtyard (START, M2)');
+  // the checks below play on the M1 fixtures, from the Crossroads
+  await t.teleport('Crossroads', 8, 5.5);
+  await t.step(0.2);
+  s = await t.state();
+  t.expect(s.mode === 'play' && s.screenName === 'Crossroads', 'the M1 fixtures go on from the Crossroads');
 
   // ---------------------------------------------------------------- input
   r = await t.eval(() => {
@@ -402,7 +407,7 @@ export default async function contractsM2(t) {
   t.expect(r.yaws === 'south,east,north,west', 'facingFromYaw: the cardinal nearest a yaw (0 faces south)');
   t.expect(r.set === 'east' && r.facing === 'east' && r.vec.x === 1 && r.vec.z === 0 && r.south === 'south', 'setFacing turns the attack facing (east: +x)');
   t.expect(r.toward === 'north' && r.towardFacing === 'north' && /setFacing: north, east, south, west/.test(r.bad), 'faceToward faces the cardinal nearest a point; setFacing takes only the four');
-  t.expect(near(r.local[0], 8, 0.01) && near(r.local[1], 5.5, 0.01) && r.full, `position() gives local tiles (${r.local})`);
+  t.expect(near(r.local[0], 8, 0.01) && near(r.local[1], 9, 0.01) && r.full, `position() gives local tiles, at START in the castle courtyard (${r.local})`);
 
   await kb.down('Shift');
   await t.step(DT);
@@ -510,6 +515,9 @@ export default async function contractsM2(t) {
   });
   t.expect(r.pose === 'cheer' && r.poseAfter === null, 'cheer holds the cheer pose for its time');
   t.expect(!r.canAct && r.canActAfter, 'a status (paralyzed) stops acting until it wears off');
+  // the falls below are measured on the M1 Crossroads (a new game starts in the castle now)
+  await t.teleport('Crossroads', 8, 5.5);
+  await t.step(0.2);
 
   r = await t.eval(() => {
     const { hero } = window.__voxelHeroes.game.hero;

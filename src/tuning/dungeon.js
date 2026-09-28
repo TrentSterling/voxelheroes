@@ -12,4 +12,5 @@ export const dungeon = {
   conveyor: 3,
   bombWallRadius: 1.5,
   candleRadius: 3,
+  wallSwitch: 5, // s a wall switch stays lit (the boss-key room's four must be lit together)
 };

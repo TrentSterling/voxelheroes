@@ -495,6 +495,9 @@ player.hazardHandler = (def, tx, tz) => {
 
 // The low-life beep (spec 7.10): every beepInterval while life is at or
 // below the threshold for his max life.
+// player.js reads statuses (the gazer's 'paralyzed' holds his walking) through this.
+player.statusOf = (name) => (status.get(name) ?? 0) > 0;
+
 export function lowLifeLine(maxHp = state.maxHp) {
   const maxHearts = maxHp / UNITS_PER_HEART;
   const row = TUNING.damage.beepHearts.find(([upTo]) => maxHearts <= upTo) ?? TUNING.damage.beepHearts.at(-1);

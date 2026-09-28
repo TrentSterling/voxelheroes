@@ -32,6 +32,7 @@
 import { state } from '../core/state.js';
 import { keyCount } from '../systems/keys.js';
 import { setSetting, registerSettingApplier } from '../game/settings.js';
+import { openSettings } from './settings-panel.js';
 import { $ } from './dom.js';
 
 export const REGIONS = {
@@ -110,6 +111,10 @@ export function initHud() {
   mounted = true;
   for (const w of [...widgets].sort(before)) mountWidget(w);
   registerSettingApplier('muted', drawMute);
+  $('settings-btn')?.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    openSettings();
+  });
   $('mute').addEventListener('click', (e) => {
     toggleMuteUi();
     e.currentTarget.blur();

@@ -19,7 +19,7 @@ export { DOF_PRESETS, QUALITY_LEVELS, QUALITY_ORDER };
 
 // Frame-time watchdog: drop one quality level when the median frame time stays above
 // SLOW_FRAME_MS for SLOW_SECONDS (real-time loop only; never below 'low').
-const SLOW_FRAME_MS = 24;
+const SLOW_FRAME_MS = 20;
 const SLOW_SECONDS = 3;
 
 const _size = new THREE.Vector2();
@@ -200,7 +200,15 @@ export function createLook({ renderer, scene, camera }) {
     applySettings();
     const Q = QUALITY_LEVELS[quality];
 
-    const pr = Math.min(window.devicePixelRatio || 1, 2);
+    // Pixel budget: big screens (4K) draw at most Q.maxPixels and the browser scales the canvas
+    // up. Blur radii scale with the buffer height, so the look is the same at any size.
+    const css = renderer.domElement.getBoundingClientRect();
+    const cssPixels = Math.max(1, css.width * css.height);
+    let pr = Math.min(window.devicePixelRatio || 1, 2);
+    if (Q.maxPixels) pr = Math.min(pr, Math.sqrt(Q.maxPixels / cssPixels));
+    const rs = state.settings?.renderScale;
+    if (Number.isFinite(rs) && rs > 0) pr *= rs;
+    pr = Math.round(pr * 100) / 100;
     if (renderer.getPixelRatio() !== pr) renderer.setPixelRatio(pr);
     renderer.getDrawingBufferSize(_size);
     const w = Math.max(1, _size.x);
@@ -224,15 +232,17 @@ export function createLook({ renderer, scene, camera }) {
     setWaterTime(state.time);
 
     // depth of field: the hero's feet (view depth) plus the camera preset's offset
-    const dof = dofForCamera(bound.cameraPresetName(), bound.cameraPreset());
+    const blur = Number.isFinite(state.settings?.blur) ? state.settings.blur : 1;
+    const dofBase = dofForCamera(bound.cameraPresetName(), bound.cameraPreset());
+    const dof = blur <= 0 ? null : blur === 1 ? dofBase : { ...dofBase, farMaxBlur: dofBase.farMaxBlur * blur, nearMaxBlur: dofBase.nearMaxBlur * blur };
     _hero.set(hero ? hero.x : subject.x, GROUND_Y, hero ? hero.z : subject.z).applyMatrix4(camera.matrixWorldInverse);
-    const focusDistance = -_hero.z + (dof.focusOffset ?? 0);
+    const focusDistance = -_hero.z + (dofBase.focusOffset ?? 0);
     const exp = exposure() * display.brightness;
 
     if (Q.post) {
       pipeline.setSize(w, h);
       renderer.toneMapping = THREE.NoToneMapping;
-      pipeline.render({ look: L, quality: Q, dof, focusDistance, exposure: exp, saturation: display.saturation });
+      pipeline.render({ look: L, quality: state.settings?.bloom === false ? { ...Q, bloom: false, glare: false } : Q, dof, focusDistance, exposure: exp, saturation: display.saturation });
     } else {
       renderer.setRenderTarget(null);
       renderer.toneMapping = Q.flat ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
