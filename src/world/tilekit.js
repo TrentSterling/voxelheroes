@@ -24,7 +24,9 @@ import {
   potModel,
   FLAME_Y,
 } from '../models/props.js';
-import { burst, sparks } from '../systems/particles.js';
+import { burst, sparks, smoke } from '../systems/particles.js';
+import { liveEntities } from '../entities/manager.js';
+import { tilesetFloor } from './tiles.js';
 import { rollDrop } from '../systems/drops.js';
 import { keyCount, useKey } from '../systems/keys.js';
 import { grant } from '../systems/grants.js';
@@ -153,6 +155,34 @@ export function breakPot(ctx) {
   burst(tx + 0.5, GROUND_Y + 0.35, tz + 0.5, cols, 36, { speed: 3.6, size: 0.11, up: 4.5 });
   sparks(tx + 0.5, GROUND_Y + 0.3, tz + 0.5, [0xffffff, 0xf0d0a0], 8, { speed: 3, size: 0.05, up: 3, life: 0.3 });
   rollDrop('pot', tx + 0.5, tz + 0.5);
+  return true;
+}
+
+// onPush for statues and push blocks (gameplay spec 6.4: pushed like a block): leaning on it for
+// PUSH_TIME slides it one tile away from the hero onto open floor (the tileset's floor char, no
+// one standing there). It is back in place on the next visit to the room (regrow).
+const PUSH_TIME = 0.4;
+const pushing = { key: null, t: 0 };
+export function pushTile(ctx) {
+  const { world, tx, tz, ch, player, dt = 1 / 60 } = ctx;
+  const key = `${tx},${tz}`;
+  if (pushing.key !== key) Object.assign(pushing, { key, t: 0 });
+  pushing.t += dt;
+  if (pushing.t < PUSH_TIME) return false;
+  pushing.key = null;
+  const dx = tx + 0.5 - player.x;
+  const dz = tz + 0.5 - player.z;
+  const [sx, sz] = Math.abs(dx) > Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)];
+  const floor = tilesetFloor(ctx.screen.tileset) ?? '.';
+  const nx = tx + sx;
+  const nz = tz + sz;
+  if (world.tile(nx, nz) !== floor || world.locate(nx, nz)?.screen !== ctx.screen) return false;
+  for (const e of liveEntities()) if (e.solid !== false && e.kind !== 'pickup' && Math.floor(e.x) === nx && Math.floor(e.z) === nz) return false;
+  world.setTile(nx, nz, ch, { reason: 'push' });
+  world.setTile(tx, tz, floor, { reason: 'push' });
+  sfx.push?.() ?? sfx.block();
+  smoke(tx + 0.5 + sx * 0.5, GROUND_Y + 0.05, tz + 0.5 + sz * 0.5, 4, { radius: 0.1, spread: 0.3, life: 0.4 });
+  emit('tile-pushed', { from: [tx, tz], to: [nx, nz], ch });
   return true;
 }
 

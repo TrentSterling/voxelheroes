@@ -32,7 +32,7 @@ import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile, getTile } from '../tiles.js';
 import { GOLD } from '../palette.js';
 import { BPT, FPT, registerRing, registerLayer, screenBox } from '../terrain.js';
-import { doorProp, chestProp, flameProp, spikeBallProp, pushBlockProp, unlockDoor, openChest } from '../tilekit.js';
+import { doorProp, chestProp, flameProp, spikeBallProp, pushBlockProp, unlockDoor, openChest, pushTile } from '../tilekit.js';
 import { statue, brazier } from '../../models/props.js';
 
 defineTileset('dungeon', { floor: '.' });
@@ -289,6 +289,8 @@ const statueGrid = statue();
 registerTile('dungeon', 'S', {
   name: 'statue',
   solid: true,
+  regrow: true, // a pushed statue is back in place on the next visit
+  onPush: pushTile, // pushed like a block (gameplay spec 6.4)
   detailHeight: statueGrid.sy,
   build(ctx) {
     fineFloor(ctx);
@@ -322,7 +324,15 @@ registerTile('dungeon', 'X', {
   },
 });
 
-registerTile('dungeon', 'O', { name: 'pit', solid: true, build() {} });
+// A pit (gameplay spec 6.4): the hero can step in and falls (a heart of damage, back to the door he
+// came in by: hero.js hazardHandler 'pit'); walking foes treat it as a wall, fliers and shots cross.
+registerTile('dungeon', 'O', {
+  name: 'pit',
+  solid: (body) => !(body && body.kind === 'player'),
+  blocksShots: false,
+  hazard: 'pit',
+  build() {},
+});
 
 registerTile('dungeon', 'L', {
   name: 'locked-door',
@@ -369,5 +379,5 @@ function plate(kind) {
 registerTile('dungeon', '_', { name: 'plate-x', build: plate('x') });
 registerTile('dungeon', '=', { name: 'plate-o', build: plate('o') });
 
-registerTile('dungeon', 'P', { name: 'push-block', solid: true, build: (ctx) => fineFloor(ctx), prop: pushBlockProp });
+registerTile('dungeon', 'P', { name: 'push-block', solid: true, regrow: true, onPush: pushTile, build: (ctx) => fineFloor(ctx), prop: pushBlockProp });
 registerTile('dungeon', '*', { name: 'spike-ball', solid: true, build: (ctx) => fineFloor(ctx), prop: spikeBallProp });

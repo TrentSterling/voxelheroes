@@ -538,8 +538,13 @@ export class World {
     for (let z = 0; z < screen.h; z++)
       for (let x = 0; x < screen.w; x++) {
         const base = screen.base[z][x];
-        if (screen.tiles[z][x] !== base && getTile(screen.tileset, base).regrow)
-          this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: false, reason: 'regrow' });
+        const now = screen.tiles[z][x];
+        if (now === base) continue;
+        const b = getTile(screen.tileset, base);
+        const n = getTile(screen.tileset, now);
+        // cut bushes and broken pots come back (props: no re-mesh); a pushed statue goes back where
+        // it stood and its new spot clears (terrain: re-mesh)
+        if (b?.regrow || n?.regrow) this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: !b?.prop && !n?.prop, reason: 'regrow' });
       }
   }
 

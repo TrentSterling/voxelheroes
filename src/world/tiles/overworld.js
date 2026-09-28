@@ -17,6 +17,7 @@ import { LEVEL } from '../terrain.js';
 import { TP, GROUND, PROP } from '../palette.js';
 import { bushProp, potProp, chestProp, cutPlant, breakPot, openChest } from '../tilekit.js';
 import { gravestone, signpost } from '../../models/props.js';
+import { showDialog } from '../../ui/dialog.js';
 
 defineTileset('overworld', { floor: '.' });
 
@@ -385,7 +386,27 @@ registerTile('overworld', 'i', {
     land(ctx);
     stampModel(ctx, signGrid);
   },
+  // Read it (gameplay spec 5.2): the screen's own text (def.signs['x,z'] or def.sign), else
+  // directions to the places next door.
+  onInteract(ctx) {
+    const own = ctx.screen.def.signs?.[`${ctx.x},${ctx.z}`] ?? ctx.screen.def.sign;
+    showDialog(own ?? signText(ctx), { speaker: 'Signpost' });
+    return true;
+  },
 });
+
+// "North: Cairn Ridge / East: ..." from the screens past each edge of the sign's screen.
+function signText(ctx) {
+  const s = ctx.screen;
+  const W = ctx.world;
+  const probes = [['North', s.x0 + s.w / 2, s.z0 - 1], ['East', s.x1, s.z0 + s.h / 2], ['South', s.x0 + s.w / 2, s.z1], ['West', s.x0 - 1, s.z0 + s.h / 2]];
+  const lines = [];
+  for (const [dir, x, z] of probes) {
+    const n = W.locate(Math.floor(x), Math.floor(z))?.screen;
+    if (n && n !== s && n.name) lines.push(`${dir}: ${n.name}`);
+  }
+  return lines.length ? [`You are in ${s.name ?? 'the wilds'}.`, lines.join('    ')] : `${s.name ?? 'The wilds'}. The roads beyond are overgrown.`;
+}
 // Pots (gameplay spec: sword or bomb breaks it into cubes, 50% drop roll); back on the next visit.
 registerTile('overworld', 'v', {
   name: 'pot',

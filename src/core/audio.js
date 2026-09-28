@@ -108,6 +108,7 @@ export const sfx = {
     noise(0.12, { vol: 0.22, freq: 2600, q: 0.9 }); // the whoosh
     tone(1760, 0.07, { to: 2640, vol: 0.035, type: 'triangle' }); // a short ring off the blade
   },
+  push: () => noise(0.35, { vol: 0.22, freq: 260, q: 0.8 }), // stone scraping on stone
   shatter: () => {
     noise(0.16, { vol: 0.3, freq: 1800, q: 1.4 }); // the crack
     [0.03, 0.07, 0.12].forEach((d, i) => tone(1400 + i * 380, 0.05, { vol: 0.05, type: 'triangle', delay: d })); // shards

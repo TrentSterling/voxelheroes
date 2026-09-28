@@ -425,7 +425,7 @@ registerTile('dungeon', 'c', {
   prop: chestProp,
   onPush: (ctx) => openChest(ctx),
 });
-registerTile('dungeon', 'h', { name: 'chest-spot', build: (ctx) => fineFloor(ctx) });
+registerTile('dungeon', 'h', { name: 'chest-spot', driven: 'room', build: (ctx) => fineFloor(ctx) }); // floor where the room's chest appears
 
 // ---------------------------------------------------------------- room rules
 // A key that drops once per room (clear, switch, puzzle).

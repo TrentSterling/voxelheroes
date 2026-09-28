@@ -51,7 +51,7 @@ function continuation(edge) {
   return d.solid ? 'T' : '.';
 }
 
-registerBackdrop('overworld', {
+const FAR = {
   north: 19,
   south: 0,
   side: 3,
@@ -67,4 +67,8 @@ registerBackdrop('overworld', {
     if (w - T.from < T.front) return tree;
     return hash3(tx, 5, tz, 23) < T.share ? tree : plain;
   },
-});
+};
+registerBackdrop('overworld', FAR);
+// The castle, Mossbrook and the barrow road use the town tileset (a child of overworld, so the same
+// tiles): without this their edges looked out into the sky.
+registerBackdrop('town', FAR);

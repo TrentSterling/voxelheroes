@@ -5,12 +5,14 @@
 export const description = 'Interactables: every placed prop answers a verb (audit of all areas); pots break to the sword and to bombs and come back.';
 
 const VERBS = ['onSword', 'onBomb', 'onPush', 'onInteract', 'onEnter', 'onShot', 'onFire', 'onLift'];
+// Things the spec makes interactive even when they are built into the terrain (no separate prop).
+const SPEC_INTERACTIVE = ['sign', 'statue', 'pit', 'pot', 'bush', 'chest', 'push-block', 'locked-door', 'tablet', 'switch', 'crystal', 'cracked-wall', 'stairs'];
 
 export default async function (t) {
   await t.press('Enter');
   await t.step(1.1);
 
-  const audit = await t.eval((VERBS) => {
+  const audit = await t.eval(([VERBS, SPEC]) => {
     const h = window.__voxelHeroes;
     const dead = new Map();
     const seen = new Set();
@@ -21,12 +23,12 @@ export default async function (t) {
         if (seen.has(key)) continue;
         seen.add(key);
         const def = h.world.tileDef(s, ch);
-        if (!def?.prop || def.decor || def.driven) continue;
-        if (!VERBS.some((v) => typeof def[v] === 'function')) dead.set(key, `${def.name ?? '?'} (${s.area.id} ${s.key})`);
+        if (!def || (!def.prop && !SPEC.some((n) => def.name?.startsWith(n))) || def.decor || def.driven) continue;
+        if (!VERBS.some((v) => typeof def[v] === 'function') && !def.hazard) dead.set(key, `${def.name ?? '?'} (${s.area.id} ${s.key})`);
       }
     }
     return { kinds: seen.size, dead: [...dead.entries()].map(([k, v]) => `${k} ${v}`) };
-  }, VERBS);
+  }, [VERBS, SPEC_INTERACTIVE]);
   t.note(`${audit.kinds} placed tile kinds checked`);
   t.expect(audit.dead.length === 0, `every placed prop answers a verb (dead: ${audit.dead.join('; ') || 'none'})`);
 

@@ -43,6 +43,7 @@
     if (w.blocked(s.x0 + x + 0.5, s.z0 + z + 0.5, p.r, p)) return false;
     if (occupied(x, z)) return false;
     const def = w.tileDefAt(s.x0 + x, s.z0 + z);
+    if (def?.hazard) return false; // pits, lava, swamp: never a route (they are open to the hero)
     return allowHooks || !def?.onEnter;
   }
 
