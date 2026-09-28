@@ -49,6 +49,8 @@ import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
 import { applyLighting, renderer, scene, camera } from '../core/renderer.js';
 import { isManual } from '../core/loop.js';
+import * as THREE from 'three';
+import { GROUND_Y } from '../core/constants.js';
 import {
   CAMERA_PRESETS,
   followsHero,
@@ -386,6 +388,15 @@ export function enterWarp(ctx) {
 }
 enterWarp.isWarp = true;
 
+// The hero's middle in CSS px of the view, for the iris wipe (null when behind the camera).
+const _onScreen = new THREE.Vector3();
+function heroOnScreen() {
+  _onScreen.set(player.x, GROUND_Y + 0.45, player.z).project(camera);
+  if (_onScreen.z > 1) return null;
+  const el = renderer.domElement;
+  return [((_onScreen.x + 1) / 2) * el.clientWidth, ((1 - _onScreen.y) / 2) * el.clientHeight];
+}
+
 registerMode('warp', {
   update(dt) {
     const f = fade;
@@ -405,7 +416,8 @@ registerMode('warp', {
       else if (late && world.pending.size) world.buildPending(Infinity);
     }
     const inAt = f.out + f.hold; // the fade-in starts
-    setFade(f.t < f.out ? f.t / f.out : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / f.in));
+    const k = f.t < f.out ? f.t / f.out : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / f.in);
+    setFade(k * k * (3 - 2 * k), heroOnScreen()); // an eased iris on the hero, out and back in
     if (!f.moved && f.walk) {
       const k = Math.min(1, f.t / f.out);
       player.x = f.walk.x0 + (f.walk.x1 - f.walk.x0) * k;

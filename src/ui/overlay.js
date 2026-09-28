@@ -36,8 +36,23 @@ export const overlayView = () => ({
   button: $('start')?.textContent ?? '',
 });
 
-export function setFade(opacity) {
-  $('fade').style.opacity = String(opacity);
+// k: 0 (clear) to 1 (black). at: [x, y] in CSS px of the view, an iris closing on that point (the
+// SNES-style wipe onto the hero); without it, or fully open or shut, a plain fade.
+export function setFade(k, at = null) {
+  const el = $('fade');
+  const card = $('load-card'); // inside #fade: under an iris it clears ahead of the opening
+  if (!at || k <= 0 || k >= 1) {
+    el.style.background = '#000';
+    el.style.opacity = String(Math.max(0, Math.min(1, k)));
+    if (card) card.style.opacity = '1';
+    return;
+  }
+  if (card) card.style.opacity = String(Math.max(0, 2 * k - 1));
+  const w = el.clientWidth, h = el.clientHeight;
+  const R = Math.hypot(Math.max(at[0], w - at[0]), Math.max(at[1], h - at[1])); // to the far corner
+  const r = R * (1 - k);
+  el.style.background = `radial-gradient(circle at ${at[0].toFixed(1)}px ${at[1].toFixed(1)}px, transparent ${r.toFixed(1)}px, #000 ${(r + 1.5).toFixed(1)}px)`;
+  el.style.opacity = '1';
 }
 
 export function initOverlay() {
