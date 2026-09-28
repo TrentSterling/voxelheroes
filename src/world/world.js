@@ -544,7 +544,7 @@ export class World {
         const n = getTile(screen.tileset, now);
         // cut bushes and broken pots come back (props: no re-mesh); a pushed statue goes back where
         // it stood and its new spot clears (terrain: re-mesh)
-        if (b?.regrow || n?.regrow) this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: !b?.prop && !n?.prop, reason: 'regrow' });
+        if (b?.regrow || (n?.regrow && n.onPush)) this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: !b?.prop && !n?.prop, reason: 'regrow' });
       }
   }
 
