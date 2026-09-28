@@ -29,6 +29,25 @@ const towardHero = (e) => {
   return Math.abs(dx) > Math.abs(dz) ? { x: Math.sign(dx), z: 0 } : { x: 0, z: Math.sign(dz) || 1 };
 };
 
+// A hop-based leap's tell: peeks the hop primitive's own wait so the last
+// LEAP_TELL seconds before it jumps get a shake and a "!", like the hopper's
+// charge. Call before hop(e, ...) each think().
+const LEAP_TELL = 0.3;
+function leapTell(e) {
+  const s = e.ai.hop;
+  const w = s && !s.dir ? s.wait : Infinity;
+  if (w > 0 && w <= LEAP_TELL) {
+    if (!e.ai.leapAlerted) {
+      alert(e);
+      e.ai.leapAlerted = true;
+    }
+    e.mesh.position.x = Math.sin(w * 80) * 0.03;
+  } else {
+    e.mesh.position.x = 0;
+    e.ai.leapAlerted = false;
+  }
+}
+
 // ---------------------------------------------------------------- hopper
 // Wanders at 2.5 t/s; lined up within 5 tiles it crouches (the tell), then
 // charges at 6 t/s for 0.6 s.
@@ -142,6 +161,7 @@ class Leaper extends Enemy {
   think(dt, { bounds }) {
     const s = R('leaper');
     const k = this.speed / this.baseSpeed;
+    leapTell(this);
     const phase = hop(this, dt, bounds, { every: s.hopEvery / k, tiles: s.hopTiles, dirFn: () => (random() < 0.5 ? towardHero(this) : CARDINALS[Math.floor(random() * 4)]) });
     this.mesh.setPose(phase === 'air' ? 'jump' : 'sit');
   }
@@ -169,6 +189,7 @@ class Guardian extends Enemy {
     this.hopT += dt * 6;
     this.mesh.setPose(Math.sin(this.hopT) > 0 ? 'a' : 'b');
     if (this.maxHp - this.hp >= s.leapAfter) {
+      leapTell(this);
       hop(this, dt, bounds, { tiles: s.leapTiles, air: TUNING.enemy.ai.hopAir * 2, dirFn: () => towardHero(this) });
       return;
     }

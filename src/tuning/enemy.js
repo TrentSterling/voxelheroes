@@ -3,8 +3,9 @@
 // 6.5, 8.2, 8.7).
 
 export const enemy = {
-  knock: 1.5,
-  knockTime: 0.2,
+  knock: 0.8,
+  knockTime: 0.2, // recoil()'s guard-block bounce, and the stun-after-knock cancellation math (damage.js)
+  hitKnockTime: 0.12, // a sword hit's own knockback slide (Enemy.hurt): faster than knockTime
   stagger: 0.25,
   heavyKnock: 0.5,
   alignTol: 0.5,

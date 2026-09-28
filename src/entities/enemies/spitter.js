@@ -8,6 +8,9 @@ import { moveBody } from '../../systems/physics.js';
 import { Enemy } from '../enemy.js';
 import { spawn } from '../manager.js';
 import { registerEntity } from '../registry.js';
+import { alert } from '../ai.js';
+
+const AIM_TELL = 0.3; // the last stretch of the aim: cheeks puff, it shakes, then it spits
 
 const CARDINALS = [
   [1, 0],
@@ -45,11 +48,21 @@ export class Spitter extends Enemy {
       }
     } else {
       this.aimT -= dt;
-      this.mesh.setPose(this.aimT < 0.3 ? 'aim' : 'idle'); // cheeks puff up just before it spits
+      const telling = this.aimT < AIM_TELL;
+      this.mesh.setPose(telling ? 'aim' : 'idle'); // cheeks puff up just before it spits
+      if (telling) {
+        if (!this.ai.aimAlerted) {
+          alert(this);
+          this.ai.aimAlerted = true;
+        }
+        this.mesh.position.x = Math.sin(this.aimT * 80) * 0.03; // the wind-up shake
+      }
       if (this.aimT <= 0) {
+        this.mesh.position.x = 0;
         this.mesh.setPose('idle');
         if (dist < 9) this.fire();
         this.phase = 'walk';
+        this.ai.aimAlerted = false;
         this.thinkT = 1.2 + random() * 1.5;
         const [cx, cz] = CARDINALS[Math.floor(random() * 4)];
         this.dx = cx;

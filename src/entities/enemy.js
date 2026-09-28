@@ -28,6 +28,7 @@
 // Subclasses never call hurtPlayer: contact goes through touchHero(), which
 // update() calls every tick.
 import * as THREE from 'three';
+import { scene } from '../core/renderer.js';
 import { makeCharacterMaterial, getMaterial } from '../core/materials.js';
 import { GROUND_Y } from '../core/constants.js';
 import { state } from '../core/state.js';
@@ -42,6 +43,7 @@ import { crownModel } from '../models/foes/foes.js';
 import { moveBody } from '../systems/physics.js';
 import { rollDrop } from '../systems/drops.js';
 import { checkRoomCleared } from '../systems/combat.js';
+import { registerPlayHook } from '../systems/flow.js';
 import { currentScreen } from '../world/world.js';
 import { hero } from '../game/hero.js';
 import { dealDamage } from '../game/damage.js';
@@ -52,6 +54,27 @@ import { Entity } from './entity.js';
 import { player } from './player.js';
 
 const KNOCKBACK_DECAY = 0.85; // M1 knockback speed kept per 1/60 s (hits with no `tiles`)
+
+// A dead foe's own die() already removes it from play at once (room-cleared,
+// drops, hp checks never wait on this); its holder mesh lingers this long,
+// popping (a quick scale up, then away), purely as a look: none of it is on
+// the entities list any more, so it is driven by its own tiny play hook.
+const DEATH_POP_TIME = 0.16;
+const deathPops = [];
+function stepDeathPops(dt) {
+  for (let i = deathPops.length - 1; i >= 0; i--) {
+    const p = deathPops[i];
+    p.t += dt;
+    const k = Math.min(1, p.t / DEATH_POP_TIME);
+    const s = k < 0.3 ? 1 + k * 1.0 : Math.max(0, 1.3 - (k - 0.3) * (1.3 / 0.7));
+    p.holder.scale.setScalar(s);
+    if (k >= 1) {
+      scene.remove(p.holder);
+      deathPops.splice(i, 1);
+    }
+  }
+}
+registerPlayHook({ id: 'enemy-death-pop', phase: 'after', order: 5, update: stepDeathPops });
 
 export class Enemy extends Entity {
   constructor(opts, def) {
@@ -188,11 +211,11 @@ export class Enemy extends Entity {
     this.stunT = stun;
   }
 
-  knockAway(fx, fz, tiles) {
+  knockAway(fx, fz, tiles, time = TUNING.enemy.knockTime) {
     const dx = this.x - fx;
     const dz = this.z - fz;
     const d = Math.hypot(dx, dz) || 1;
-    const t = TUNING.enemy.knockTime;
+    const t = time;
     this.kx = (dx / d) * (tiles / t);
     this.kz = (dz / d) * (tiles / t);
     this.knockT = tiles > 0 ? t : 0;
@@ -209,9 +232,9 @@ export class Enemy extends Entity {
     if (hit.swingId !== undefined) this.hitSwing = hit.swingId;
     this.flashT = TUNING.sword.enemyFlash;
     if (hit.tiles !== undefined) {
-      // dealDamage: hit.tiles of stagger over knockTime, then the stun
+      // dealDamage: hit.tiles of stagger over hitKnockTime (a quick shove), then the stun
       const tiles = this.boss ? 0 : hit.tiles;
-      this.knockAway(hit.fromX ?? this.x, hit.fromZ ?? this.z, tiles);
+      this.knockAway(hit.fromX ?? this.x, hit.fromZ ?? this.z, tiles, TUNING.enemy.hitKnockTime);
       this.stunT = Math.max(0, (hit.stun ?? 0) - (tiles > 0 ? TUNING.enemy.knockTime : 0));
       if (this.boss) this.stunT = 0;
     } else {
@@ -238,7 +261,10 @@ export class Enemy extends Entity {
   }
 
   die(hit = null) {
+    const holder = this.holder;
+    this.object = new THREE.Object3D(); // a stand-in so remove() leaves the real holder in the scene to pop
     this.remove();
+    deathPops.push({ holder, t: 0 });
     burst(this.x, GROUND_Y + 0.35 + this.height, this.z, this.colors, 34, { speed: 3.5, size: 0.12, up: 5, life: 1.1 });
     smoke(this.x, GROUND_Y + 0.15, this.z, 5, { radius: 0.13 });
     sfx.kill();
