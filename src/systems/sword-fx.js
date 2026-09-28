@@ -43,7 +43,7 @@ function build(hero) {
   g.userData.body = body;
   hero.swordPivot.add(g);
   slab = g;
-  const dm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+  const dm = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
   disc = new THREE.Mesh(new THREE.BufferGeometry(), dm);
   disc.name = 'spin-disc';
   disc.renderOrder = 2;
@@ -90,13 +90,12 @@ export function updateBladeFx(p, dt = 0) {
   disc.visible = sweep > 0;
   if (disc.visible) {
     const r = Math.max(0.5, th.reach);
-    const key = `${sweep.toFixed(0)}:${r.toFixed(2)}`;
+    const dirKey = th.turnDir || -1;
+    const key = `${sweep.toFixed(0)}:${r.toFixed(2)}:${dirKey}`;
     if (key !== discKey) {
       discKey = key;
       disc.geometry.dispose();
-      // two segments per 90 degrees: a coarse fan with a straight-chord rim
-      const segs = Math.max(2, Math.round(sweep / 45));
-      disc.geometry = new THREE.CircleGeometry(r, segs, 0, (sweep * Math.PI) / 180).rotateX(-Math.PI / 2);
+      disc.geometry = swipeGeometry(r, sweep, dirKey);
     }
     // the sector runs from the blade back along the way it turned
     const rootYaw = hero.root.rotation.y;
@@ -105,6 +104,37 @@ export function updateBladeFx(p, dt = 0) {
     const a0 = dir < 0 ? th.angle : th.angle - (sweep * Math.PI) / 180;
     disc.rotation.set(0, a0 - rootYaw - Math.PI / 2, 0);
     disc.position.set(0, 0.4, 0);
-    disc.material.opacity = 0.55;
+    disc.material.opacity = 0.85;
   }
+}
+
+// The swipe: a ring from 35% of the reach out to the tip, faceted every 10 degrees (chunky on
+// purpose, but even), bright at the blade and fading to nothing at the tail. Same angle convention
+// as CircleGeometry laid flat: 0 along +x, counter-clockwise from above towards -z.
+const FACET = 10;
+function swipeGeometry(r, sweep, dir) {
+  const segs = Math.max(2, Math.ceil(sweep / FACET));
+  const r0 = r * 0.35;
+  const pos = [];
+  const col = [];
+  const idx = [];
+  for (let i = 0; i <= segs; i++) {
+    const f = i / segs;
+    const a = (f * sweep * Math.PI) / 180;
+    const c = Math.cos(a);
+    const s = -Math.sin(a);
+    const head = dir < 0 ? 1 - f : f; // 1 at the blade
+    const alpha = head ** 1.6;
+    pos.push(c * r0, 0, s * r0, c * r, 0, s * r);
+    col.push(1, 1, 1, alpha * 0.55, 1, 1, 1, alpha);
+    if (i < segs) {
+      const v = i * 2;
+      idx.push(v, v + 1, v + 3, v, v + 3, v + 2);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  g.setIndex(idx);
+  return g;
 }
