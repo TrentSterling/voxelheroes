@@ -7,7 +7,7 @@
 // Optional fields: palette (hero rig colours, see models/hero.js), yaw, r.
 // Features with their own people (smith, shopkeeper, innkeeper) subclass Npc
 // (entities/npc.js) instead.
-import { voxelMaterial } from '../../core/voxel.js';
+import { getMaterial } from '../../core/materials.js';
 import { makeHero } from '../../models/hero.js';
 import { Npc } from '../npc.js';
 import { registerEntity } from '../registry.js';
@@ -24,4 +24,4 @@ export const TOWNSFOLK = {
   shield: null,
 };
 
-registerEntity('npc', (opts) => new Npc(opts, { model: makeHero(voxelMaterial, { ...TOWNSFOLK, ...opts.palette }).root }));
+registerEntity('npc', (opts) => new Npc(opts, { model: makeHero(getMaterial('character'), { ...TOWNSFOLK, ...opts.palette }).root }));

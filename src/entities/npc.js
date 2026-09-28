@@ -5,7 +5,7 @@
 //
 //   class Smith extends Npc {
 //     constructor(opts) {
-//       super(opts, { model: makeHero(voxelMaterial, SMITH_COLOURS).root, name: 'Brannoc' });
+//       super(opts, { model: makeHero(getMaterial('character'), SMITH_COLOURS).root, name: 'Brannoc' });
 //     }
 //     async talk() {
 //       const choice = await showDialog('Hammer out a longer blade for 50 gems?', { speaker: this.name, choices: ['Yes', 'No'] });

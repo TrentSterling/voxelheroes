@@ -2,14 +2,14 @@
 // blocked by the shield from the front, and the sword knocks it apart. Like
 // every projectile, it calls the onShot hook of the tile it breaks on.
 import * as THREE from 'three';
-import { voxelMaterial } from '../../core/voxel.js';
+import { getMaterial } from '../../core/materials.js';
 import { GROUND_Y } from '../../core/constants.js';
 import { state } from '../../core/state.js';
 import { sfx } from '../../core/audio.js';
-import { rockGeometry } from '../../models/rock.js';
+import { pebbleModel } from '../../models/characters.js';
 import { world, currentScreen } from '../../world/world.js';
 import { insideScreen } from '../../world/grid.js';
-import { burst } from '../../systems/particles.js';
+import { burst, sparks } from '../../systems/particles.js';
 import { hurtPlayer, shieldBlocks } from '../../systems/combat.js';
 import { Entity } from '../entity.js';
 import { player } from '../player.js';
@@ -29,8 +29,9 @@ export class RockShot extends Entity {
     this.vx = opts.vx ?? 0;
     this.vz = opts.vz ?? 0;
     this.spin = 0;
-    this.mesh = new THREE.Mesh(rockGeometry(), voxelMaterial);
+    this.mesh = new THREE.Mesh(pebbleModel().geometry, getMaterial('character'));
     this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
     this.mesh.position.set(this.x, GROUND_Y + 0.35, this.z);
     this.object = this.mesh;
   }
@@ -70,9 +71,11 @@ export class RockShot extends Entity {
     return true;
   }
 
+  // Breaks into pebble chips; blocked or struck (colors = SPARK) it also throws sparks.
   shatter(colors = DUST) {
     this.remove();
-    burst(this.x, GROUND_Y + 0.3, this.z, colors, 8, { speed: 2, size: 0.07, life: 0.5, up: 3 });
+    if (colors === SPARK) sparks(this.x, GROUND_Y + 0.35, this.z, SPARK, 8, { speed: 3, size: 0.05, life: 0.3, up: 2 });
+    burst(this.x, GROUND_Y + 0.3, this.z, DUST, colors === SPARK ? 5 : 8, { speed: 2, size: 0.07, life: 0.5, up: 3 });
   }
 }
 

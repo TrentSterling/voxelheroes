@@ -1,55 +1,128 @@
 // Shared pieces for tile definitions: prop factories and hook behaviours that
 // more than one tileset uses (a chest works outdoors as well as in a crypt).
+//
+// Props are separate meshes standing on a tile (world.addProp): things that move, open, flicker or
+// get cut. Models come from src/models/props.js; characters, props and pickups use the shared
+// character material, the bush (a terrain-resolution model) the terrain material, flames a glow
+// material.
 import * as THREE from 'three';
-import { voxelMaterial } from '../core/voxel.js';
-import { GROUND_Y, TV } from '../core/constants.js';
+import { GROUND_Y } from '../core/constants.js';
+import { hash3 } from '../core/vox.js';
+import { getMaterial, makeGlowMaterial } from '../core/materials.js';
 import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { hasFlag, setFlag } from '../core/state.js';
-import { bushGeometry, doorGeometry, flameGeometry, chestGeometry, flameMaterial } from '../models/props.js';
+import { modelMesh, PoseMesh } from '../models/kit.js';
+import {
+  bushModel,
+  doorModel,
+  flameModel,
+  chestBaseModel,
+  chestLidModel,
+  spikeBallModel,
+  pushBlockModel,
+  potModel,
+  FLAME_Y,
+} from '../models/props.js';
 import { burst } from '../systems/particles.js';
 import { rollDrop } from '../systems/drops.js';
 import { keyCount, useKey } from '../systems/keys.js';
 import { grant } from '../systems/grants.js';
 import { showBanner } from '../ui/banner.js';
 
+const V = 1 / 16; // character voxel
+
 // ---------------------------------------------------------------- props
+// A cuttable bush: one of four terrain-resolution lumps, turned by a quarter.
 export function bushProp(ctx) {
-  const obj = new THREE.Mesh(bushGeometry(), voxelMaterial);
-  obj.rotation.y = ((ctx.x * 7 + ctx.z * 3) % 4) * (Math.PI / 2);
+  const m = bushModel(Math.floor(hash3(ctx.tx, 1, ctx.tz, 8) * 4));
+  const obj = modelMesh(m, getMaterial('terrain'));
+  obj.rotation.y = Math.floor(hash3(ctx.tx, 2, ctx.tz, 8) * 4) * (Math.PI / 2);
   obj.position.set(ctx.cx, GROUND_Y, ctx.cz);
+  obj.userData.colors = m.colors;
   return obj;
 }
 
+// Any cached model standing on the tile centre (pots, spike balls, push blocks).
+export function modelProp(make, { material = getMaterial('character'), y = 0 } = {}) {
+  return (ctx) => {
+    const m = make(ctx);
+    const obj = modelMesh(m, material);
+    obj.position.set(ctx.cx, GROUND_Y + y, ctx.cz);
+    obj.userData.colors = m.colors;
+    return obj;
+  };
+}
+export const potProp = modelProp(potModel);
+export const spikeBallProp = modelProp(spikeBallModel);
+export const pushBlockProp = modelProp(pushBlockModel);
+
+// Where a doorway tile's wall has its inner face, and which way the room lies: { x, z, yaw } with
+// yaw 0 for a door in the north wall (the room is to the south, +z). Room areas draw their side
+// walls half a tile inward (world/tiles/dungeon.js).
+export function wallFace(ctx) {
+  const { screen, x, z, tx, tz } = ctx;
+  const w = screen.w ?? screen.tiles[0].length;
+  const h = screen.h ?? screen.tiles.length;
+  const inset = screen.area?.rooms ? 0.5 : 0;
+  if (z === 0) return { x: tx + 0.5, z: tz + 1, yaw: 0, along: [1, 0] };
+  if (z === h - 1) return { x: tx + 0.5, z: tz, yaw: Math.PI, along: [-1, 0] };
+  if (x === 0) return { x: tx + 1 + inset, z: tz + 0.5, yaw: Math.PI / 2, along: [0, -1] };
+  if (x === w - 1) return { x: tx - inset, z: tz + 0.5, yaw: -Math.PI / 2, along: [0, 1] };
+  return { x: tx + 0.5, z: tz + 1, yaw: 0, along: [1, 0] };
+}
+
+// A locked door: a leaf one tile wide and the full wall height, flush with the wall's inner face.
+// Two door tiles side by side make a pair, lock plates meeting in the middle.
 export function doorProp(ctx) {
-  const obj = new THREE.Mesh(doorGeometry(), voxelMaterial);
-  obj.position.set(ctx.cx, GROUND_Y, ctx.cz);
+  const f = wallFace(ctx);
+  // the leaf's local +x runs along `along`; the neighbour on its -x side makes it the second leaf
+  const second = ctx.world.tile(ctx.tx - f.along[0], ctx.tz - f.along[1]) === ctx.ch;
+  const obj = modelMesh(doorModel(second));
+  obj.position.set(f.x, GROUND_Y, f.z);
+  obj.rotation.y = f.yaw;
+  obj.userData.colors = doorModel(false).colors;
   return obj;
 }
 
-// A flickering flame on top of a brazier (5 terrain voxels up).
+// A flickering flame on a brazier: two glowing frames swapped at ~7 fps, gently breathing.
+// Glow 1.3: bright enough to bloom, low enough that the tone curve keeps it saturated yellow and
+// orange (at 2.2 it rolled off to a pale cream blob; the references' flames never burn to white).
+let flameMat = null;
+function flameMaterial() {
+  if (!flameMat) {
+    flameMat = makeGlowMaterial(0xffffff, 1.3);
+    flameMat.vertexColors = true; // the flame model carries its own colours
+  }
+  return flameMat;
+}
+
 export function flameProp(ctx) {
-  const obj = new THREE.Mesh(flameGeometry(), flameMaterial);
-  obj.position.set(ctx.cx, GROUND_Y + 5 * TV, ctx.cz);
-  const p = ctx.x * 1.7 + ctx.z * 2.3;
+  const obj = new PoseMesh({ a: flameModel(0), b: flameModel(1) }, flameMaterial());
+  obj.castShadow = false;
+  obj.receiveShadow = false;
+  obj.userData.noShadow = true;
+  obj.position.set(ctx.cx, GROUND_Y + FLAME_Y * V, ctx.cz);
+  const p = hash3(ctx.tx, 3, ctx.tz, 5) * 10;
   obj.userData.tick = (t) => {
-    obj.scale.set(1 + Math.sin(t * 13 + p) * 0.08, 1 + Math.sin(t * 9 + p * 2) * 0.2 + Math.sin(t * 23 + p) * 0.08, 1);
-    obj.rotation.y = Math.sin(t * 3 + p) * 0.3;
+    obj.setPose(Math.floor(t * 7 + p) % 2 ? 'b' : 'a');
+    const s = 1 + Math.sin(t * 11 + p) * 0.05;
+    obj.scale.set(s, 1 + Math.sin(t * 8 + p * 2) * 0.08, s);
   };
   return obj;
 }
 
 export const chestFlag = (tx, tz) => `chest:${tx},${tz}`;
 
+// A chest: base and lid, the lid hinged on its back edge.
 export function chestProp(ctx) {
-  const geo = chestGeometry();
   const obj = new THREE.Group();
-  const base = new THREE.Mesh(geo.base, voxelMaterial);
-  const lid = new THREE.Mesh(geo.lid, voxelMaterial);
-  lid.position.set(0, 5 * TV, -2.5 * TV);
-  base.castShadow = lid.castShadow = true;
+  const base = modelMesh(chestBaseModel());
+  const lid = modelMesh(chestLidModel());
+  lid.position.set(0, 7 * V, -6 * V);
   obj.add(base, lid);
   obj.userData.lid = lid;
+  obj.userData.colors = chestBaseModel().colors;
   obj.position.set(ctx.cx, GROUND_Y, ctx.cz);
   if (hasFlag(chestFlag(ctx.tx, ctx.tz))) lid.rotation.x = -1.9;
   obj.userData.tick = (t, dt) => {
@@ -62,9 +135,10 @@ export function chestProp(ctx) {
 // onSword for plants: cut the tile to def.becomes, burst, roll a drop table.
 export function cutPlant(ctx, colors, drops = 'bush') {
   const { world, tx, tz, def } = ctx;
+  const cols = world.propAt(tx, tz)?.userData.colors ?? colors;
   if (!world.setTile(tx, tz, def.becomes ?? '.', { rebuild: false, reason: 'cut' })) return false;
   sfx.cut();
-  burst(tx + 0.5, GROUND_Y + 0.3, tz + 0.5, colors, 26, { speed: 3, size: 0.1, up: 4 });
+  burst(tx + 0.5, GROUND_Y + 0.3, tz + 0.5, cols, 26, { speed: 3, size: 0.1, up: 4 });
   rollDrop(drops, tx + 0.5, tz + 0.5);
   return true;
 }
@@ -82,7 +156,7 @@ export function unlockDoor(ctx) {
     if (world.tile(tx + dx, tz) === ch && world.setTile(tx + dx, tz, to, opts)) setFlag(`door:${tx + dx},${tz}`);
   useKey();
   sfx.door();
-  burst(tx + 0.5, GROUND_Y + 0.6, tz + 0.5, [0x7a4a26, 0x5e371b, 0x3a3a44], 30, { speed: 3, size: 0.1, up: 4 });
+  burst(tx + 0.5, GROUND_Y + 0.6, tz + 0.5, doorModel(false).colors, 30, { speed: 3, size: 0.1, up: 4 });
   emit('door-opened', { tx, tz });
   return true;
 }

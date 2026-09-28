@@ -1,44 +1,65 @@
-// Pickup models: heart, gems and the small key.
-import { VoxelGrid, buildGeometry, rng } from '../core/voxel.js';
-import { MV } from './part.js';
-import { cached } from './cache.js';
+// Pickup models (art bible section 10): 16 voxels per tile, facing +z, standing on y = 0. The
+// pickup entities bounce and spin them.
+import { DenseGrid } from '../core/vox.js';
+import { CP } from './palette.js';
+import { model } from './kit.js';
 
-export function makeHeart() {
-  const rows = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
-  const g = new VoxelGrid(rng(14));
-  rows.forEach((row, i) =>
-    row.split('').forEach((ch, x) => {
-      if (ch !== 'X') return;
-      const hi = i === 1 && x === 1;
-      g.box(x - 3, x - 3, 5 - i, 5 - i, 0, 1, hi ? 0xffb0bc : 0xe8364a, 0.03);
+// Heart (recovers one heart): 7 wide, 6 tall, 3 deep, with a highlight.
+export function heart() {
+  const g = new DenseGrid(8, 7, 3);
+  const rows = ['.XX.XX..', 'XHXXXXX.', 'XXXXXXX.', '.XXXXX..', '..XXX...', '...X....'];
+  rows.forEach((r, i) =>
+    [...r].forEach((c, x) => {
+      if (c !== '.') g.box(x, 6 - i, 0, x + 1, 7 - i, 3, c === 'H' ? CP.heartHi : CP.heart);
     })
   );
-  return buildGeometry(g, MV, [-0.5, 0, -1]);
+  g.paint(0, 0, 0, 8, 7, 1, (x, y, z, c) => (c === CP.heartHi ? c : CP.heartLo)); // darker back
+  return g;
 }
 
-export function makeGem(color) {
-  const g = new VoxelGrid(rng(15));
-  for (let y = -4; y <= 4; y++) {
-    const hw = y >= 0 ? 2 - Math.floor(y / 2) : 2 - Math.floor(-y / 2);
-    for (let x = -hw; x <= hw; x++) g.box(x, x, y + 4, y + 4, 0, 1, x === -hw && y >= 0 ? 0xffffff : color, 0.05);
-  }
-  return buildGeometry(g, MV, [-0.5, 0, -1]);
-}
-
-export function makeKey() {
-  const gold = 0xf1c232;
-  const g = new VoxelGrid(rng(16));
-  for (let x = -2; x <= 2; x++)
-    for (let y = 8; y <= 12; y++) {
-      const hole = Math.abs(x) <= 1 && y >= 9 && y <= 11;
-      if (!hole) g.box(x, x, y, y, 0, 1, x === -2 && y > 9 ? 0xfff0b0 : gold, 0.04);
+// Gem (currency): a cut crystal 6 wide, 10 tall, 3 deep; lighter left facets, darker right ones.
+export function gem(color = CP.gemGreen, lo = CP.gemGreenLo) {
+  const g = new DenseGrid(6, 10, 3);
+  for (let y = 0; y < 10; y++) {
+    const hw = y < 5 ? Math.min(3, 1 + (y >> 1)) : Math.max(1, 3 - ((y - 5) >> 1)); // half width, voxels
+    for (let x = 3 - hw; x < 3 + hw; x++) {
+      const left = x < 3;
+      const edge = x === 3 - hw;
+      const c = edge && y >= 3 && y <= 7 ? CP.gemHi : left ? color : lo;
+      g.box(x, y, 0, x + 1, y + 1, 3, c);
     }
-  g.box(0, 0, 1, 7, 0, 1, gold, 0.04);
-  g.box(1, 2, 1, 2, 0, 1, gold, 0.04);
-  g.box(1, 1, 4, 4, 0, 1, gold, 0.04);
-  return buildGeometry(g, MV, [-0.5, 0, -1]);
+  }
+  return g;
 }
 
-export const heartGeometry = () => cached('heart', makeHeart);
-export const gemGeometry = (color) => cached(`gem:${color}`, () => makeGem(color));
-export const keyGeometry = () => cached('key', makeKey);
+// Small key: a gold bow with a hole on top, a shaft and two teeth, 5 wide, 10 tall, 2 deep.
+export function smallKey() {
+  const g = new DenseGrid(5, 10, 2);
+  g.box(0, 6, 0, 5, 10, 2, CP.keyGold); // bow
+  g.box(2, 7, 0, 3, 9, 2, null); // its hole
+  g.box(0, 8, 1, 1, 10, 2, CP.keyGoldHi);
+  g.box(1, 0, 0, 3, 6, 2, CP.keyGold); // shaft
+  g.box(1, 0, 0, 2, 6, 1, CP.keyGoldLo);
+  g.box(3, 0, 0, 5, 1, 2, CP.keyGold); // teeth
+  g.box(3, 2, 0, 4, 3, 2, CP.keyGold);
+  return g;
+}
+
+// Coin: a round disc 6 wide, 8 tall, with an inset face.
+export function coin() {
+  const g = new DenseGrid(6, 8, 2);
+  g.box(1, 0, 0, 5, 8, 2, CP.coin);
+  g.box(0, 1, 0, 6, 7, 2, CP.coin);
+  g.box(2, 2, 1, 4, 6, 2, CP.coinLo);
+  g.set(1, 5, 1, CP.coinHi);
+  return g;
+}
+
+export const GEM_MODELS = {
+  1: () => model('gem:green', () => gem(CP.gemGreen, CP.gemGreenLo)),
+  5: () => model('gem:blue', () => gem(CP.gemBlue, CP.gemBlueLo)),
+};
+export const heartModel = () => model('heart', heart);
+export const gemModel = (value = 1) => (GEM_MODELS[value] ?? GEM_MODELS[1])();
+export const keyModel = () => model('small-key', smallKey);
+export const coinModel = () => model('coin', coin);

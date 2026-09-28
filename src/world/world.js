@@ -9,16 +9,14 @@
 //   world.setTile(tx, tz, '.', { rebuild: false })  // only the prop changes (bush cut)
 //   world.setTile(tx, tz, '.')                      // re-mesh the screen (cracked wall blown)
 //   world.setTile(tx, tz, '.', { persist: true })   // also remembered in save data
-// Rebuilds keep every other tile's colours: each tile replays the random
-// stream it used on the first build.
+// Rebuilds keep every other tile's look: tile builders are deterministic per
+// tile (terrain.js), and each screen is built with a margin of its
+// neighbours' tiles so edges match.
 //
 // Addressing: screens have per-area sizes (areas.js), so a screen is looked
 // up by area and local position (world.screen('crypt', 0, 1), or its key
 // 'crypt:0,1'), or from a global tile (world.locate(tx, tz)) through a coarse
 // spatial index. Each screen carries its footprint: w, h, x0, z0, x1, z1.
-import * as THREE from 'three';
-import { VoxelGrid, buildGeometry, voxelMaterial, rng } from '../core/voxel.js';
-import { R, TV } from '../core/constants.js';
 import { state, setTileKeyCodec } from '../core/state.js';
 import { on, emit } from '../core/events.js';
 import { CAMERA_PRESETS } from '../core/camera.js';
@@ -45,31 +43,10 @@ function solidExtent(at, tx, tz) {
   }
   return [tx, tz, tx + 1, tz + 1];
 }
+import { buildScreenTerrain, buildBackdrops, marginScreens } from './terrain.js';
 
-const waterMaterial = new THREE.MeshLambertMaterial({
-  vertexColors: true,
-  transparent: true,
-  opacity: 0.78,
-});
-
-// Terrain layers. A tile builder writes into ctx.g (terrain) or ctx.layer(name);
-// every non-empty layer becomes one mesh per screen with its own material.
-export const LAYERS = {
-  terrain: { material: voxelMaterial, castShadow: true, receiveShadow: true },
-  water: {
-    material: waterMaterial,
-    castShadow: false,
-    receiveShadow: true,
-    tick: (mesh, t) => {
-      mesh.position.y = Math.sin(t * 1.6) * 0.025 - 0.01;
-    },
-  },
-};
-
-export function registerLayer(name, def) {
-  if (LAYERS[name]) throw new Error(`Layer "${name}" is already registered`);
-  LAYERS[name] = def;
-}
+// Terrain layers and the mesh building live in terrain.js (tile kits: world/tiles/).
+export { LAYERS, registerLayer } from './terrain.js';
 
 // 'x,z' -> [x, z] for a tile inside a screen of w x h tiles, else null.
 function parsePos(key, w, h) {
@@ -102,6 +79,7 @@ export class World {
       this.buildScreen(screen);
       this.buildProps(screen);
     }
+    buildBackdrops(this);
     on('explosion', (explosion) => {
       for (const [tx, tz] of this.tilesInRadius(explosion.x, explosion.z, explosion.radius ?? 1))
         this.trigger(tx, tz, 'onBomb', { explosion });
@@ -480,7 +458,10 @@ export class World {
     screen.tiles[lz][lx] = ch;
     this.removeProp(screen, lx, lz);
     if (def.prop) this.addProp(screen, lx, lz);
-    if (rebuild) this.dirty.add(screen);
+    if (rebuild) {
+      this.dirty.add(screen);
+      for (const s of marginScreens(this, screen, tx, tz)) this.dirty.add(s);
+    }
     if (persist) state.tileEdits[tileKey(tx, tz)] = ch;
     emit('tile-changed', { tx, tz, from, to: ch, screen, reason });
     return true;
@@ -524,71 +505,10 @@ export class World {
   }
 
   // ---------------------------------------------------------------- building
+  // Mesh a screen's tiles (terrain.js): terrain, fine floor, detail and
+  // water meshes plus fixtures such as lamp lights, all in screen.meshes.
   buildScreen(screen) {
-    for (const m of screen.meshes) {
-      this.scene.remove(m.mesh);
-      m.mesh.geometry.dispose();
-    }
-    screen.meshes = [];
-
-    const rand = rng(screen.sx * 131 + screen.sy * 977 + 7);
-    const grids = new Map();
-    const layer = (name) => {
-      let g = grids.get(name);
-      if (!g) {
-        if (!LAYERS[name]) throw new Error(`Unknown terrain layer "${name}"`);
-        g = new VoxelGrid(rand);
-        grids.set(name, g);
-      }
-      return g;
-    };
-    const g = layer('terrain');
-    const pick = (arr) => arr[Math.floor(rand() * arr.length)];
-    const first = !screen.rngStates;
-    if (first) screen.rngStates = new Array(screen.w * screen.h);
-
-    for (let z = 0; z < screen.h; z++) {
-      for (let x = 0; x < screen.w; x++) {
-        const i = z * screen.w + x;
-        if (first) screen.rngStates[i] = rand.getState();
-        else rand.setState(screen.rngStates[i]);
-        const ch = screen.tiles[z][x];
-        const def = getTile(screen.tileset, ch);
-        if (!def.build) continue;
-        def.build({
-          world: this,
-          screen,
-          area: screen.area,
-          x,
-          z,
-          tx: screen.x0 + x,
-          tz: screen.z0 + z,
-          bx: x * R,
-          bz: z * R,
-          ch,
-          def,
-          g,
-          layer,
-          rand,
-          pick,
-          tileAt: (dx, dz) => screen.tiles[z + dz]?.[x + dx],
-        });
-      }
-    }
-
-    const ox = screen.x0;
-    const oz = screen.z0;
-    for (const [name, grid] of grids) {
-      if (name !== 'terrain' && !grid.map.size) continue;
-      const L = LAYERS[name];
-      const mesh = new THREE.Mesh(buildGeometry(grid, TV), L.material);
-      mesh.position.set(ox, 0, oz);
-      mesh.castShadow = !!L.castShadow;
-      mesh.receiveShadow = !!L.receiveShadow;
-      this.scene.add(mesh);
-      screen.meshes.push({ name, mesh, layer: L });
-    }
-    screen.built = screen.tiles.map((r) => r.join('')).join('\n');
+    buildScreenTerrain(this, screen);
   }
 
   buildProps(screen) {
@@ -603,8 +523,11 @@ export class World {
     const tz = screen.z0 + z;
     const obj = def.prop({ world: this, screen, area: screen.area, x, z, tx, tz, cx: tx + 0.5, cz: tz + 0.5, ch, def });
     if (!obj) return null;
-    obj.castShadow = true;
-    obj.receiveShadow = true;
+    obj.traverse((o) => {
+      if (!o.isMesh || o.userData.noShadow) return;
+      o.castShadow = true;
+      o.receiveShadow = true;
+    });
     this.scene.add(obj);
     screen.props.set(`${x},${z}`, obj);
     if (obj.userData.tick) this.ticking.add(obj);

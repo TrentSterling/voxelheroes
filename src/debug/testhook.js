@@ -1,8 +1,8 @@
 // window.__voxelHeroes: the handle play-tests and debugging use to drive the
 // game without real-time input. See docs/ARCHITECTURE.md ("Test hook").
 //
-// URL parameters: ?manual=1 starts in manual mode (the loop renders but does
-// not advance the simulation); ?seed=N seeds gameplay randomness.
+// URL parameters: ?manual=1 starts in manual mode (the loop neither advances
+// the simulation nor draws: call render()); ?seed=N seeds gameplay randomness.
 //
 // tick() and step() are async: after each simulation tick they let pending
 // promise continuations run (code after `await showDialog(...)`), the way the
@@ -46,6 +46,9 @@ import * as transitions from '../systems/transitions.js';
 import { registerHudWidget } from '../ui/hud.js';
 import { showDialog, dialogOpen } from '../ui/dialog.js';
 import { overlayVisible } from '../ui/overlay.js';
+import { look, LIGHTING, applyLighting, registerLighting, lightingName, camera as viewCamera } from '../core/renderer.js';
+import { QUALITY_ORDER, DOF_PRESETS } from '../core/look/index.js';
+import { getMaterial, makeWaterMaterial, makeGlowMaterial, setSeams, materialValues } from '../core/materials.js';
 
 // Promise continuations get this many microtask turns after each tick. A
 // continuation that awaits again needs one more turn per level; eight covers
@@ -88,6 +91,32 @@ export function installTestHook({ update, render }) {
     // Draw a frame now (HUD included), e.g. right before a screenshot.
     render() {
       render();
+    },
+    // The look (docs/ARCHITECTURE.md, "Look"): quality level, lighting preset, frame info.
+    // In manual mode the loop does not draw at all (a look frame takes seconds in software
+    // GL): render() above draws, and shots call it. ?look=high|medium|low|flat pins a quality.
+    look: {
+      levels: QUALITY_ORDER,
+      set: (level, opts) => look.setQuality(level, opts), // opts: { pin: false } keeps the watchdog on
+      get: () => look.quality(),
+      lighting: () => lightingName(),
+      presets: () => Object.keys(LIGHTING),
+      applyLighting,
+      registerLighting,
+      dof: DOF_PRESETS,
+      info: () => look.info(),
+      // the three.js camera (project points to find pixels in a frame)
+      camera: viewCamera,
+      setSeams,
+      // player options: { brightness, saturation } (1 = the look's own values)
+      setDisplay: (opts) => look.setDisplay(opts),
+      materials: materialValues,
+      // the material and lamp API, for probes and previews
+      getMaterial,
+      makeWaterMaterial,
+      makeGlowMaterial,
+      makeLampLight: (overrides) => look.makeLampLight(overrides),
+      setMirrorRect: (rect) => look.setMirrorRect(rect),
     },
     seed(n) {
       seedRandom(n);
