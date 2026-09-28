@@ -196,10 +196,11 @@ export class World {
     // Previews: the terrain of other outdoor areas' screens that share an edge with this one, so a
     // road that crosses into the next area runs on into its land instead of into the sky. Built
     // with the rest in slices (terrain only: no props, no people); always drawn.
-    if (!own[0]?.area.rooms) {
+    const OUTDOORS = ['overworld', 'town']; // caves and dungeons never preview or get previewed
+    if (own[0] && !own[0].area.rooms && OUTDOORS.includes(own[0].tileset)) {
       const edge = (a, b) =>
         (a.x0 < b.x1 && b.x0 < a.x1 && (a.z0 === b.z1 || a.z1 === b.z0)) || (a.z0 < b.z1 && b.z0 < a.z1 && (a.x0 === b.x1 || a.x1 === b.x0));
-      const other = (s) => s.area.id !== id && !s.area.rooms && !/^test-/.test(s.area.id);
+      const other = (s) => s.area.id !== id && !s.area.rooms && OUTDOORS.includes(s.tileset) && !/^test-/.test(s.area.id);
       for (const s of this.screens.values())
         if (other(s) && own.some((o) => edge(o, s))) {
           this.previews.add(s);
