@@ -15,7 +15,7 @@ import { on, once, off, emit } from '../core/events.js';
 import { setManual, isManual } from '../core/loop.js';
 import { seedRandom } from '../core/random.js';
 import { setMode, registerMode, pushMode, popMode } from '../core/modes.js';
-import { camera as camera3d } from '../core/renderer.js';
+import { camera as camera3d, renderer, scene } from '../core/renderer.js';
 import {
   CAMERA_PRESETS,
   currentHeroOutline,
@@ -66,6 +66,7 @@ export function installTestHook({ update, render }) {
     world,
     input,
     events: { on, once, off, emit },
+    gfx: { renderer, scene, camera: camera3d }, // perf probes (scripts/perf.mjs)
     get entities() {
       return liveEntities();
     },
@@ -249,6 +250,12 @@ export function installTestHook({ update, render }) {
       WARP_HOLD: transitions.WARP_HOLD,
       AREA_HOLD: transitions.AREA_HOLD,
       shown: (key) => transitions.screenShown(world.screen(key)),
+      // A real load into another area (fade, loading card, fade in), landing mid first screen.
+      warpTo(area) {
+        const s = [...world.screens.values()].find((sc) => sc.area.id === area);
+        if (!s) throw new Error(`warpTo: unknown area "${area}"`);
+        transitions.startWarp({ screen: s, x: Math.floor(s.w / 2) + 0.5, z: Math.floor(s.h / 2) + 0.5, yaw: 0 });
+      },
       shownRect: transitions.shownRect, // world rect around the drawn screens
     },
     // Where screens of different areas touch, and edge tiles that do not match.

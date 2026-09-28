@@ -46,6 +46,9 @@ function update(dt) {
   updateMode(dt);
   updateParticles(dt);
   world.flush();
+  // Far screens of a fresh area: in 8 ms slices while the loading card holds, else 2 ms (at least
+  // one screen per step either way).
+  world.buildPending(state.mode === 'warp' ? 8 : 2);
   syncScreenVisibility();
   followSubject(player, currentScreen());
   placeCamera();

@@ -31,6 +31,7 @@ import { edgeReport } from './links.js';
 // The spatial index: square cells of CELL tiles, each listing the screens
 // that overlap it.
 const CELL = 32;
+
 const cellKey = (cx, cz) => `${cx},${cz}`;
 
 // Room side walls (area.rooms) are drawn half a tile inward, so their
@@ -171,17 +172,47 @@ export class World {
   // the one built before it. Only one area exists in the scene at a time;
   // tiles, flags and edits of the others stay, and are built from on the
   // next load. Returns true if it built anything.
-  loadArea(id) {
+  // focus: the screen the hero lands on. Its terrain is meshed now (and any other screen the
+  // camera shows, by transitions.showScreens); the rest of the area waits in `pending` for buildPending() (frame-sliced, run during the
+  // loading card's hold) or ensureBuilt() (a screen about to be drawn). Meshing a whole dungeon at
+  // once froze the game for up to 1.5 s.
+  loadArea(id, focus = null) {
     if (this.loaded === id) return false;
     if (!this.areas.has(id)) throw new Error(`loadArea: unknown area "${id}"`);
     for (const s of this.screens.values()) if (s.area.id === this.loaded) this.unbuild(s);
     this.loaded = id;
+    this.pending.clear();
+    this.focus = focus;
     for (const s of this.screens.values())
       if (s.area.id === id) {
-        this.buildScreen(s);
+        if (!focus || s === focus) this.buildScreen(s);
+        else this.pending.add(s);
         this.buildProps(s);
       }
     return true;
+  }
+
+  pending = new Set();
+  focus = null;
+
+  // Mesh pending screens, nearest the focus first, until `budgetMs` is spent (at least one).
+  // Returns how many are still pending.
+  buildPending(budgetMs = 8) {
+    if (!this.pending.size) return 0;
+    const t0 = performance.now();
+    const f = this.focus;
+    const d = (s) => (f ? Math.abs(s.x0 + s.x1 - f.x0 - f.x1) + Math.abs(s.z0 + s.z1 - f.z0 - f.z1) : 0);
+    const order = [...this.pending].sort((a, b) => d(a) - d(b));
+    for (const s of order) {
+      this.buildScreen(s);
+      if (performance.now() - t0 >= budgetMs) break;
+    }
+    return this.pending.size;
+  }
+
+  // Mesh a screen now if it is still waiting (it is about to be drawn).
+  ensureBuilt(screen) {
+    if (this.pending.has(screen)) this.buildScreen(screen);
   }
 
   isBuilt = (screen) => screen.area.id === this.loaded;
@@ -189,6 +220,7 @@ export class World {
   // Free a screen's meshes and props (its tiles stay).
   unbuild(screen) {
     disposeScreenTerrain(this, screen);
+    this.pending.delete(screen);
     for (const k of [...screen.props.keys()]) {
       const [x, z] = k.split(',').map(Number);
       this.removeProp(screen, x, z);
@@ -513,7 +545,7 @@ export class World {
 
   // Re-mesh screens changed by setTile. Runs at the end of every update.
   flush() {
-    for (const screen of this.dirty) if (this.isBuilt(screen)) this.buildScreen(screen);
+    for (const screen of this.dirty) if (this.isBuilt(screen) && !this.pending.has(screen)) this.buildScreen(screen);
     this.dirty.clear();
   }
 
@@ -543,6 +575,7 @@ export class World {
   // Mesh a screen's tiles (terrain.js): terrain, fine floor, detail and
   // water meshes plus fixtures such as lamp lights, all in screen.meshes.
   buildScreen(screen) {
+    this.pending.delete(screen);
     buildScreenTerrain(this, screen);
   }
 

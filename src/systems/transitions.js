@@ -47,7 +47,8 @@ import { TUNING } from '../core/tuning.js';
 import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
-import { applyLighting } from '../core/renderer.js';
+import { applyLighting, renderer, scene, camera } from '../core/renderer.js';
+import { isManual } from '../core/loop.js';
 import {
   CAMERA_PRESETS,
   followsHero,
@@ -80,6 +81,7 @@ export const AREA_HOLD = L.cardMin; // a load: seconds of black for the loading 
 export const FADE_IN = L.fade; // a load: seconds back from black (1.5 s, 90 ticks, in all)
 export const WARP_FADE = L.innerFade; // a warp inside one area: seconds to black, and again back
 export const WARP_HOLD = 0; // a warp inside one area: seconds of black in between
+const MAX_LOAD_HOLD = 4; // a load waits at most this long at black for the area's meshes
 
 // A load's black hold: the card's time, shorter with loading art off
 // (settings.loadingArt), and never so long that the load passes maxTotal.
@@ -95,7 +97,7 @@ export const presetNameFor = (screen) => screen.camera ?? state.settings.camera;
 // Put the hero at local tile coordinates (x, z) of a screen and aim the
 // camera at the hero within that screen.
 export function placeAt(screen, x, z, yaw = player.yaw) {
-  world.loadArea(screen.area.id); // only the current area is built
+  world.loadArea(screen.area.id, screen); // only the current area is built; far screens follow
   state.screenKey = screen.key;
   player.x = screen.x0 + x;
   player.z = screen.z0 + z;
@@ -182,6 +184,8 @@ export function showScreens(screen, also = null) {
   shown.clear();
   for (const s of around(screen)) shown.add(s);
   if (also) for (const s of around(also)) shown.add(s);
+  for (const s of shown) world.ensureBuilt(s);
+  world.focus = screen;
   syncScreenVisibility();
 }
 
@@ -386,6 +390,20 @@ registerMode('warp', {
   update(dt) {
     const f = fade;
     f.t += dt + 1e-9; // (a hair of slack, so 15 ticks of 1/60 s reach 0.25 s)
+    // A load's black hold lasts until the new area is meshed (world.buildPending, in slices so the
+    // card keeps animating), up to MAX_LOAD_HOLD; then whatever is left is built at once.
+    // Then the new materials' shaders compile in parallel (compileAsync) instead of stalling the
+    // first frames after the fade.
+    if (f.moved && f.areaChange) {
+      const late = f.t - f.out - f.hold > -dt;
+      const waiting = world.pending.size || f.compile === 'busy';
+      if (!world.pending.size && !f.compile && !isManual()) { // play-tests never draw
+        f.compile = 'busy';
+        renderer.compileAsync(scene, camera).then(() => (f.compile = 'done'), () => (f.compile = 'done'));
+      }
+      if (late && waiting && f.t - f.out < MAX_LOAD_HOLD) f.hold += dt;
+      else if (late && world.pending.size) world.buildPending(Infinity);
+    }
     const inAt = f.out + f.hold; // the fade-in starts
     setFade(f.t < f.out ? f.t / f.out : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / f.in));
     if (!f.moved && f.walk) {

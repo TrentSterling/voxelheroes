@@ -152,10 +152,38 @@ const _fc = new THREE.Color();
 // opts.faces: bit mask of the face directions to emit (FACE_PX | ... ; default all six).
 // opts.skipBottom: true drops every bottom face; a number drops only those of voxels whose y index is
 //   below it (terrain: no bottom faces on the ground, but overhangs keep theirs for shadow maps).
+// Linear-space colour per sRGB hex, converted once (colour conversion per voxel was ~10% of a build).
+const _linear = new Map();
+function linearOf(hex) {
+  let c = _linear.get(hex);
+  if (!c) {
+    _c.setHex(hex, THREE.SRGBColorSpace);
+    c = [_c.r, _c.g, _c.b];
+    _linear.set(hex, c);
+  }
+  return c;
+}
+
+// Growable output buffers, reused between calls; each geometry gets exact-size copies.
+const out = { cap: 0, pos: null, nor: null, col: null, uv: null, idx: null };
+function reserve(faces) {
+  if (faces <= out.cap) return;
+  let cap = Math.max(4096, out.cap);
+  while (cap < faces) cap *= 2;
+  const grow = (a, n) => { const b = new (a ? a.constructor : n.T)(cap * n.k); if (a) b.set(a); return b; };
+  out.pos = grow(out.pos, { T: Float32Array, k: 12 });
+  out.nor = grow(out.nor, { T: Float32Array, k: 12 });
+  out.col = grow(out.col, { T: Float32Array, k: 12 });
+  out.uv = grow(out.uv, { T: Float32Array, k: 8 });
+  out.idx = grow(out.idx, { T: Uint32Array, k: 6 });
+  out.cap = cap;
+}
+
 export function meshVoxels(grid, opts = {}) {
   const scale = opts.scale ?? VOXEL;
   const [ox, oy, oz] = opts.origin ?? [grid.sx / 2, 0, grid.sz / 2];
   const { sx, sy, sz, data } = grid;
+  const sxy = sx * sy;
   const nb = opts.neighbors ?? null;
   const solid = (x, y, z) => {
     if (x >= 0 && y >= 0 && z >= 0 && x < sx && y < sy && z < sz) return data[x + sx * (y + sy * z)] !== 0;
@@ -168,52 +196,74 @@ export function meshVoxels(grid, opts = {}) {
   const [rx0, ry0, rz0, rx1, ry1, rz1] = opts.region ?? [0, 0, 0, sx, sy, sz];
   const x0 = Math.max(0, rx0), y0 = Math.max(0, ry0), z0 = Math.max(0, rz0);
   const x1 = Math.min(sx, rx1), y1 = Math.min(sy, ry1), z1 = Math.min(sz, rz1);
-  const pos = [], nor = [], col = [], uv = [], idx = [];
+  // Index offsets of each face's neighbour and AO probes, for voxels at least one cell inside the
+  // grid (every probe is then within +-1 on each axis, so a plain array read).
+  const off = (d) => d[0] + sx * d[1] + sxy * d[2];
+  const OFF = FACE_TABLE.map((F) => ({ n: off(F.n), k: F.corners.map((C) => [off(C.e1), off(C.e2), off(C.ec)]) }));
   const aos = [0, 0, 0, 0];
   const faces = grid.faces?.size ? grid.faces : null;
-  let v = 0;
+  let n = 0; // faces written
+  reserve(1024);
   for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     const ci = x + sx * (y + sy * z);
     const val = data[ci];
     if (!val) continue;
-    _c.setHex(val & 0xffffff, THREE.SRGBColorSpace); // → linear working space
+    const base = linearOf(val & 0xffffff); // → linear working space
+    const inner = x > 0 && y > 0 && z > 0 && x < sx - 1 && y < sy - 1 && z < sz - 1;
     for (let f = 0; f < 6; f++) {
       if (!(mask & (1 << f))) continue;
       const F = FACE_TABLE[f];
       const nx = F.n[0], ny = F.n[1], nz = F.n[2];
       if (ny === -1 && y < skipBelow) continue;
       const px = x + nx, py = y + ny, pz = z + nz;
-      if (solid(px, py, pz)) continue;
+      const O = OFF[f];
+      const pi = ci + O.n;
+      if (inner ? data[pi] !== 0 : solid(px, py, pz)) continue;
       const fc = faces?.get(ci * 6 + f);
-      const c = fc === undefined ? _c : _fc.setHex(fc, THREE.SRGBColorSpace);
+      const c = fc === undefined ? base : linearOf(fc);
+      if (n >= out.cap) reserve(n + 1);
+      const { pos, nor, col, uv } = out;
       for (let k = 0; k < 4; k++) {
         const C = F.corners[k];
         let a = 3;
         if (aoOn) {
-          const s1 = solid(px + C.e1[0], py + C.e1[1], pz + C.e1[2]) ? 1 : 0;
-          const s2 = solid(px + C.e2[0], py + C.e2[1], pz + C.e2[2]) ? 1 : 0;
-          const sc = solid(px + C.ec[0], py + C.ec[1], pz + C.ec[2]) ? 1 : 0;
+          let s1, s2, sc;
+          if (inner) {
+            const K = O.k[k];
+            s1 = data[pi + K[0]] !== 0 ? 1 : 0;
+            s2 = data[pi + K[1]] !== 0 ? 1 : 0;
+            sc = data[pi + K[2]] !== 0 ? 1 : 0;
+          } else {
+            s1 = solid(px + C.e1[0], py + C.e1[1], pz + C.e1[2]) ? 1 : 0;
+            s2 = solid(px + C.e2[0], py + C.e2[1], pz + C.e2[2]) ? 1 : 0;
+            sc = solid(px + C.ec[0], py + C.ec[1], pz + C.ec[2]) ? 1 : 0;
+          }
           a = (s1 && s2) ? 0 : 3 - (s1 + s2 + sc);
         }
         aos[k] = a;
-        pos.push((x + C.c[0] - ox) * scale, (y + C.c[1] - oy) * scale, (z + C.c[2] - oz) * scale);
-        nor.push(nx, ny, nz);
+        const p = n * 12 + k * 3;
+        pos[p] = (x + C.c[0] - ox) * scale; pos[p + 1] = (y + C.c[1] - oy) * scale; pos[p + 2] = (z + C.c[2] - oz) * scale;
+        nor[p] = nx; nor[p + 1] = ny; nor[p + 2] = nz;
         const m = AO_CURVE[3 - a];
-        col.push(c.r * m, c.g * m, c.b * m);
-        uv.push(FACE_UV[k][0], FACE_UV[k][1]);
+        col[p] = c[0] * m; col[p + 1] = c[1] * m; col[p + 2] = c[2] * m;
+        const q = n * 8 + k * 2;
+        uv[q] = FACE_UV[k][0]; uv[q + 1] = FACE_UV[k][1];
       }
       // Flip the quad diagonal so AO interpolates without the anisotropy artefact.
-      if (aos[0] + aos[2] > aos[1] + aos[3]) idx.push(v, v + 1, v + 2, v, v + 2, v + 3);
-      else idx.push(v + 1, v + 2, v + 3, v + 1, v + 3, v);
-      v += 4;
+      const v = n * 4, i = n * 6, idx = out.idx;
+      if (aos[0] + aos[2] > aos[1] + aos[3]) { idx[i] = v; idx[i + 1] = v + 1; idx[i + 2] = v + 2; idx[i + 3] = v; idx[i + 4] = v + 2; idx[i + 5] = v + 3; }
+      else { idx[i] = v + 1; idx[i + 1] = v + 2; idx[i + 2] = v + 3; idx[i + 3] = v + 1; idx[i + 4] = v + 3; idx[i + 5] = v; }
+      n++;
     }
   }
+  const v = n * 4;
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  g.setAttribute('faceUv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(v > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+  g.setAttribute('position', new THREE.BufferAttribute(out.pos.slice(0, n * 12), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(out.nor.slice(0, n * 12), 3));
+  g.setAttribute('color', new THREE.BufferAttribute(out.col.slice(0, n * 12), 3));
+  g.setAttribute('faceUv', new THREE.BufferAttribute(out.uv.slice(0, n * 8), 2));
+  const idx = out.idx.subarray(0, n * 6);
+  g.setIndex(new THREE.BufferAttribute(v > 65535 ? idx.slice() : Uint16Array.from(idx), 1));
   g.computeBoundingSphere();
   g.computeBoundingBox();
   return g;
