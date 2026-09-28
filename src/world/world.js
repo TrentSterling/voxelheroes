@@ -199,11 +199,21 @@ export class World {
     if (!own[0]?.area.rooms) {
       const edge = (a, b) =>
         (a.x0 < b.x1 && b.x0 < a.x1 && (a.z0 === b.z1 || a.z1 === b.z0)) || (a.z0 < b.z1 && b.z0 < a.z1 && (a.x0 === b.x1 || a.x1 === b.x0));
+      const other = (s) => s.area.id !== id && !s.area.rooms && !/^test-/.test(s.area.id);
       for (const s of this.screens.values())
-        if (s.area.id !== id && !s.area.rooms && !/^test-/.test(s.area.id) && own.some((o) => edge(o, s))) {
+        if (other(s) && own.some((o) => edge(o, s))) {
           this.previews.add(s);
           this.pending.add(s);
         }
+      // the camera looks north, so a second row there fills the horizon above the first
+      const top = Math.min(...own.map((o) => o.z0));
+      for (const p of [...this.previews])
+        if (p.z1 <= top)
+          for (const s of this.screens.values())
+            if (other(s) && !this.previews.has(s) && s.z1 === p.z0 && s.x0 < p.x1 && p.x0 < s.x1) {
+              this.previews.add(s);
+              this.pending.add(s);
+            }
     }
     return true;
   }
