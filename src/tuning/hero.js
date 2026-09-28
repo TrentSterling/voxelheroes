@@ -28,6 +28,8 @@ export const sword = {
   beam: { speed: 12, size: 0.4 },
   enemyFlash: 0.3,
   regainFlash: 0.2,
+  freezePerLevel: 1.0, // seconds a freeze-special hit freezes, per level
+  starTime: 3, // seconds of invulnerability from the star special
 };
 
 export const guard = {

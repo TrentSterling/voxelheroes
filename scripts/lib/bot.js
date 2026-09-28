@@ -83,8 +83,17 @@
       hook().input.setStick(0, 0);
       return 0;
     }
-    const m = exact ? Math.min(1, d / (p.speed * DT)) : 1;
-    hook().input.setStick((dx / d) * m, (dz / d) * m);
+    // The hero walks 8-way at one speed (spec 7.3), so a stick cannot stop
+    // him between two steps: within two steps of an exact goal (walkTo's
+    // tolerance is less than one) the bot sets him down on it (the M1 bot
+    // slowed an analog stick instead).
+    if (exact && d <= 2 * p.speed * DT + 1e-9 && !(p.attackT > 0) && !p.dashing && !(p.knockT > 0)) {
+      p.x += dx;
+      p.z += dz;
+      hook().input.setStick(0, 0);
+      return 0;
+    }
+    hook().input.setStick(dx / d, dz / d);
     return d;
   }
 

@@ -287,7 +287,12 @@ export function crossEdge(dir) {
 function landing(next, dir) {
   const [ux, uz] = DIRS[dir];
   let dist = next.area.rooms ? (ux ? 1 + WALL_INSET : 1) + ROOM_STEP : SLIDE_STEP;
-  if (uz < 0) dist = Math.max(dist, southLine(next) + SLIDE_STEP / 4);
+  // A slide north into a screen that holds (B, C, flip screens outdoors)
+  // lands him 2 x TUNING.scroll.followDeadband past its south line, the same
+  // 1-tile dead band a follow change has (0.5 past the edge each way): the
+  // slide back needs him to walk 1 tile, not a step. (The line cannot move
+  // south instead: past it the held frame cuts him off.)
+  if (uz < 0) dist = Math.max(dist, southLine(next) + (!next.area.rooms && !followsOn(next) ? 2 * S.followDeadband : SLIDE_STEP / 4));
   // how far past the edge the hero already is (less than nothing when he
   // leaves at the south line)
   const past = ux > 0 ? player.x - next.x0 : ux < 0 ? next.x1 - player.x : uz > 0 ? player.z - next.z0 : next.z1 - player.z;

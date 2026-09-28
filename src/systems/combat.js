@@ -53,6 +53,8 @@ export function hurtPlayer(dmg, fromX, fromZ, info = {}) {
     }
     state.deadT = 0;
     player.attackT = 0;
+    player.thrust = null;
+    player.stopDash?.();
     setMode('dead');
     sfx.over();
     emit('player-died', {});
@@ -62,8 +64,9 @@ export function hurtPlayer(dmg, fromX, fromZ, info = {}) {
 // The shield blocks projectiles moving at the hero's face while the hero is
 // not swinging.
 export function shieldBlocks(vx, vz) {
-  const fx = Math.sin(player.yaw);
-  const fz = Math.cos(player.yaw);
+  const yaw = player.facingYaw ? player.facingYaw() : player.yaw;
+  const fx = Math.sin(yaw);
+  const fz = Math.cos(yaw);
   const sp = Math.hypot(vx, vz);
   const facing = -(fx * vx + fz * vz) / sp;
   return !isSwinging(player) && facing > 0.7;

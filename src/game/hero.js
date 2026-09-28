@@ -1,7 +1,8 @@
-// The hero API: what other streams may ask of or tell the hero. Thin
-// functions over today's player (entities/player.js) and combat
-// (systems/combat.js); the hero stream re-implements the insides in M2 and
-// keeps every name and return value here.
+// The hero API: what other streams may ask of or tell the hero, over the
+// player (entities/player.js: movement, facing, thrust, spin, guard, dash;
+// systems/hero-body.js, sword.js, sword-fx.js) and combat
+// (systems/combat.js). M2 hero stream: the kit is in; every name and return
+// value is the contract's (CONTRACTS 8.1).
 //
 //   hero.facing()            'north' | 'east' | 'south' | 'west': the 4-way attack facing
 //   hero.facingVector()      { x, z } unit vector of it
@@ -54,7 +55,10 @@ import { TUNING } from '../core/tuning.js';
 import { world, currentScreen } from '../world/world.js';
 import { player } from '../entities/player.js';
 import { hurtPlayer } from '../systems/combat.js';
-import { moveBody } from '../systems/physics.js';
+import { moveHero } from '../systems/hero-body.js';
+import { setSwordStats, setBladeHooks } from '../systems/sword.js';
+import { flashBlade } from '../systems/sword-fx.js';
+import { burst } from '../systems/particles.js';
 import { registerPlayHook } from '../systems/flow.js';
 import { registerGrant } from '../systems/grants.js';
 import { tryInteract } from '../systems/interact.js';
@@ -63,6 +67,9 @@ import { damageMultiplier, isOneHit } from './progress.js';
 import { spotHere, goToSpot, respawnSpot, roomEntry, currentRect } from './places.js';
 import { effectActive } from './effects.js';
 import { bladeStats, bladeSize } from './swords.js';
+import { dealDamage } from './damage.js';
+import { collectPickup, dropCoins } from './pickups.js';
+import { UNITS_PER_HEART } from './vitals.js';
 import './fields.js';
 
 export const FACINGS = ['north', 'east', 'south', 'west'];
@@ -91,7 +98,6 @@ export const HIT_KINDS = ['contact', 'projectile', 'hazard'];
 export const POSES = ['stand', 'cheer', 'swordOut', 'item', 'guard'];
 
 const status = new Map(); // name -> seconds left
-let lockLeft = 0;
 let posed = null; // { pose, left }
 let pulling = null; // { x, z, speed, fromX, fromZ, resolve }
 let lastSafe = null; // { x, z } local: the last tile he stood on that was not a hazard
@@ -194,26 +200,23 @@ export const hero = {
     return { x: player.x, z: player.z, lx: r ? player.x - r.x0 : null, lz: r ? player.z - r.z0 : null };
   },
   spot: () => spotHere(),
-  // The attack facing (gameplay spec 7.3): the hero stream keeps it in
-  // player.facing, apart from the 8-way body yaw (player.yaw). Until then it
-  // is the cardinal nearest the body's yaw.
+  // The attack facing (gameplay spec 7.3), kept in player.facing apart from
+  // the 8-way body yaw (player.yaw).
   facing: () => (FACINGS.includes(player.facing) ? player.facing : facingFromYaw(player.yaw)),
   facingVector: () => ({ ...FACING_VECTORS[hero.facing()] }),
-  // Turn the attack facing to `dir` and the body with it. (Stand-in: the
-  // body's yaw, which the facing is read from.)
+  // Turn the attack facing to `dir` and the body with it.
   setFacing(dir) {
     if (!FACINGS.includes(dir)) throw new Error(`setFacing: ${FACINGS.join(', ')}, not "${dir}"`);
-    player.yaw = FACING_YAW[dir];
+    player.setFacing(dir);
     return dir;
   },
   // Face the world point (x, z): the attack facing becomes the cardinal
-  // nearest its direction. (Stand-in: the body turns straight at it.)
+  // nearest its direction; the body turns to that cardinal.
   faceToward(x, z) {
     const dx = x - player.x;
     const dz = z - player.z;
     if (Math.hypot(dx, dz) < 1e-6) return hero.facing();
-    player.yaw = Math.atan2(dx, dz);
-    return facingToward(dx, dz);
+    return hero.setFacing(facingToward(dx, dz));
   },
 
   // ---- condition
@@ -279,9 +282,9 @@ export const hero = {
   // No sword, item or dash presses for `seconds` (and no walking once the
   // hero stream's player reads inputLocked()).
   lockInput(seconds) {
-    lockLeft = Math.max(lockLeft, seconds);
+    player.lockT = Math.max(player.lockT, seconds);
   },
-  inputLocked: () => lockLeft > 0,
+  inputLocked: () => player.lockT > 0,
   addStatus(name, seconds) {
     status.set(name, Math.max(status.get(name) ?? 0, seconds));
   },
@@ -303,7 +306,7 @@ export const hero = {
   // ---- moving him
   // Move by (dx, dz) tiles against walls and solid bodies (conveyors, currents).
   // Returns true if something stopped him.
-  move: (dx, dz) => moveBody(player, dx, dz, null),
+  move: (dx, dz) => moveHero(player, dx, dz, { assist: false }).hit,
   // Put him at local (x, z) of the current screen without re-entering it.
   place(x, z, yaw = player.yaw) {
     const r = currentRect();
@@ -311,6 +314,7 @@ export const hero = {
     player.z = r.z0 + z;
     player.yaw = yaw;
     player.knockT = 0;
+    player.stopDash?.();
     player.resetTileTracking?.();
   },
   // The grapple's pull (gameplay spec 9.2): drag him to the world point (toX,
@@ -408,27 +412,110 @@ on('item-get', () => {
   if (state.mode === 'play' || state.mode === 'dialog') hero.cheer(CHEER_TIME);
 });
 
-// ---------------------------------------------------------------- per tick
-// Stand-ins until the hero stream lands: the guard is up while the guard
-// button is held in play, a shield is carried and the hero is not
-// thrusting. Locked input and a pull eat sword, item and dash presses; with
-// no sword equipped, A only talks and checks.
+// ---------------------------------------------------------------- the kit
+// entities/player.js walks, thrusts, spins, guards and dashes; this wires
+// what his blade does to the game (spec 7.4 to 7.7), the full-life swap
+// (7.5), the tiles under him (CONTRACTS 11) and the low-life beep (7.10).
+
+// The blade the sword system swings: the equipped sword at the current life.
+setSwordStats(() => hero.blade());
+
+const units = () => state.hp;
+setBladeHooks({
+  // Enemies take the blade through dealDamage (immunities, guards, specials);
+  // other swordable things (shots) answer onSword themselves.
+  hitEntity(e, hit) {
+    if (e.kind !== 'enemy') return e.onSword?.(hit) ? 'hit' : null;
+    const s = hit.stats ?? bladeStats();
+    let amount = hit.damage;
+    let crit = false;
+    let freeze = 0;
+    const kind = s.specialKind;
+    const lv = s.special ?? 0;
+    if (kind === 'pinch' && units() <= state.maxHp * 0.25) {
+      amount = Math.ceil(amount * 1.5);
+      crit = true;
+    }
+    if (kind === 'freeze' && lv > 0) freeze = lv * TUNING.sword.freezePerLevel;
+    if (kind === 'rare-slayer' && lv > 0 && e.rare) amount = Math.max(amount, e.hp ?? amount);
+    const r = dealDamage(e, { amount, source: hit.source, from: player, swingId: hit.swingId, freeze, crit });
+    if (kind === 'coin-burst' && lv > 0 && (r.result === 'hit' || r.result === 'killed')) dropCoins(e.x, e.z, lv, { spread: 0.8 });
+    return r.result;
+  },
+  collect: (e) => collectPickup(e, { by: 'blade' }),
+});
+
+// The swap is instant: a puff and a dull sound when the full blade is lost,
+// a chime and a flash along it when it comes back.
+on('life-changed', ({ full, wasFull }) => {
+  if (full === wasFull || full === undefined || wasFull === undefined) return;
+  const stats = bladeStats();
+  emit('blade-changed', { full, stats });
+  if (stats.none) return;
+  if (full) {
+    sfx.heart();
+    flashBlade(TUNING.sword.regainFlash);
+  } else {
+    const f = FACING_VECTORS[hero.facing()];
+    burst(player.x + f.x, 0.5, player.z + f.z, [0xe8e8ec, 0xdad8d9], 8, { speed: 2, size: 0.08, life: 0.4 });
+    sfx.hit();
+  }
+});
+
+// The star special: a heart picked up at full life gives a few seconds of
+// invulnerability.
+on('pickup', ({ type, wasFull }) => {
+  const s = bladeStats();
+  if (type === 'heart' && wasFull && s.specialKind === 'star' && s.special > 0) hero.addStatus('invulnerable', TUNING.sword.starTime);
+});
+
+// Hazards under his centre (CONTRACTS 11). Tile owners set the fields.
+player.hazardHandler = (def, tx, tz) => {
+  const D = TUNING.damage;
+  switch (def.hazard) {
+    case 'pit':
+      return hero.fall({ damage: D.pit, to: 'entry' });
+    case 'lava':
+      return hero.fall({ damage: D.lava, to: 'safe' });
+    case 'puddle':
+      return hero.fall({ damage: D.darkPuddle, to: def.to ?? 'entry' });
+    case 'spikes':
+      return hero.receiveHit({ damage: D.spikes, kind: 'hazard', from: { x: tx + 0.5, z: tz + 0.5 }, source: 'spikes' });
+    case 'swamp':
+      return hero.receiveHit({ damage: D.swampPerSec, kind: 'hazard', knockback: false, iframes: false, lock: false, ignoreIframes: true, source: 'swamp' });
+    default:
+      return null;
+  }
+};
+
+// The low-life beep (spec 7.10): every beepInterval while life is at or
+// below the threshold for his max life.
+export function lowLifeLine(maxHp = state.maxHp) {
+  const maxHearts = maxHp / UNITS_PER_HEART;
+  const row = TUNING.damage.beepHearts.find(([upTo]) => maxHearts <= upTo) ?? TUNING.damage.beepHearts.at(-1);
+  return row[1] * UNITS_PER_HEART;
+}
+let beepT = 0;
+let beeps = 0;
+export const beepCount = () => beeps;
+
+// Locked input and a pull eat sword, item and dash presses; with no sword
+// equipped, A only talks and checks.
 registerPlayHook({
   id: 'hero-api-input',
   phase: 'input',
   order: 1,
   update() {
-    if (lockLeft > 0 || pulling) for (const a of ['sword', 'item', 'dash']) input.consume(a);
+    if (player.lockT > 0 || pulling) for (const a of ['sword', 'item', 'dash']) input.consume(a);
     if (!state.swords.equipped && input.pressed('sword')) {
       tryInteract(player);
       input.consume('sword');
     }
-    player.guarding = input.held('guard') && (state.gear.shield ?? 0) > 0 && !(player.attackT > 0) && !pulling;
     if (pulling) {
-      // hold his own walking off while the grapple drags him (M1 player: a
-      // knockback with no speed)
+      // hold his own walking off while the grapple drags him
       player.knockT = Math.max(player.knockT, 2 / 60);
       player.kx = player.kz = 0;
+      player.guarding = false;
     }
   },
 });
@@ -438,7 +525,6 @@ registerPlayHook({
   phase: 'after',
   order: 1,
   update(dt) {
-    lockLeft = Math.max(0, lockLeft - dt);
     for (const [k, v] of status) {
       if (v - dt > 0) status.set(k, v - dt);
       else status.delete(k);
@@ -453,6 +539,15 @@ registerPlayHook({
     const def = world.tileDefAt(Math.floor(player.x), Math.floor(player.z));
     if (r && def && !def.hazard && !pulling && !(player.knockT > 0) && !world.blocked(player.x, player.z, player.r, player))
       lastSafe = { x: player.x - r.x0, z: player.z - r.z0 };
+    // the low-life beep
+    if (state.hp > 0 && state.hp <= lowLifeLine()) {
+      beepT -= dt;
+      if (beepT <= 0) {
+        beepT += TUNING.damage.beepInterval;
+        beeps++;
+        sfx.block();
+      }
+    } else beepT = 0;
   },
 });
 
