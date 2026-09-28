@@ -31,6 +31,7 @@ import { getMaterial } from '../core/materials.js';
 import { CP } from './palette.js';
 import { model, modelMesh, PoseMesh, contactShadow } from './kit.js';
 import { parseBoxel } from '../core/boxel.js';
+import { dress } from './townsfolk.js';
 
 export const V = 1 / 16;
 export const HERO_POSES = ['stand', 'walk1', 'walk2', 'cheer', 'swordOut', 'windUp', 'item'];
@@ -136,8 +137,9 @@ export function swordGrid(length = 15, width = 2) {
 export const heroModel = (pose, S = HERO_SLOTS, opts = {}) => {
   const p = HERO_ALIASES[pose] ?? pose;
   const tag = S === HERO_SLOTS && opts.shield !== false ? '' : `:${Object.values(S).join(',')}:${opts.shield !== false}`;
-  if (HERO_V2) return model(`hero-v2:${p}${tag}`, () => heroV2Grid(p, S, opts.shield !== false));
-  return model(`hero:${p}${tag}`, () => heroGrid(p, S, opts));
+  const ex = opts.extras?.length ? `:${JSON.stringify(opts.extras)}` : '';
+  if (HERO_V2) return model(`hero-v2:${p}${tag}${ex}`, () => dress(heroV2Grid(p, S, opts.shield !== false), opts.extras, S));
+  return model(`hero:${p}${tag}${ex}`, () => dress(heroGrid(p, S, opts), opts.extras, S));
 };
 
 // Hero v2, the boxel hero authored for Boxel (scripts/art/hero-v2.mjs -> assets/models/hero-v2.boxel),
@@ -185,7 +187,8 @@ export function makeHero(material = getMaterial('character'), palette = {}) {
   root.add(sway);
   sway.add(body);
   const poses = {};
-  for (const p of HERO_POSES) poses[p] = heroModel(p, S, { shield });
+  for (const p of HERO_POSES) poses[p] = heroModel(p, S, { shield, extras: palette.extras });
+  if (palette.kid) root.scale.setScalar(0.8); // children: the same body, smaller
   const figure = new PoseMesh(poses, material, 'stand');
   figure.name = 'hero-figure';
   body.add(figure);

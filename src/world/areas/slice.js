@@ -130,8 +130,8 @@ registerArea({
       spawns: {},
       spawnsAt: {
         '7,5': { type: 'npc-king' },
-        '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44 }, lines: ['The king has been waiting for you.', 'Mossbrook is north, up the road past the gate.'] },
-        '10,7': { type: 'npc', name: 'Guard Pell', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44 }, lines: ['West of the village the old barrow has woken.', 'Things crawl out of it at night. Mind yourself.'] },
+        '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, lines: ['The king has been waiting for you.', 'Mossbrook is north, up the road past the gate.'] },
+        '10,7': { type: 'npc', name: 'Guard Pell', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, lines: ['West of the village the old barrow has woken.', 'Things crawl out of it at night. Mind yourself.'] },
       },
       rows: [
         'TTTTTT....TTTTTT',
@@ -275,7 +275,7 @@ registerArea({
     '1,0': {
       name: "Chapel Green",
       spawnsAt: {
-        '10,5': { type: 'npc', name: 'Sister Anwe', palette: { tunic: 0xd8d0c0, tunicLight: 0xf0e8d8, cap: 0xd8d0c0 }, lines: ['The graves here are quiet. The barrow is not.'] },
+        '10,5': { type: 'npc', name: 'Sister Anwe', palette: { tunic: 0xd8d0c0, tunicLight: 0xf0e8d8, cap: 0xd8d0c0, extras: [['hood', 0xe8e0d0]] }, lines: ['The graves here are quiet. The barrow is not.'] },
       },
       rows: [
         'TTTTTTTTTTTTTTTT',
@@ -351,11 +351,11 @@ registerArea({
         '10,4': { type: 'npc-smith' },
         '13,5': { type: 'npc-inventor' }, // the Sprint Boots (gameplay spec: the inventor in V1, before D1)
         '5,11': { type: 'npc-inn', inn: 'inn-1' },
-        '10,11': { type: 'npc', name: 'Hettie', lines: ['Welcome to Mossbrook!', 'The inn lets you rest and wakes you there if you fall.'] },
-        '2,8': { type: 'npc', name: 'Pip', personality: 'cheery', palette: { tunic: 0x4a9a5a, tunicLight: 0x6aba7a, hair: 0xd8a040, cap: 0xd05a3a }, lines: ['I am Pip! I can run faster than a slime. Probably.'] },
-        '13,9': { type: 'npc', name: 'Old Tobin', personality: 'grumpy', palette: { tunic: 0x5a5a6a, tunicLight: 0x7a7a8a, hair: 0xc8c8c8, cap: 0x3a3a44 }, lines: ['Another adventurer. Wonderful.', 'Stay off my bench.'] },
-        '5,14': { type: 'npc', name: 'Nell', personality: 'gossip', palette: { tunic: 0xa04a7a, tunicLight: 0xc06a9a, hair: 0x3a2418, cap: 0xe8d8b0 }, lines: ['Oh! You must be the one the king sent for!', 'Everyone is talking about you. Well, I am.'] },
-        '12,14': { type: 'npc', name: 'Rowan', personality: 'worker', palette: { tunic: 0x7a5a3a, tunicLight: 0x9a7a5a, hair: 0x8a3a20, cap: 0x5a7a3a }, lines: ['Mind the fence posts, I just set them.'] },
+        '10,11': { type: 'npc', name: 'Hettie', palette: { extras: ['straw-hat'] }, lines: ['Welcome to Mossbrook!', 'The inn lets you rest and wakes you there if you fall.'] },
+        '2,8': { type: 'npc', name: 'Pip', personality: 'cheery', palette: { tunic: 0x4a9a5a, tunicLight: 0x6aba7a, hair: 0xd8a040, cap: 0xd05a3a, kid: true, extras: ['scarf'] }, lines: ['I am Pip! I can run faster than a slime. Probably.'] },
+        '13,9': { type: 'npc', name: 'Old Tobin', personality: 'grumpy', palette: { tunic: 0x5a5a6a, tunicLight: 0x7a7a8a, hair: 0xc8c8c8, cap: 0x3a3a44, extras: ['beard', ['hood', 0x6a4a34]] }, lines: ['Another adventurer. Wonderful.', 'Stay off my bench.'] },
+        '5,14': { type: 'npc', name: 'Nell', personality: 'gossip', palette: { tunic: 0xa04a7a, tunicLight: 0xc06a9a, hair: 0x3a2418, cap: 0xe8d8b0, extras: ['bun', ['scarf', 0x3a8a9a]] }, lines: ['Oh! You must be the one the king sent for!', 'Everyone is talking about you. Well, I am.'] },
+        '12,14': { type: 'npc', name: 'Rowan', personality: 'worker', palette: { tunic: 0x7a5a3a, tunicLight: 0x9a7a5a, hair: 0x8a3a20, cap: 0x5a7a3a, extras: ['straw-hat'] }, lines: ['Mind the fence posts, I just set them.'] },
       },
       rows: [
         'TTTTTTppppTTTTTT',
