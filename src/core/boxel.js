@@ -8,13 +8,13 @@
 //
 // What is read: each matrix's voxels, base materials and face overrides, and the palette with its
 // material names. Palette names are the recolour slots (a townsperson is the hero with a new
-// tunic). Not read: transforms (a model is its grid; the game places it), modifiers and features
+// tunic); a name like 'tunic*1.18' is a shade of a slot and is re-derived from its recolour. Not read: transforms (a model is its grid; the game places it), modifiers and features
 // (bake them in Boxel before saving), PBR, lights and animation.
 //
 // Layout: RLE runs of [count, value] over x fastest, then y, then z (the same order as
 // DenseGrid.i). Voxel type 0 is air, anything else solid. A material id indexes the palette. Face
 // overrides are [x, y, z, face, material] with faces in DenseGrid's order (+x, -x, +y, -y, +z, -z).
-import { DenseGrid } from './vox.js';
+import { DenseGrid, mulHex } from './vox.js';
 
 const hex = (c) => ((c.r & 255) << 16) | ((c.g & 255) << 8) | (c.b & 255);
 
@@ -35,7 +35,14 @@ export function parseBoxel(text, opts = {}) {
   const names = {};
   for (const { id, name } of doc.names ?? []) names[id] = name;
   const recolor = opts.recolor ?? {};
-  const colors = (doc.palette ?? []).map((c, id) => recolor[names[id]] ?? hex(c));
+  // A name 'slot' takes the recolour; 'slot*k' is that slot scaled by k (mulHex) and follows it.
+  const recolored = (name) => {
+    if (name == null) return undefined;
+    if (name in recolor) return recolor[name];
+    const m = /^(\w+)\*([\d.]+)$/.exec(name);
+    return m && m[1] in recolor ? mulHex(recolor[m[1]], +m[2]) : undefined;
+  };
+  const colors = (doc.palette ?? []).map((c, id) => recolored(names[id]) ?? hex(c));
   const color = (id) => colors[id] ?? 0xff00ff;
   const grids = {};
   const list = [];

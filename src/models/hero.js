@@ -30,6 +30,7 @@ import { DenseGrid } from '../core/vox.js';
 import { getMaterial } from '../core/materials.js';
 import { CP } from './palette.js';
 import { model, modelMesh, PoseMesh, contactShadow } from './kit.js';
+import { parseBoxel } from '../core/boxel.js';
 
 export const V = 1 / 16;
 export const HERO_POSES = ['stand', 'walk1', 'walk2', 'cheer', 'swordOut', 'windUp', 'item'];
@@ -135,8 +136,20 @@ export function swordGrid(length = 15, width = 2) {
 export const heroModel = (pose, S = HERO_SLOTS, opts = {}) => {
   const p = HERO_ALIASES[pose] ?? pose;
   const tag = S === HERO_SLOTS && opts.shield !== false ? '' : `:${Object.values(S).join(',')}:${opts.shield !== false}`;
+  const heroColours = Object.entries(HERO_SLOTS).every(([k, v]) => S[k] === v); // makeHero passes a copy
+  if (HERO_V2 && heroColours && opts.shield !== false) return model(`hero-v2:${p}`, () => heroV2Grids()[p]);
   return model(`hero:${p}${tag}`, () => heroGrid(p, S, opts));
 };
+
+// Hero v2, the boxel hero authored for Boxel (scripts/art/hero-v2.mjs -> assets/models/hero-v2.boxel).
+// On trial behind ?hero=v2 for the player; townspeople and the shieldless figure keep heroGrid.
+// The file is inlined by Vite; plain Node (scripts/) has no import.meta.env and skips it.
+const HERO_V2_SRC = import.meta.env
+  ? Object.values(import.meta.glob('../../assets/models/hero-v2.boxel', { query: '?raw', import: 'default', eager: true }))[0]
+  : null;
+const HERO_V2 = !!HERO_V2_SRC && typeof location !== 'undefined' && new URLSearchParams(location.search).get('hero') === 'v2';
+let v2Grids = null;
+const heroV2Grids = () => (v2Grids ??= parseBoxel(HERO_V2_SRC).grids);
 
 // A sword mesh with its origin on the blade's centre line at the start of the grip.
 export function makeSwordMesh(material = getMaterial('character'), length = 15, width = 2) {

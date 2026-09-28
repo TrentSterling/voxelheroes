@@ -241,6 +241,10 @@ export function mixHex(a, b, t) {
   const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
   return (Math.round(ar + (br - ar) * t) << 16) | (Math.round(ag + (bg - ag) * t) << 8) | Math.round(ab + (bb - ab) * t);
 }
+export function mulHex(a, k) { // scale each channel by k (clamped): lighter or darker, hue kept
+  const f = (v) => Math.min(255, Math.round(v * k));
+  return (f((a >> 16) & 255) << 16) | (f((a >> 8) & 255) << 8) | f(a & 255);
+}
 export function shadeHex(a, k) { // k<1 darker, k>1 lighter (toward white)
   if (k <= 1) return mixHex(a, 0x000000, 1 - k);
   return mixHex(a, 0xffffff, k - 1);
