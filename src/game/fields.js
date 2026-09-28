@@ -35,7 +35,7 @@ defineState('profile', () => ({
 // ---- gear (hero): passive equipment, not on the B ring
 defineState('gear', () => ({
   shield: 1, // shield tier 1-6 (0: none); each new shield replaces the last
-  boots: 'boots-dash', // null | 'boots-dash' | 'boots-swamp' (swamp boots also dash); the hero starts with dash boots (M2: dash usable from the start)
+  boots: null, // null | 'boots-dash' | 'boots-swamp' (swamp boots also dash); Sprint Boots come from Tinker Wyll in Mossbrook (npc-inventor)
   ring: null, // null | 'ring-quarter' | 'ring-half' (the better one applies)
 }));
 

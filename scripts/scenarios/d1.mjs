@@ -128,7 +128,18 @@ export default async function d1(t) {
     return { ok: buy.ok, has: g.inventory.hasItem('bombs'), ammo: g.inventory.ammo('bombs'), boots: h.state.gear.boots };
   });
   t.expect(r.ok && r.has && r.ammo > 0, `Mossbrook's shop sells bombs (${JSON.stringify(r)})`);
-  t.expect(r.boots === 'boots-dash', 'the hero has dash boots from the start');
+  t.expect(!r.boots, 'the hero starts without boots');
+  // Tinker Wyll, the inventor, gives the Sprint Boots (gameplay spec: V1, before D1)
+  await t.walkTo(13.5, 6.7);
+  await t.eval(() => window.__voxelHeroes.game.hero.hero.setFacing('north'));
+  await t.tap('sword');
+  for (let i = 0; i < 8 && (await snap(t)).mode === 'dialog'; i++) {
+    await t.step(1.2);
+    await t.tap('confirm');
+  }
+  await t.step(0.5);
+  r = await t.eval(() => window.__voxelHeroes.state.gear.boots);
+  t.expect(r === 'boots-dash', `Tinker Wyll in Mossbrook gives the Sprint Boots (${r})`);
   await t.walkTo(8, 12.5);
   await t.eval(() => window.__voxelHeroes.game.inventory.selectItem('bombs'));
   await t.tap('item');

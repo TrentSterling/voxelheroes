@@ -75,6 +75,24 @@ class Innkeeper extends Npc {
 }
 registerEntity('npc-inn', (opts) => new Innkeeper(opts));
 
+// ---------------------------------------------------------------- the inventor
+// Gives the Sprint Boots once (gameplay spec: the inventor in V1, before D1); dash needs them.
+class Inventor extends Npc {
+  constructor(opts) {
+    super(opts, { model: look({ tunic: 0x6a5a8a, tunicLight: 0x8a7aaa, cap: 0xc8a040, hair: 0xe8e8e8 }), name: 'Tinker Wyll' });
+  }
+  async talk() {
+    const sp = { speaker: this.name };
+    if (!state.gear.boots) {
+      await showDialog(['Ah, a traveller with worn soles! Try these.', 'Sprint Boots. Press SPACE: you rev up, then off you charge, blade first.'], sp);
+      grant('boots-dash', 1, { source: 'npc' });
+      return;
+    }
+    return showDialog(['Charge into a wall and you will know about it. Pull back to brake.'], sp);
+  }
+}
+registerEntity('npc-inventor', (opts) => new Inventor(opts));
+
 // ---------------------------------------------------------------- the sage (CONTRACTS 8.12)
 // Grants its spell once ({ source: 'npc' }), sets its flag, then only talks.
 // A spell nobody has registered yet (the items stream's) is not granted.

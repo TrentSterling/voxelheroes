@@ -349,6 +349,7 @@ registerArea({
       spawnsAt: {
         '5,4': { type: 'npc-shop', shop: 'v1-shop' },
         '10,4': { type: 'npc-smith' },
+        '13,5': { type: 'npc-inventor' }, // the Sprint Boots (gameplay spec: the inventor in V1, before D1)
         '5,11': { type: 'npc-inn', inn: 'inn-1' },
         '10,11': { type: 'npc', name: 'Hettie', lines: ['Welcome to Mossbrook!', 'The inn lets you rest and wakes you there if you fall.'] },
       },

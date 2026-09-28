@@ -69,6 +69,11 @@ export function setBladeHooks(h) {
   hooks = { ...hooks, ...h };
 }
 
+const LUNGE = 0.14; // tiles the body leans into a thrust
+const SPIN_EXTRA = 0.15; // seconds a spin adds to the hold, so a full turn fits
+const SPIN_COMMIT = (100 * Math.PI) / 180; // turned past this, the thrust is a spin
+const holdOf = (th) => TUNING.sword.hold + (th?.extra ?? 0);
+
 const phases = () => {
   const t = TUNING.sword;
   return { E: t.extend, H: t.hold, R: t.retract, total: t.extend + t.hold + t.retract };
@@ -76,13 +81,13 @@ const phases = () => {
 
 export const isSwinging = (p) => p.attackT > 0;
 // Extend and hold: rooted, and a new thrust cannot start yet.
-export const isRooted = (p) => !!p.thrust && p.thrust.t < phases().E + phases().H - 1e-9;
+export const isRooted = (p) => !!p.thrust && p.thrust.t < phases().E + holdOf(p.thrust) - 1e-9;
 
 // Thrust progress 0..1 over extend and hold.
 export function swingProgress(p) {
   if (!p.thrust) return 1;
-  const { E, H } = phases();
-  return Math.min(1, p.thrust.t / (E + H));
+  const { E } = phases();
+  return Math.min(1, p.thrust.t / (E + holdOf(p.thrust)));
 }
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -124,11 +129,19 @@ export function endSwing(p) {
 // Pose the arm and body for the model: the blade goes straight out along the
 // thrust's angle, flat at hand height (sword-fx.js draws the blade itself).
 export function poseSword(hero, p) {
-  const out = p.thrust || p.dashing;
+  const out = p.thrust || (p.dashing && !(p.dashing.rev > 0));
   const rel = p.thrust ? wrap(p.thrust.angle - p.yaw) : 0;
   hero.swordPivot.rotation.y = out ? rel : -0.95;
   hero.swordPivot.rotation.x = out ? 0 : -1.05;
   hero.body.rotation.y = 0;
+  // The lunge: the body snaps forward with the extend and eases back through the hold and retract.
+  let lunge = 0;
+  if (p.thrust) {
+    const { E, H, R } = phases();
+    const t = p.thrust.t;
+    lunge = t < E ? t / E : t < E + H ? 1 - ((t - E) / H) * 0.5 : Math.max(0, 0.5 * (1 - (t - E - H) / R));
+  }
+  hero.body.position.z = LUNGE * lunge;
   p.swordAngle = hero.swordPivot.rotation.y;
 }
 
@@ -136,7 +149,9 @@ export function poseSword(hero, p) {
 export function tickSword(p, dt, dir = -1) {
   const th = p.thrust;
   if (!th) return;
-  const { E, H, total } = phases();
+  const { E, R } = phases();
+  const H = holdOf(th);
+  const total = E + H + R;
   const t0 = th.t;
   th.t += dt;
   p.attackT = Math.max(0, total - th.t);
@@ -178,6 +193,7 @@ function turnBlade(p, th, dt, dir) {
   const step = Math.min(max, Math.abs(diff)) * sign;
   th.angle = wrap(th.angle + step);
   th.turned += Math.abs(step);
+  if (th.turned > SPIN_COMMIT) th.extra = SPIN_EXTRA; // a real spin, not one push to the side
   th.swept = Math.min(360, th.swept + (Math.abs(step) * 180) / Math.PI);
   th.turnDir = sign;
   p.yaw = th.angle;

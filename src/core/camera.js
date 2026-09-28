@@ -328,8 +328,22 @@ export function placeCamera() {
     camera.updateProjectionMatrix();
   }
   poseCamera(camera, lens, camTarget);
+  if (shake.t > 0) {
+    const k = (shake.t / shake.dur) ** 2;
+    shake.t -= 1 / 60;
+    shake.n++;
+    camera.position.x += Math.sin(shake.n * 2.9) * shake.amp * k;
+    camera.position.y += Math.sin(shake.n * 3.7 + 1) * shake.amp * 0.6 * k;
+  }
   camera.userData.subject = camTarget;
   followSun(camTarget);
+}
+
+// A short decaying camera kick (tiles) for heavy hits; a stronger one wins over a weaker.
+const shake = { t: 0, dur: 1, amp: 0, n: 0 };
+export function shakeCamera(amp = 0.06, dur = 0.12) {
+  if (shake.t > 0 && shake.amp * (shake.t / shake.dur) > amp) return;
+  Object.assign(shake, { t: dur, dur, amp });
 }
 
 export function snapCamera(target) {

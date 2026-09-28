@@ -228,8 +228,8 @@ export default async function hero(t) {
     h.input.tap('sword');
     await h.tick();
     out.sameThrust = H.p.thrust.id === id;
-    // run to the end of the hold (20 ticks from the press), then the retract
-    await H.ticks(6, () => h.input.setStick(0, 0));
+    // run to the last tick of the hold (13 ticks so far; extend + hold from TUNING), then the retract
+    await H.ticks(Math.max(0, Math.round((T.extend + T.hold) * 60) - 14), () => h.input.setStick(0, 0));
     out.inHold = H.p.thrust.t < T.extend + T.hold;
     await h.tick();
     out.retracting = H.p.thrust.t >= T.extend + T.hold - 1e-9;
@@ -496,8 +496,17 @@ export default async function hero(t) {
     h.input.tap('dash');
     await h.tick();
     out.dashing = !!H.p.dashing;
+    // it revs in place first (no movement), then charges
+    const rx = H.p.x;
+    let rev = 0;
+    while (H.p.dashing?.rev > 0 && rev < 30) {
+      await h.tick();
+      rev++;
+    }
+    out.revTicks = rev;
+    out.revStill = Math.abs(H.p.x - rx) < 1e-6;
     out.v0 = H.p.dashing ? +(H.p.dashing.speed / W).toFixed(3) : 0;
-    await H.ticks(10, () => h.input.setStick(1, 0));
+    await H.ticks(11, () => h.input.setStick(1, 0));
     out.v10 = H.p.dashing ? +(H.p.dashing.speed / W).toFixed(4) : 0;
     // a 90-degree turn adds 0.25 x walking speed
     const before = H.p.dashing?.speed ?? 0;
@@ -505,14 +514,18 @@ export default async function hero(t) {
     await h.tick();
     out.turn = H.p.dashing ? +((H.p.dashing.speed - before) / W).toFixed(4) : 0;
     out.dir = H.p.dashing?.dir;
-    // neutral stick for 0.15 s stops it
+    // a neutral stick keeps it going; held against it, it brakes
     h.input.setStick(0, 0);
+    await H.ticks(6);
+    out.neutralKeeps = !!H.p.dashing;
+    h.input.setStick(0, -1);
     let n = 0;
     while (H.p.dashing && n < 30) {
       await h.tick();
       n++;
     }
-    out.neutralTicks = n;
+    h.input.setStick(0, 0);
+    out.brakeTicks = n;
     // guard stops it
     H.place(x, z, 'east');
     h.input.tap('dash');
@@ -552,10 +565,11 @@ export default async function hero(t) {
     }
   });
   t.expect(r.noBoots, 'no dash without boots');
-  t.expect(r.dashing && near(r.v0, 2.0, 0.01), `with boots, dash starts at 2.0 x walking speed (${r.v0})`);
+  t.expect(r.dashing && r.revStill && r.revTicks >= 10 && r.revTicks <= 13, `with boots, the dash revs in place for about 0.2 s first (${r.revTicks} ticks)`);
+  t.expect(near(r.v0, 2.0, 0.01), `then charges at 2.0 x walking speed (${r.v0})`);
   t.expect(near(r.v10, 2.0 + 0.25 * (11 / 60), 0.01), `it gains 0.25 x walking speed per second (${r.v10})`);
   t.expect(r.dir === 'south' && near(r.turn, 0.25 + 0.25 / 60, 0.005), `a 90-degree turn steers it and adds 0.25 x walking speed (${r.dir}, +${r.turn})`);
-  t.expect(r.neutralTicks === 9, `a neutral stick for 0.15 s stops it (${r.neutralTicks} ticks)`);
+  t.expect(r.neutralKeeps && r.brakeTicks >= 5 && r.brakeTicks <= 8, `a neutral stick keeps it going; held against it for 0.1 s it stops (${r.brakeTicks} ticks)`);
   t.expect(r.guardStops, 'pressing guard stops it');
   t.expect(!!r.wall && r.crashed && near(r.bounce, 0.5, 0.05) && r.stalled && r.walksAfter, `a dash into a wall crashes: 0.5 tile back, a stall, then he walks (${r.bounce})`);
 

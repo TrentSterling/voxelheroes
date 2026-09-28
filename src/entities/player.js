@@ -23,7 +23,8 @@ import { startSwing, poseSword, tickSword, isRooted, endSwing, bladeSweep, sword
 import { updateBladeFx } from '../systems/sword-fx.js';
 import { tryInteract } from '../systems/interact.js';
 import { crossEdge, edgeCrossed } from '../systems/transitions.js';
-import { burst } from '../systems/particles.js';
+import { burst, smoke } from '../systems/particles.js';
+import { toast } from '../ui/toast.js';
 import { useSelectedItem, cycleItem } from '../items/inventory.js';
 import { makeGuardShield } from '../models/hero/shield.js';
 import { Entity } from './entity.js';
@@ -50,6 +51,8 @@ const BOOTS = ['boots-dash', 'boots-swamp'];
 // play-test holds the model to) leaves no room for a full 6-degree lean at
 // rest by the south line. Walking sways the full TUNING.hero.sway.
 const IDLE_SWAY = 0.5;
+const DASH_REV = 0.2; // seconds of running in place before a dash charges
+const DASH_BRAKE = 0.1; // seconds held against a dash to stop it
 
 export class Player extends Entity {
   constructor() {
@@ -149,13 +152,17 @@ export class Player extends Entity {
     return BOOTS.includes(state.gear?.boots) && !this.dashing && this.stallT <= 0 && this.knockT <= 0;
   }
 
+  // The dash (Sprint Boots) revs first: he runs in place kicking up dust for DASH_REV seconds, then
+  // charges with the blade out until he hits something, reverses, or presses another button. It
+  // no longer stops on a released stick: a tap of the button was a 0.15 s blade poke that read as
+  // a swing.
   startDash() {
     this.guarding = false;
     endSwing(this);
     this.yaw = this.facingYaw();
-    this.dashing = { dir: this.facing, speed: TUNING.dash.start * this.walkSpeed(), neutralT: 0, rehitT: 0, id: 0, tiles: new Set() };
+    this.dashing = { dir: this.facing, speed: TUNING.dash.start * this.walkSpeed(), neutralT: 0, rehitT: 0, id: 0, tiles: new Set(), rev: DASH_REV, dustT: 0, backT: 0 };
     this.newDashHit();
-    sfx.swing();
+    sfx.dashRev?.();
   }
 
   newDashHit() {
@@ -215,9 +222,12 @@ export class Player extends Entity {
     if (input.pressed('prev-item')) cycleItem(-1);
     if (input.pressed('item')) {
       if (this.dashing) this.stopDash();
-      if (!rooted) useSelectedItem(this);
+      if (!state.inventory?.selected) toast('No item yet: find one and it goes on K');
+      else if (!rooted) useSelectedItem(this);
     }
     const shield = (state.gear?.shield ?? 0) > 0;
+    if (input.pressed('guard') && !shield) toast('No shield yet: the king has one for you');
+    if (input.pressed('dash') && !BOOTS.includes(state.gear?.boots)) toast('No boots yet: Tinker Wyll in Mossbrook makes them');
     // (locked input stops walking, the sword, items and the dash, not the guard)
     const wantGuard = input.held('guard') && shield;
     if (this.dashing && input.pressed('guard')) this.stopDash();
@@ -252,7 +262,7 @@ export class Player extends Entity {
       if (stick.dir >= 0 && !this.guarding && !this.thrust) this.yaw = Math.atan2(stick.x, stick.z);
     }
     stepHit = moveHero(this, vx * dt, vz * dt, { assist: state.settings?.cornerAssist !== false });
-    if (this.dashing) this.dashBlade(dt, stepHit);
+    if (this.dashing && !(this.dashing.rev > 0)) this.dashBlade(dt, stepHit);
 
     // Crossing the screen's edge changes screen (a follow change past the
     // dead band, or a slide), or loads the next area; at a south edge before
@@ -262,7 +272,8 @@ export class Player extends Entity {
 
     if (state.mode === 'play') this.touchTiles(stick, dt);
 
-    const moving = Math.hypot(vx, vz) > 0.2 && this.knockT <= 0;
+    const revving = this.dashing?.rev > 0; // running in place before the charge
+    const moving = (Math.hypot(vx, vz) > 0.2 || revving) && this.knockT <= 0;
     tickSword(this, dt, stick.dir);
     this.animate(dt, moving);
     this.lastYaw = this.yaw;
@@ -277,21 +288,42 @@ export class Player extends Entity {
     const D = TUNING.dash;
     const d = this.dashing;
     const walk = this.walkSpeed();
+    const [fx0, fz0] = FACING_VEC[d.dir];
+    d.dustT -= dt;
+    if (d.dustT <= 0) {
+      d.dustT = d.rev > 0 ? 0.05 : 0.07;
+      smoke(this.x - fx0 * 0.3, GROUND_Y + 0.05, this.z - fz0 * 0.3, d.rev > 0 ? 2 : 1, { radius: 0.09, spread: 0.2, life: 0.35 });
+    }
+    if (d.rev > 0) {
+      // revving: turn freely to aim, no movement, no blade
+      d.rev -= dt;
+      const aim = stick.dir >= 0 ? CARDINAL[stick.dir] ?? null : null;
+      if (aim) d.dir = aim;
+      this.facing = d.dir;
+      this.yaw = FACING_YAW[d.dir];
+      this.dashVx = this.dashVz = 0;
+      if (d.rev <= 0) {
+        sfx.swing();
+        smoke(this.x - fx0 * 0.2, GROUND_Y + 0.05, this.z - fz0 * 0.2, 5, { radius: 0.12, spread: 0.35, life: 0.45 });
+      }
+      return;
+    }
     d.speed = Math.min(D.cap * walk, d.speed + D.perSecond * walk * dt);
     const card = stick.dir >= 0 ? CARDINAL[stick.dir] ?? this.facingFromDiagonal(stick, d.dir) : null;
-    if (card && card !== d.dir && FACING_VEC[card][0] !== -FACING_VEC[d.dir][0] && FACING_VEC[card][1] !== -FACING_VEC[d.dir][1]) {
+    const reverse = card && FACING_VEC[card][0] === -fx0 && FACING_VEC[card][1] === -fz0;
+    if (card && card !== d.dir && !reverse) {
       d.dir = card; // a 90-degree turn
       d.speed = Math.min(D.cap * walk, d.speed + D.perTurn * walk);
       this.newDashHit();
     }
     this.facing = d.dir;
     this.yaw = FACING_YAW[d.dir];
-    if (stick.dir < 0) d.neutralT += dt;
-    else d.neutralT = 0;
+    // pulling back brakes: held against the charge for DASH_BRAKE, it stops
+    d.backT = reverse ? d.backT + dt : 0;
     const [fx, fz] = FACING_VEC[d.dir];
     this.dashVx = fx * d.speed;
     this.dashVz = fz * d.speed;
-    if (d.neutralT >= D.stopNeutral - 1e-9) {
+    if (d.backT >= DASH_BRAKE - 1e-9) {
       this.stopDash();
       this.dashVx = this.dashVz = 0;
     }
@@ -378,16 +410,19 @@ export class Player extends Entity {
 
   animate(dt, moving) {
     const hero = this.hero;
-    this.walkT += dt / TUNING.hero.posePeriod;
+    // The walk cycle runs only while he moves; standing still he stands (marching in place read as
+    // a stuck run). A fresh step starts on a stride cel so the first frame of a walk shows motion.
+    if (moving) this.walkT += (dt / TUNING.hero.posePeriod) * (this.dashing ? 2 : 1);
+    else this.walkT = 0;
     if (this.cheerT > 0) this.cheerT -= dt;
     if (this.posed) {
       this.posed.left -= dt;
       if (this.posed.left <= 0) this.posed = null;
     }
-    // walk 1, stand, walk 2, stand; idle too (spec 7.3)
+    // walk 1, stand, walk 2, stand while moving (spec 7.3); stand when still
     const cel = Math.floor(this.walkT) % 4;
-    const step = cel === 0 ? 'walk1' : cel === 2 ? 'walk2' : 'stand';
-    const out = !!this.thrust || !!this.dashing;
+    const step = !moving ? 'stand' : cel === 0 ? 'walk1' : cel === 2 ? 'walk2' : 'stand';
+    const out = !!this.thrust || (!!this.dashing && !(this.dashing.rev > 0));
     let pose = step;
     const set = this.posed?.pose;
     if (state.mode === 'dead') pose = 'stand';

@@ -104,7 +104,11 @@ export function noise(dur, { vol = 0.2, freq = 2000, q = 1, delay = 0 } = {}) {
 }
 
 export const sfx = {
-  swing: () => noise(0.14, { vol: 0.25, freq: 3200, q: 0.8 }),
+  swing: () => {
+    noise(0.12, { vol: 0.22, freq: 2600, q: 0.9 }); // the whoosh
+    tone(1760, 0.07, { to: 2640, vol: 0.035, type: 'triangle' }); // a short ring off the blade
+  },
+  dashRev: () => [0, 0.06, 0.12].forEach((d) => noise(0.05, { vol: 0.12, freq: 420, q: 1.2, delay: d })),
   hit: () => tone(330, 0.12, { to: 110, vol: 0.14 }),
   kill: () => {
     noise(0.3, { vol: 0.3, freq: 900 });

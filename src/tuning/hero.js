@@ -17,8 +17,8 @@ export const hero = {
 export const sword = {
   handOffset: 0.35,
   extend: 2 / 60,
-  hold: 0.3,
-  retract: 0.1,
+  hold: 0.2, // was 0.3: the thrust rooted him long enough to feel stuck
+  retract: 0.08,
   smallLength: 1.25,
   smallHitWidth: 0.35,
   length: (L) => 2.5 + 0.7 * L, // tiles, full-life blade

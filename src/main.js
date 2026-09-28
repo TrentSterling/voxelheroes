@@ -5,6 +5,7 @@ import './content.js';
 import * as THREE from 'three';
 import { scene, mountRenderer, renderScene, look, camera } from './core/renderer.js';
 import { setCutaway } from './core/materials.js';
+import { hitstopTick } from './core/hitstop.js';
 import { GROUND_Y } from './core/constants.js';
 import { initCamera, placeCamera, followSubject, cameraPreset, currentCameraPreset } from './core/camera.js';
 import { initInput, input } from './core/input.js';
@@ -22,6 +23,7 @@ import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
 import { initOverlay } from './ui/overlay.js';
 import { initLoadCard } from './ui/loadcard.js';
 import { installTestHook } from './debug/testhook.js';
+import { initCheats } from './debug/cheats.js';
 
 mountRenderer(document.getElementById('game'));
 initCamera();
@@ -31,6 +33,7 @@ initInput();
 input.onGesture(initAudio); // browsers only allow sound after a key press or tap
 initOverlay();
 initLoadCard();
+initCheats();
 initParticles(scene);
 world.build(scene, allAreas());
 scene.add(player.object);
@@ -43,6 +46,10 @@ setMode('title');
 // One simulation step. Every mode shares the world animation, particles and
 // camera; the mode decides what else moves.
 function update(dt) {
+  if (hitstopTick(dt)) {
+    placeCamera();
+    return; // held presses stay buffered for the step after the hold
+  }
   state.time += dt;
   world.update(state.time, dt);
   if (input.pressed('mute')) toggleMuteUi();
