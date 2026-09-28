@@ -215,7 +215,7 @@ export function shownRect() {
 // when they come back into view.
 export function syncScreenVisibility() {
   for (const s of world.screens.values()) {
-    const on = shown.has(s);
+    const on = shown.has(s) || world.previews.has(s); // previews: the next area's edge, as scenery
     if (on && s.shown === true) continue;
     for (const m of s.meshes) if (m.mesh.visible !== on) m.mesh.visible = on;
     for (const obj of s.props.values()) if (obj.visible !== on) obj.visible = on;

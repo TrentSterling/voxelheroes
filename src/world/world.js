@@ -180,17 +180,35 @@ export class World {
     if (this.loaded === id) return false;
     if (!this.areas.has(id)) throw new Error(`loadArea: unknown area "${id}"`);
     for (const s of this.screens.values()) if (s.area.id === this.loaded) this.unbuild(s);
+    for (const s of this.previews) this.unbuild(s);
+    this.previews.clear();
     this.loaded = id;
     this.pending.clear();
     this.focus = focus;
+    const own = [];
     for (const s of this.screens.values())
       if (s.area.id === id) {
+        own.push(s);
         if (!focus || s === focus) this.buildScreen(s);
         else this.pending.add(s);
         this.buildProps(s);
       }
+    // Previews: the terrain of other outdoor areas' screens that share an edge with this one, so a
+    // road that crosses into the next area runs on into its land instead of into the sky. Built
+    // with the rest in slices (terrain only: no props, no people); always drawn.
+    if (!own[0]?.area.rooms) {
+      const edge = (a, b) =>
+        (a.x0 < b.x1 && b.x0 < a.x1 && (a.z0 === b.z1 || a.z1 === b.z0)) || (a.z0 < b.z1 && b.z0 < a.z1 && (a.x0 === b.x1 || a.x1 === b.x0));
+      for (const s of this.screens.values())
+        if (s.area.id !== id && !s.area.rooms && !/^test-/.test(s.area.id) && own.some((o) => edge(o, s))) {
+          this.previews.add(s);
+          this.pending.add(s);
+        }
+    }
     return true;
   }
+
+  previews = new Set(); // other areas' screens built as scenery next to the loaded one
 
   pending = new Set();
   focus = null;
@@ -202,7 +220,7 @@ export class World {
     const t0 = performance.now();
     const f = this.focus;
     const d = (s) => (f ? Math.abs(s.x0 + s.x1 - f.x0 - f.x1) + Math.abs(s.z0 + s.z1 - f.z0 - f.z1) : 0);
-    const order = [...this.pending].sort((a, b) => d(a) - d(b));
+    const order = [...this.pending].sort((a, b) => this.previews.has(a) - this.previews.has(b) || d(a) - d(b)); // own screens first
     for (const s of order) {
       this.buildScreen(s);
       if (performance.now() - t0 >= budgetMs) break;
