@@ -129,7 +129,7 @@ export function endSwing(p) {
 // Pose the arm and body for the model: the blade goes straight out along the
 // thrust's angle, flat at hand height (sword-fx.js draws the blade itself).
 export function poseSword(hero, p) {
-  const out = p.thrust || (p.dashing && !(p.dashing.rev > 0));
+  const out = p.thrust || p.charge || (p.dashing && !(p.dashing.rev > 0));
   const rel = p.thrust ? wrap(p.thrust.angle - p.yaw) : 0;
   hero.swordPivot.rotation.y = out ? rel : -0.95;
   hero.swordPivot.rotation.x = out ? 0 : -1.05;
@@ -161,7 +161,8 @@ export function tickSword(p, dt, dir = -1) {
   }
   const active = t0 < E + H - 1e-9;
   const prev = th.angle;
-  if (active && th.spin) turnBlade(p, th, dt, dir);
+  if (active && th.auto) autoSpin(p, th, dt);
+  else if (active && th.spin) turnBlade(p, th, dt, dir);
   const s = swordStats();
   const ext = th.t <= E ? th.t / E : th.t <= E + H ? 1 : Math.max(0, 1 - (th.t - E - H) / phases().R);
   if (!active) {
@@ -170,6 +171,31 @@ export function tickSword(p, dt, dir = -1) {
   }
   const source = th.turned > 0.01 ? 'spin' : 'sword';
   th.reach = bladeSweep(p, { yaw: th.angle, from: prev, ext, id: th.id, source, stats: s, tiles: th.tiles }).reach;
+}
+
+// The charged spin (A Link to the Past): hold the sword button after a thrust, the blade stays out
+// while he walks slowly; held CHARGE_TIME it is ready (a flash), and letting go spins a full turn
+// clockwise at spinRate, hitting everything around him. Any sword can do it.
+export const CHARGE_TIME = 0.8;
+export function startChargedSpin(p) {
+  if (isRooted(p) || swordStats().none) return false;
+  if (!startSwing(p)) return false;
+  const th = p.thrust;
+  th.auto = true;
+  th.turnDir = -1;
+  th.extra = (2 * Math.PI) / ((TUNING.sword.spinRate * Math.PI) / 180) + 0.05; // time for a full turn
+  th.id = `spin-${p.swingId}`;
+  return true;
+}
+
+function autoSpin(p, th, dt) {
+  const rate = (TUNING.sword.spinRate * Math.PI) / 180;
+  const step = Math.min(rate * dt, 2 * Math.PI - th.turned);
+  if (step <= 0) return;
+  th.angle = wrap(th.angle + step * th.turnDir);
+  th.turned += step;
+  th.swept = Math.min(360, th.swept + (step * 180) / Math.PI);
+  p.yaw = th.angle;
 }
 
 function turnBlade(p, th, dt, dir) {

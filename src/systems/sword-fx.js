@@ -62,9 +62,9 @@ export function updateBladeFx(p, dt = 0) {
   flashT = Math.max(0, flashT - dt);
   const s = swordStats();
   const th = p.thrust;
-  const out = !!th || (!!p.dashing && !(p.dashing.rev > 0));
+  const out = !!th || !!p.charge || (!!p.dashing && !(p.dashing.rev > 0));
   const t = TUNING.sword;
-  const reachNow = th ? th.reach : p.dashing ? p.dashReach ?? s.reach : 0;
+  const reachNow = th ? th.reach : p.dashing ? p.dashReach ?? s.reach : p.charge ? s.reach : 0;
   const len = Math.max(0, reachNow - t.handOffset);
   const full = !s.small && !s.none;
   // the small blade: the rig's sword, grown out along the thrust

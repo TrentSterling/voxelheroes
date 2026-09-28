@@ -19,11 +19,11 @@ import { TUNING } from '../core/tuning.js';
 import { makeHero } from '../models/hero.js';
 import { world, currentScreen } from '../world/world.js';
 import { moveHero } from '../systems/hero-body.js';
-import { startSwing, poseSword, tickSword, isRooted, endSwing, bladeSweep, swordStats } from '../systems/sword.js';
-import { updateBladeFx } from '../systems/sword-fx.js';
+import { startSwing, poseSword, tickSword, isRooted, endSwing, bladeSweep, swordStats, startChargedSpin, CHARGE_TIME } from '../systems/sword.js';
+import { updateBladeFx, flashBlade } from '../systems/sword-fx.js';
 import { tryInteract } from '../systems/interact.js';
 import { crossEdge, edgeCrossed } from '../systems/transitions.js';
-import { burst, smoke } from '../systems/particles.js';
+import { burst, smoke, sparks } from '../systems/particles.js';
 import { toast } from '../ui/toast.js';
 import { useSelectedItem, cycleItem } from '../items/inventory.js';
 import { makeGuardShield } from '../models/hero/shield.js';
@@ -209,7 +209,7 @@ export class Player extends Entity {
     if (this.stallT > 0) this.stallT = Math.max(0, this.stallT - dt);
 
     const rooted = isRooted(this);
-    if (!this.guarding && !rooted && !this.dashing && this.lockT <= 0) this.updateFacing(raw, stick);
+    if (!this.guarding && !rooted && !this.dashing && !this.charge && this.lockT <= 0) this.updateFacing(raw, stick);
     else this.updateFacing({ x: 0, z: 0 }, { dir: -1 });
 
     // ---- buttons
@@ -217,6 +217,30 @@ export class Player extends Entity {
     if (input.pressed('sword')) {
       if (this.dashing) this.stopDash();
       startSwing(this);
+    }
+    // the charged spin: the button still held once the thrust is over charges it; let go when ready
+    if (!this.charge && !this.thrust && !this.dashing && input.held('sword') && state.mode === 'play') this.charge = { t: 0, ready: false, fxT: 0 };
+    if (this.charge) {
+      const c = this.charge;
+      if (this.knockT > 0 || this.dashing || state.mode !== 'play') this.charge = null;
+      else if (!input.held('sword')) {
+        this.charge = null;
+        if (c.ready) startChargedSpin(this);
+      } else {
+        c.t += dt;
+        c.fxT -= dt;
+        const [fx, fz] = [Math.sin(this.yaw), Math.cos(this.yaw)];
+        if (!c.ready && c.t >= CHARGE_TIME) {
+          c.ready = true;
+          flashBlade(0.25);
+          sfx.gem();
+        }
+        if (c.fxT <= 0) {
+          c.fxT = c.ready ? 0.06 : 0.14;
+          const reach = swordStats().reach;
+          sparks(this.x + fx * reach, GROUND_Y + 0.4, this.z + fz * reach, c.ready ? [0xffe08a, 0xffffff] : [0xbfd8ff], c.ready ? 3 : 1, { speed: 1.2, size: 0.04, up: 1.5, life: 0.3 });
+        }
+      }
     }
     if (input.pressed('next-item')) cycleItem(1);
     if (input.pressed('prev-item')) cycleItem(-1);
@@ -255,11 +279,11 @@ export class Player extends Entity {
       vx = this.dashVx;
       vz = this.dashVz;
     } else if (!isRooted(this) && this.stallT <= 0 && this.lockT <= 0) {
-      let sp = this.walkSpeed() * (this.guarding ? TUNING.guard.speed : 1) * this.tileSpeed();
+      let sp = this.walkSpeed() * (this.guarding ? TUNING.guard.speed : this.charge ? 0.5 : 1) * this.tileSpeed();
       vx = stick.x * sp;
       vz = stick.z * sp;
       // the body's yaw snaps to the 8-way direction (not while guarding: it faces the attack facing)
-      if (stick.dir >= 0 && !this.guarding && !this.thrust) this.yaw = Math.atan2(stick.x, stick.z);
+      if (stick.dir >= 0 && !this.guarding && !this.thrust && !this.charge) this.yaw = Math.atan2(stick.x, stick.z);
     }
     stepHit = moveHero(this, vx * dt, vz * dt, { assist: state.settings?.cornerAssist !== false });
     if (this.dashing && !(this.dashing.rev > 0)) this.dashBlade(dt, stepHit);
@@ -422,7 +446,7 @@ export class Player extends Entity {
     // walk 1, stand, walk 2, stand while moving (spec 7.3); stand when still
     const cel = Math.floor(this.walkT) % 4;
     const step = !moving ? 'stand' : cel === 0 ? 'walk1' : cel === 2 ? 'walk2' : 'stand';
-    const out = !!this.thrust || (!!this.dashing && !(this.dashing.rev > 0));
+    const out = !!this.thrust || !!this.charge || (!!this.dashing && !(this.dashing.rev > 0));
     let pose = step;
     const set = this.posed?.pose;
     if (state.mode === 'dead') pose = 'stand';
