@@ -487,3 +487,7 @@ body.title-mode #overlay .controls { grid-area: controls; display: flex; flex-wr
 @media (max-width: 640px) {
   body.title-mode #overlay .panel { grid-template-columns: 1fr; grid-template-areas: 'kicker' 'msg' 'start' 'controls'; }
 }
+
+/* tront.xyz About pill: title screen only, so it never covers the touch stick in play */
+body:not(.title-mode) .tront-about { display: none; }
+body.title-mode .tront-about { top: 52px; bottom: auto; }
