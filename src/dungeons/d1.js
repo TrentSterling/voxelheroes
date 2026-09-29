@@ -1,4 +1,4 @@
-// D1, the Hollow Barrow: dungeon 1 (gameplay spec 6.8, 6.9, compact scope).
+// D1, the Old Barrow: dungeon 1 (gameplay spec 6.8, 6.9, compact scope).
 // Its rooms are world/areas/d1.js, its door and kit tiles world/tiles/d1.js,
 // its boss boss-serpent (entities/bosses/serpent.js, which calls
 // defeatBoss('d1'): number 1 pays TUNING.economy.bossPay[0]).
@@ -11,7 +11,7 @@ import { D1_ENTRANCE, D1_EXIT } from '../world/areas/slice.js';
 registerDungeon({
   id: 'd1',
   number: 1,
-  name: 'Hollow Barrow',
+  name: 'The Old Barrow',
   areas: ['d1', 'd1-boss'],
   entrance: D1_ENTRANCE,
   exit: D1_EXIT,
@@ -25,9 +25,9 @@ registerDungeon({
   floors: 1,
 });
 
-registerMusic({ id: 'dungeon-1', name: 'Hollow Barrow' });
+registerMusic({ id: 'dungeon-1', name: 'The Old Barrow' });
 
-registerPlace({ id: 'd1', name: 'Hollow Barrow', kind: 'dungeon', order: 101, area: 'd1', spot: D1_EXIT });
+registerPlace({ id: 'd1', name: 'The Old Barrow', kind: 'dungeon', order: 101, area: 'd1', spot: D1_EXIT });
 
 // Dark rooms (spec 6.4; CONTRACTS 11): the crypt look with the fill and key
 // turned right down, so only the lamps and the braziers light the floor.

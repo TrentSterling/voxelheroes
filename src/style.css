@@ -634,3 +634,6 @@ body.title-mode .tront-about { top: 52px; bottom: auto; }
 .map-rooms-boss { grid-auto-flow: column; }
 .map-boss-room { width: 26px; height: 26px; background: #6a2030; border: 1px solid rgba(243, 236, 210, 0.15); }
 .map-boss-room.here { background: var(--gold); box-shadow: 0 0 4px 1px rgba(241, 194, 50, 0.8); }
+
+/* Overworld map: cells at the padded frame edge stay inside the chart */
+.map-overworld { overflow: hidden; }

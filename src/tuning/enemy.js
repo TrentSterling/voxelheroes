@@ -53,7 +53,9 @@ export const enemy = {
   // The first-slice roster (gameplay spec 8.3): hp in damage points, contact
   // in life units (1 = half a heart), speeds in t/s, reach and ranges in tiles.
   roster: {
-    hopper: { hp: 3, contact: 1, speed: 2.5, chargeSpeed: 6, chargeTime: 0.6, sight: 5, r: 0.34 },
+    // hopper: was hp 3 (dead to one starting-blade hit at 3 dmg; fun audit,
+    // "basic foes die to one swipe"). 4 matches blob: two hits, still no threat.
+    hopper: { hp: 4, contact: 1, speed: 2.5, chargeSpeed: 6, chargeTime: 0.6, sight: 5, r: 0.34 },
     blob: { hp: 4, contact: 1, speed: 1.5, r: 0.36 },
     'blob-blue': { hp: 12, contact: 2, speed: 2, r: 0.4 },
     buzzer: { hp: 4, contact: 1, speed: 3.5, r: 0.3, height: 0.7 },

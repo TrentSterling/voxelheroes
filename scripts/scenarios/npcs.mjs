@@ -159,6 +159,34 @@ export default async function (t) {
   });
   t.expect(w.none || w.gained === 1, `cutting a flower tile picks one wildflower, not two from the same tile (${JSON.stringify(w)})`);
 
+  // Ghost markers (entities/manager.js removeEntity, entities/npc.js onRemove): a bark or emote
+  // bubble is HTML laid over the view, not scene geometry, so it must be disposed the moment its
+  // NPC leaves the live ring, however it leaves (reapBucket skips remove() and calls onRemove()
+  // straight through the manager). Give Hettie a bubble, push her out of the ring, and check the
+  // #speech overlay does not keep her nodes around forever.
+  await t.teleport('Mossbrook Square', 8, 4.5);
+  await t.step(0.2);
+  const ghostBefore = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    const n = h.entities.find((e) => e.name === 'Hettie');
+    n.bubble.say('Testing');
+    n.bubble.emote('!', 9999);
+    await h.tick();
+    return { nodes: document.getElementById('speech')?.children.length ?? 0, resident: !!n && !n.removed };
+  });
+  t.expect(ghostBefore.resident && ghostBefore.nodes > 0, `Hettie's bark bubble is in the DOM while she is live (${ghostBefore.nodes} nodes)`);
+
+  await t.teleport('ow-3-2:1,1', 8, 8); // Barrow Crossing: a full area away, Mossbrook Square leaves the live ring
+  await t.step(2);
+  const ghostAfter = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    return { nodes: document.getElementById('speech')?.children.length ?? 0, resident: h.entities.some((e) => e.name === 'Hettie') };
+  });
+  t.expect(!ghostAfter.resident, 'Hettie is no longer in the live ring once Mossbrook Square is reaped');
+  t.expect(ghostAfter.nodes === 0, `and her bark/emote nodes do not linger in #speech forever (${ghostAfter.nodes} left)`);
+  await t.teleport('Mossbrook Square', 8, 4.5);
+  await t.step(0.3);
+
   // a night at the inn starts the next morning
   const inn = await t.eval(async () => {
     const h = window.__voxelHeroes;

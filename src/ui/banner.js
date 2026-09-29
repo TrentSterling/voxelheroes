@@ -16,7 +16,13 @@ let bannerTimer = 0;
 
 export function showBanner(text) {
   const screen = currentScreen();
-  if (screen && text === screen.name && state.visitedAreas.has(screen.area.id)) return;
+  const isScreenName = screen && text === screen.name;
+  if (isScreenName && state.visitedAreas.has(screen.area.id)) return; // seen this area already: hold back the repeat
+  // First step into a new area: announce the area (Barrowfield, Crownhold), not
+  // whichever of its screens the hero happened to cross into (Cliff Hollow,
+  // West Pasture, ...): the name the player actually recognizes from the
+  // objective line and the map.
+  if (isScreenName && screen.area.name) text = screen.area.name;
   const b = $('banner');
   b.hidden = true;
   b.textContent = text;

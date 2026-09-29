@@ -664,7 +664,10 @@ export default async function foes(t) {
   t.expect(r.volley === 3, `it fires a fan of 3 (${r.volley})`);
   t.expect(r.speedAlone === 4.2 && r.headHp === 24, `alone, the head is capped at 4.2 t/s (never outruns the hero) with 24 HP (${r.speedAlone}, ${r.headHp})`);
   t.expect(JSON.stringify(phases.slice(0, 2)) === '[1,2]', `phases change at 66% and 33% (${phases})`);
-  t.expect(r.dead && defeated.length === 1 && r.container === 1 && r.coins === 250, `beaten: boss-defeated, a heart container and 250 coins (${defeated.length}, ${r.container}, ${r.coins})`);
+  // Reward pacing (fun audit item 5, deliberately changed): the arena used to shower the whole
+  // 250-coin bossPay; most of it now lives in D1's own chests (world/areas/d1.js, >= 120 coins,
+  // secrets.mjs), and the arena keeps TUNING.boss.serpent.coinCap (80) on top of the container.
+  t.expect(r.dead && defeated.length === 1 && r.container === 1 && r.coins === 80, `beaten: boss-defeated, a heart container and a smaller 80-coin shower, most of the payout moved to D1's own chests (${defeated.length}, ${r.container}, ${r.coins})`);
 
   // the tombstone starts a re-fight once the boss is beaten
   r = await t.eval(async () => {
@@ -689,4 +692,77 @@ export default async function foes(t) {
   });
   t.expect(r.boss === 0 && r.stone === 1 && r.refight, `a beaten boss stays away; its tombstone starts a re-fight (${JSON.stringify(r)})`);
   await t.shot('foes-boss');
+
+  // ---------------------------------------------------------------- overworld teeth (fun audit
+  // item 3): basic foes no longer die to one starting-blade hit, Barrow Crossing and The Old
+  // Barrow have real ambushes instead of open ground. Run last (own teleport, own dungeon reuse)
+  // so it never shifts the gameplay random stream or shared event counts the boss tests above
+  // read from a fixed tick count.
+  r = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const H = window.__fk;
+    H.clear();
+    h.teleport('test-foes-field', 8, 8);
+    await h.step(0.3);
+    const blob = H.foe('blob', 7.5, 7.5);
+    const hp0 = blob.hp;
+    const r1 = g.damage.dealDamage(blob, { amount: 3, source: 'sword', swingId: 'bt1', from: H.p });
+    const afterOne = { result: r1.result, alive: !blob.removed, hp: blob.hp };
+    const r2 = g.damage.dealDamage(blob, { amount: 3, source: 'sword', swingId: 'bt2', from: H.p });
+    const afterTwo = { result: r2.result, dead: blob.removed };
+    const crossing = h.world.screen('ow-3-2:1,1');
+    const archers = crossing.spawns.filter((s) => s.type === 'group' && (s.opts.of ?? []).includes('archer'));
+    const barrow = h.world.screen('ow-3-2:1,2');
+    const ambush = barrow.spawns.filter((s) => s.type === 'group');
+    return { hp0, afterOne, afterTwo, archers: archers.map((a) => ({ of: a.opts.of, count: a.opts.count })), ambushCount: ambush.length };
+  });
+  t.expect(r.hp0 === 4 && r.afterOne.result === 'hit' && r.afterOne.alive && r.afterOne.hp === 1, `a basic blob (hp ${r.hp0}) survives one starting-blade hit (3 dmg) with ${r.afterOne.hp} hp left`);
+  t.expect(r.afterTwo.result === 'killed' && r.afterTwo.dead, 'a basic blob needs 2 starting-blade hits');
+  t.expect(r.archers.length === 1 && r.archers[0].of.join() === 'archer' && r.archers[0].count.join() === '2,2', `Barrow Crossing ambushes with an archer pair (${JSON.stringify(r.archers)})`);
+  t.expect(r.ambushCount > 0, `The Old Barrow's doorstep is no longer empty (${r.ambushCount} spawn group(s))`);
+
+  // The serpent's one rule reaches the screen, not just the bestiary (fun audit item 4): a toast
+  // once the intro's camera returns control, and the tail pulses/sparks while it can be hurt.
+  // test-foes is already beaten by now, so this spawns a refight, same as the tombstone above.
+  r = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    const g = h.game;
+    const H = window.__fk;
+    H.clear();
+    H.full();
+    // toast() drops a repeat of the same text within 2.5 real seconds (ui/toast.js); the boss
+    // tests just above already showed this same hint at the end of their own intros, in far less
+    // real time than that (simulated ticks, not real frames), so a real wait clears it here.
+    await new Promise((resolve) => setTimeout(resolve, 2600));
+    h.teleport('test-foes-arena', 11, 13.5);
+    await h.tick();
+    h.spawn('boss-serpent', 11, 4.5, { dungeon: 'test-foes', refight: true });
+    await H.until(() => h.state.mode === 'boss-intro', 240);
+    await H.until(() => h.state.mode === 'play', 400);
+    const toastEl = document.getElementById('toast');
+    const hint = g.bestiary.getBestiaryEntry('boss-serpent')?.text; // SERPENT_HINT, without importing the module here
+    const hintShown = !!hint && toastEl?.textContent === hint && toastEl.style.opacity === '1';
+    const boss = H.of('boss-serpent')[0];
+    const tail = boss.tail();
+    await H.until(() => tail.glowing, 200);
+    const e0 = tail.mat.emissive.getHex();
+    // sparkT only ever ticks up again where the tail's own spark timer fires a burst (serpent.js
+    // Segment.update): sampling it for a rise, rather than the shared particle pool's live count
+    // (which also drains on its own clock), keeps this deterministic.
+    let sparked = false;
+    let prev = tail.sparkT;
+    for (let i = 0; i < 40 && !sparked; i++) {
+      await h.tick();
+      if (tail.sparkT > prev + 1e-6) sparked = true;
+      prev = tail.sparkT;
+    }
+    const e1 = tail.mat.emissive.getHex();
+    const out = { hintShown, pulses: e0 !== e1, sparked };
+    H.clear();
+    return out;
+  });
+  t.expect(r.hintShown, "the serpent's tail rule shows as an on-screen hint once the intro hands control back");
+  t.expect(r.pulses, "the glowing tail's emissive pulses instead of holding one flat tint");
+  t.expect(r.sparked, 'the glowing tail throws off sparks while it can be hurt');
 }

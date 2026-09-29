@@ -26,7 +26,7 @@ const STEPS = [
   { id: 'claim-orb', done: () => isComplete('d1'), text: 'Take the orb back to the sage.' },
 ];
 
-const OPEN_GOAL = 'Hunt for heart pieces, or see what the smith can do with your coins.';
+const OPEN_GOAL = 'Hunt for heart pieces, see what the smith can do with your coins, or help villagers with their errands.';
 
 // The first step not yet done, or null once every step is (the open goal).
 export function currentStep() {

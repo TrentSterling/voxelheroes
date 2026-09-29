@@ -14,12 +14,22 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { chromium, firefox } from 'playwright';
+import { lookup } from 'node:dns/promises';
 
 const arg = (k, d) => {
   const i = process.argv.indexOf(k);
   return i > 0 ? process.argv[i + 1] : d;
 };
-const url = arg('--url', 'http://localhost:4201/');
+const urlArg = arg('--url', 'http://localhost:4201/');
+// 'localhost' is resolved here, to the address the preview server listens on (Node puts ::1 first):
+// Firefox tries 127.0.0.1 first and only falls back after ~2 s, which the title time then counted.
+const url = await (async (u) => {
+  const x = new URL(u);
+  if (x.hostname !== 'localhost') return u;
+  const { address, family } = await lookup('localhost');
+  x.hostname = family === 6 ? `[${address}]` : address;
+  return x.href;
+})(urlArg);
 const which = arg('--browser', 'chrome');
 const [W, H] = arg('--size', '1920x1080').split('x').map(Number);
 const lookLevel = arg('--look', 'high');

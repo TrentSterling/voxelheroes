@@ -5,7 +5,7 @@ import { state } from '../../core/state.js';
 import { input } from '../../core/input.js';
 import { registerMode } from '../../core/modes.js';
 import { player } from '../../entities/player.js';
-import { startGame, newGame } from '../../systems/flow.js';
+import { startNewGame } from '../../game/progress.js';
 import { slotSummary, loadSlot } from '../../game/saves.js';
 import { getArea } from '../../world/areas.js';
 import { showOverlay } from '../overlay.js';
@@ -29,17 +29,18 @@ let titlePanel = null;
 
 const SAVE_SLOT = 1; // the one slot autosave and Continue use (game/saves.js has 3; no picker yet)
 
-// A fresh start, whatever state the title was left in (a died run, an old load).
+// A fresh start, whatever state the title was left in (a died run, an old load): the
+// prologue (CONTRACTS 8.16), unarmed in Mossbrook Square until the king's grants arm him.
+// Continue (loadSlot) never goes through this: a loaded save keeps whatever it saved.
 function newAdventure() {
-  newGame();
-  startGame();
+  startNewGame({ prologue: true });
 }
 
 // { button, onAction, secondary } for the panel: Continue (with a short summary) over New
 // adventure when a save exists, else the plain Start adventure of a first run.
 function titleButtons() {
   const s = slotSummary(SAVE_SLOT);
-  if (!s?.ok) return { button: 'Start adventure', onAction: startGame, secondary: null };
+  if (!s?.ok) return { button: 'Start adventure', onAction: newAdventure, secondary: null };
   const area = getArea(s.area)?.name ?? 'Mossbrook';
   const mins = Math.max(0, Math.round((s.playTime ?? 0) / 60));
   return {
@@ -78,6 +79,6 @@ registerMode('title', {
     // The hero looks around while waiting.
     player.yaw = Math.sin(state.time * 0.8) * 0.6;
     player.animate(dt, false);
-    if (input.pressed('confirm')) (slotSummary(SAVE_SLOT)?.ok ? loadSlot(SAVE_SLOT) : startGame());
+    if (input.pressed('confirm')) (slotSummary(SAVE_SLOT)?.ok ? loadSlot(SAVE_SLOT) : newAdventure());
   },
 });

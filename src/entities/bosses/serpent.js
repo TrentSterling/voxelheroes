@@ -19,11 +19,13 @@ import { sfx } from '../../core/audio.js';
 import { emit } from '../../core/events.js';
 import { random } from '../../core/random.js';
 import { TUNING } from '../../core/tuning.js';
+import { mixHex } from '../../core/vox.js';
 import { GROUND_Y } from '../../core/constants.js';
 import { registerMode, pushMode, popMode } from '../../core/modes.js';
 import { startCameraTween, stepCameraTween, cameraPreset } from '../../core/camera.js';
 import { showBanner } from '../../ui/banner.js';
-import { burst, smoke } from '../../systems/particles.js';
+import { toast } from '../../ui/toast.js';
+import { burst, smoke, sparks } from '../../systems/particles.js';
 import { currentScreen } from '../../world/world.js';
 import * as M from '../../models/foes/foes.js';
 import { bossDefeated, defeatBoss, getDungeon } from '../../game/dungeons.js';
@@ -54,6 +56,8 @@ class Segment extends Enemy {
     this.index = opts.index;
     this.countsForClear = false;
     this.glowing = false;
+    this.pulseT = 0;
+    this.sparkT = 0;
     this.spawned = true;
   }
   onAdd() {}
@@ -71,17 +75,35 @@ class Segment extends Enemy {
     this.head.breakSegment(this, hit);
     return true;
   }
+  // The tail's tell (fun audit: the rule has to read at a glance, not just live in the bestiary):
+  // a bright pulse, on top of the flat emissive tint update() keeps painting over a hit's flash.
   setGlow(on) {
     this.glowing = on;
     this.mesh.setPose(on ? 'glow' : 'dull');
-    this.mat.emissive.setHex(on ? 0x5a4a10 : 0x000000);
+    this.pulseT = 0;
+    this.sparkT = 0;
+    this.mat.emissive.setHex(on ? S().tailPulseMax : 0x000000);
+  }
+  glowColor() {
+    const s = S();
+    const k = 0.5 + 0.5 * Math.sin(this.pulseT * s.tailPulseRate);
+    return mixHex(s.tailPulseMin, s.tailPulseMax, k);
   }
   update(dt) {
     // the head places the segments; only contact, the flash and a hit's
     // squash-and-stretch run here
     if (this.flashT > 0) {
       this.flashT -= dt;
-      this.mat.emissive.setHex(this.flashT > 0 ? 0xffffff : this.glowing ? 0x5a4a10 : 0x000000);
+      this.mat.emissive.setHex(this.flashT > 0 ? 0xffffff : this.glowing ? this.glowColor() : 0x000000);
+    } else if (this.glowing) {
+      const s = S();
+      this.pulseT += dt;
+      this.mat.emissive.setHex(this.glowColor());
+      this.sparkT -= dt;
+      if (this.sparkT <= 0) {
+        this.sparkT += s.tailSparkEvery;
+        sparks(this.x, GROUND_Y + 0.4, this.z, [0xffe680, 0xfff2b8], 3, { speed: 1.2, size: 0.05, up: 1.5, life: 0.35 });
+      }
     }
     this.holder.scale.setScalar(1);
     stepSquash(this, dt);
@@ -339,7 +361,10 @@ class Serpent extends Enemy {
       if (hasEntityType('heart-container')) spawn('heart-container', { x, z });
       else grant('heart-container', 1, { source: 'boss' });
     }
-    if (pay.coins > 0) dropCoins(x, z, pay.coins);
+    // Reward pacing (fun audit item 5): most of bossPay now lives in D1's own chests
+    // (world/areas/d1.js), reachable mid-dungeon; the arena keeps a smaller shower.
+    const coins = Math.min(pay.coins, S().coinCap);
+    if (coins > 0) dropCoins(x, z, coins);
   }
 }
 registerEntity('boss-serpent', (opts) => new Serpent(opts));
@@ -373,6 +398,9 @@ registerMode('boss-intro', {
     }
     intro = null;
     popMode();
+    // the fight's one rule, on screen, not just in the bestiary (fun audit: SERPENT_HINT used to
+    // reach only there). toast() only shows in 'play', which popMode() has just switched back to.
+    toast(SERPENT_HINT, 4.5);
   },
 });
 

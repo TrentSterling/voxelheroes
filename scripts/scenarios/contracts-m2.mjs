@@ -102,6 +102,19 @@ export default async function contractsM2(t) {
   await t.step(1.1);
   s = await t.state();
   t.expect(s.mode === 'play' && s.screenName === 'Mossbrook Square', 'the game starts in Mossbrook Square (START, M2)');
+  // The title now starts every new game through the prologue (fun audit CLARITY
+  // 2/10, item 1): unarmed until the king's grants at Crownhold. The prologue
+  // itself is covered on its own, below ("the prologue (last: a new game)") and
+  // in goals.mjs and d1.mjs (talking to the king for real); the M1 fixtures this
+  // file plays through next just need the starter kit, set directly (owned +
+  // equipped, no grant event) so the sword and item-get event counts further
+  // down stay the ones this file already expects.
+  await t.eval(() => {
+    const h = window.__voxelHeroes;
+    h.state.swords.owned.push('blade-start');
+    h.state.swords.equipped = 'blade-start';
+    h.state.gear.shield = 1;
+  });
   // the checks below play on the M1 fixtures, from the Crossroads
   await t.teleport('Crossroads', 8, 5.5);
   await t.step(0.2);
@@ -1444,8 +1457,8 @@ export default async function contractsM2(t) {
   t.expect(r.unknown.length === 0, `every event fired is in the EVENTS catalogue (${r.fired} names; unknown: ${r.unknown.join(', ') || 'none'})`);
 
   // ---------------------------------------------------------------- the prologue (last: a new game)
-  // Until the overworld registers one (registerPrologue), startNewGame warns
-  // once and starts at START (an expected warning).
+  // The overworld registers its prologue at START (world/areas/slice.js
+  // registerPrologue), so this lands the hero back in Mossbrook Square, unarmed.
   r = await t.eval(() => {
     const h = window.__voxelHeroes;
     const g = h.game;

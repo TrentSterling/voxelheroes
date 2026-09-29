@@ -25,6 +25,17 @@ export default async function contracts(t) {
   await t.press('Enter');
   await t.step(1.1);
   t.expect((await t.state()).mode === 'play', 'the game starts');
+  // The title now starts every new game through the prologue (fun audit CLARITY
+  // 2/10, item 1): unarmed until the king's grants at Crownhold. None of the
+  // checks below are about that ceremony (goals.mjs and d1.mjs cover talking to
+  // the king for real), and most swing the sword, so arm the hero directly here
+  // (owned + equipped, no grant event, so the sword-swing tracking below starts clean).
+  await t.eval(() => {
+    const h = window.__voxelHeroes;
+    h.state.swords.owned.push('blade-start');
+    h.state.swords.equipped = 'blade-start';
+    h.state.gear.shield = 1;
+  });
 
   // ---------------------------------------------------------------- presses during slides and warps
   // Input is ignored during both (gameplay spec 4.3): a press on the way is

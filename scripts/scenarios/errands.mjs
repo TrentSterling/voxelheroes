@@ -132,4 +132,62 @@ export default async function (t) {
   );
   t.expect(rowanDone.rowan === 'done', `delivering to Guard Oswin closes Rowan's errand (${rowanDone.rowan})`);
   t.expect(rowanDone.after > rowanDone.before, `and its smith discount is waiting (${rowanDone.before} -> ${rowanDone.after})`);
+
+  // Rook lives right at the West Gate (v1:0,1) and wants a bush there cut: every errand must be
+  // completable by a scripted player, so accept it, hunt the screen's own tiles for a "B", cut it
+  // and turn in. The content lane places the actual bush tiles at the West Gate separately from
+  // this lane, so a run before they land there tolerates their late arrival instead of failing:
+  // the offer/accept half of the errand is still proven every time.
+  await t.teleport('v1:0,1', 12, 9);
+  await t.step(0.3);
+  const rookOffer = await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    const n = h.entities.find((e) => e.name === 'Rook');
+    for (let i = 0; i < 15; i++) await h.tick();
+    return n?.bubble.emoteEl?.textContent ?? null;
+  });
+  t.expect(rookOffer === '!', `Rook shows "!" with an errand to offer (${rookOffer})`);
+
+  const rookAccept = await t.eval(
+    async (src) => {
+      const h = window.__voxelHeroes;
+      const talk = new Function(`return (${src})`)();
+      await talk(h, 'Rook');
+      return { status: h.state.errands?.Rook?.status };
+    },
+    TALK_SRC
+  );
+  t.expect(rookAccept.status === 'active', `Rook's errand accepts (${rookAccept.status})`);
+
+  const rookBush = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const s = h.screen();
+    for (let z = 0; z < s.h; z++)
+      for (let x = 0; x < s.w; x++)
+        if (s.tiles[z][x] === 'B') return { x: s.x0 + x, z: s.z0 + z };
+    return null;
+  });
+  if (!rookBush) {
+    t.note('No "B" bush tile at the West Gate yet (the content lane places it separately); Rook\'s offer and accept are proven above.');
+  } else {
+    await t.eval(({ x, z }) => {
+      const h = window.__voxelHeroes;
+      h.world.trigger(x, z, 'onSword', { player: h.player, hit: { source: 'sword' } });
+    }, rookBush);
+    const rookFound = await t.eval(() => window.__voxelHeroes.state.errands?.Rook?.found ?? false);
+    t.expect(rookFound, 'cutting the West Gate bush marks Rook\'s dice found');
+
+    const rookDone = await t.eval(
+      async (src) => {
+        const h = window.__voxelHeroes;
+        const talk = new Function(`return (${src})`)();
+        const before = h.state.inventory?.ammo?.bombs ?? 0;
+        await talk(h, 'Rook');
+        return { status: h.state.errands?.Rook?.status, before, after: h.state.inventory?.ammo?.bombs ?? 0 };
+      },
+      TALK_SRC
+    );
+    t.expect(rookDone.status === 'done', `turning in the dice completes Rook's errand (${rookDone.status})`);
+    t.expect(rookDone.after > rookDone.before, `and pays out bombs (${rookDone.before} -> ${rookDone.after})`);
+  }
 }

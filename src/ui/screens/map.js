@@ -76,27 +76,44 @@ function renderMap() {
 const OUTDOOR_KINDS = new Set(['overworld', 'town', 'castle', 'cave']);
 const MAP_W = 520; // the canvas box; CSS gives .map-panel the room for it
 const MAP_H = 320;
+// Areas of the fun-audit test rigs and scenario probes (columns 410-479,
+// docs/ARCHITECTURE.md "Global regions"): reached only by teleport, so they
+// have no business filling up the real overworld's map. An id prefix catches
+// them even where a test area's `kind` happens to default to 'overworld'.
+const isPlayableArea = (area) => !area.id.startsWith('test-') && OUTDOOR_KINDS.has(areaKind(area));
 
 function renderOverworld(canvas, hint) {
   canvas.classList.add('map-overworld');
-  const screens = [...world.screens.values()].filter((s) => OUTDOOR_KINDS.has(areaKind(s.area)));
+  const screens = [...world.screens.values()].filter((s) => isPlayableArea(s.area));
   if (!screens.length) {
     hint.textContent = 'Nothing charted yet.';
     return;
   }
+  // Frame what has been explored plus a screen of fog around it; the whole world's extent is
+  // far wider than tall, and scaling it into the box left a one-pixel sliver.
+  const seen = screens.filter((s) => hasVisited(screenId(s)));
+  const framed = seen.length ? seen : screens;
+  const pad = seen.length ? 16 : 0;
   let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
-  for (const s of screens) {
+  for (const s of framed) {
     minX = Math.min(minX, s.x0);
     minZ = Math.min(minZ, s.z0);
     maxX = Math.max(maxX, s.x1);
     maxZ = Math.max(maxZ, s.z1);
   }
+  minX -= pad; minZ -= pad; maxX += pad; maxZ += pad;
   const spanX = Math.max(1, maxX - minX);
   const spanZ = Math.max(1, maxZ - minZ);
-  const scale = Math.min(MAP_W / spanX, MAP_H / spanZ);
+  // The box shrinks to whatever room a narrow phone screen leaves .map-panel
+  // (its padding plus the close button's row), so the chart never spills
+  // into horizontal scroll; on a full 1280x720 view this is just MAP_W/MAP_H.
+  const boxW = Math.min(MAP_W, Math.max(200, innerWidth - 64));
+  const boxH = Math.min(MAP_H, Math.max(160, innerHeight - 180));
+  const scale = Math.min(boxW / spanX, boxH / spanZ);
   canvas.style.width = `${spanX * scale}px`;
   canvas.style.height = `${spanZ * scale}px`;
   for (const s of screens) {
+    if (s.x1 <= minX || s.x0 >= maxX || s.z1 <= minZ || s.z0 >= maxZ) continue; // outside the frame
     const seen = hasVisited(screenId(s));
     const cell = el('div', { class: `map-cell ${seen ? 'seen' : 'fog'}` });
     place(cell, (s.x0 - minX) * scale, (s.z0 - minZ) * scale, Math.max(1, (s.x1 - s.x0) * scale - 1), Math.max(1, (s.z1 - s.z0) * scale - 1));

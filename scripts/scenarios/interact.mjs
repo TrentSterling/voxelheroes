@@ -10,6 +10,13 @@ const SPEC_INTERACTIVE = ['sign', 'statue', 'pit', 'pot', 'bush', 'chest', 'push
 
 export default async function (t) {
   await t.press('Enter');
+  // New games start unarmed now (the king arms the hero); this scenario swings from the start.
+  await t.eval(() => {
+    const h = window.__voxelHeroes;
+    if (!h.state.swords.owned.includes('blade-start')) h.state.swords.owned.push('blade-start');
+    h.state.swords.equipped = 'blade-start';
+    h.state.gear.shield = Math.max(1, h.state.gear.shield ?? 0);
+  });
   await t.step(1.1);
 
   const audit = await t.eval(([VERBS, SPEC]) => {

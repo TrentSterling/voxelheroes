@@ -29,11 +29,13 @@
 //   bladeSize(stats)              { length, width, hitWidth, reach, small } in tiles
 //
 // The full-life rule (spec 7.5): at full life the blade has every stat;
-// below it the small blade (1.25 tiles) thrusts with the base strength and
-// nothing else (spin, beam, pierce and specials off, except pinch power,
-// which works below full life). The might trait adds 1 strength either way.
-// Until the hero stream's sword reads bladeStats(), the M1 swing in
-// systems/sword.js keeps its own numbers.
+// below it the blade shrinks to a quick thrust and the bonus stats (spin,
+// beam, pierce and most specials) switch off, except pinch power, which
+// works below full life. Length, width and strength are never lost though:
+// a smith level always lengthens, widens or hardens the blade, full life or
+// not (fun audit: buying a level below full life used to change nothing).
+// The might trait adds 1 strength either way. Until the hero stream's sword
+// reads bladeStats(), the M1 swing in systems/sword.js keeps its own numbers.
 import { state } from '../core/state.js';
 import { emit } from '../core/events.js';
 import { TUNING } from '../core/tuning.js';
@@ -193,9 +195,11 @@ export function bladeStats({ id = equippedId(), full = isFullLife() } = {}) {
     id: s.id,
     full: false,
     small: true,
-    length: 0,
-    width: 0,
-    strength: s.base.strength + might(),
+    // length, width and strength keep every smith level below full life too (fun audit: a bought
+    // level felt like nothing happened at 5/6 hearts); only the full-life bonus stats drop out.
+    length: lv.length,
+    width: lv.width,
+    strength: lv.strength + might(),
     spin: 0,
     beam: 0,
     pierce: 0,
@@ -208,7 +212,14 @@ export function bladeStats({ id = equippedId(), full = isFullLife() } = {}) {
 export function bladeSize(stats = bladeStats()) {
   const t = TUNING.sword;
   if (stats.none) return { small: true, none: true, length: 0, width: 0, hitWidth: 0, reach: 0 };
-  if (stats.small) return { small: true, length: t.smallLength, width: t.smallHitWidth, hitWidth: t.smallHitWidth, reach: t.handOffset + t.smallLength };
+  if (stats.small) {
+    // Still a quick thrust, not the full blade, but smith levels always show: half the length and
+    // width a level would add at full life grows the small blade too (fun audit: a bought level
+    // was invisible below full life).
+    const length = t.smallLength + (t.length(stats.length) - t.length(0)) * 0.5;
+    const width = t.smallHitWidth + (t.width(stats.width) - t.width(0)) * 0.5;
+    return { small: true, length, width, hitWidth: Math.max(t.minHitWidth, width), reach: t.handOffset + length };
+  }
   const length = t.length(stats.length);
   const width = t.width(stats.width);
   return { small: false, length, width, hitWidth: Math.max(t.minHitWidth, width), reach: t.handOffset + length };

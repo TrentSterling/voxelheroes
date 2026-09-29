@@ -1,4 +1,4 @@
-// D1, the Hollow Barrow (dungeon stream; gameplay spec 6.1-6.9 in the
+// D1, the Old Barrow (dungeon stream; gameplay spec 6.1-6.9 in the
 // compact scope: 17 rooms of 16 x 12 on one floor, plus the arena).
 // Dungeon 1 sits at global screen [210, 0] (CONTRACTS 10); rooms are named by
 // row letter and column ('J-4' is local screen [3, 9]).
@@ -33,7 +33,7 @@ const ENTRANCE = { screen: D1_ENTRANCE.screen, x: D1_ENTRANCE.x, z: D1_ENTRANCE.
 
 registerArea({
   id: 'd1',
-  name: 'Hollow Barrow',
+  name: 'The Old Barrow',
   kind: 'dungeon',
   tileset: 'dungeon',
   lighting: 'crypt',
@@ -154,6 +154,9 @@ registerArea({
     // H-5
     '4,7': {
       name: "Gazer Walk",
+      // Reward pacing (fun audit item 5): a coin chest partway through, so the smith is in reach
+      // before the boss (most of boss-serpent's coin drop moved here and to Dark Hall below).
+      chest: { grant: 'coins', amount: 70 },
       rows: [
         'WWWWWWW..WWWWWWW',
         'W.F..........F.W',
@@ -161,7 +164,7 @@ registerArea({
         'W..........g...W',
         'W.v............W',
         '....g..........W',
-        '...............W',
+        '.......c.......W',
         'W..........g...W',
         'W..............W',
         'W..S..S..S..S..W',
@@ -174,6 +177,9 @@ registerArea({
       name: "Dark Hall",
       lighting: 'dark',
       dark: true,
+      // Reward pacing (fun audit item 5): the second of the two chests that carry most of
+      // boss-serpent's coin drop (Gazer Walk above holds the other), so it lands mid-dungeon.
+      chest: { grant: 'coins', amount: 60 },
       rows: [
         'WWWWWWW..WWWWWWW',
         'W..............W',
@@ -184,7 +190,7 @@ registerArea({
         'W.........s.....',
         'W..............W',
         'W..S........S..W',
-        'W..............W',
+        'W......c.......W',
         'W..............W',
         'WWWWWWWWWWWWWWWW',
       ],

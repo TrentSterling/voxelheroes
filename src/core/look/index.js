@@ -8,12 +8,13 @@ import * as THREE from 'three';
 import { GROUND_Y, SCREEN_W, SCREEN_H } from '../constants.js';
 import { state } from '../state.js';
 import { on } from '../events.js';
-import { applyMaterialLook, setFlatMaterials, setWaterTime, materialValues, setSeams, getMaterial } from '../materials.js';
+import { applyMaterialLook, setFlatMaterials, setWaterTime, materialValues, setSeams } from '../materials.js';
 import { LOOK_DAY, LOOK_CRYPT, DOF_PRESETS, QUALITY_LEVELS, QUALITY_ORDER, dofForCamera, mergeLook, fromLegacy } from './presets.js';
 import { gradientEnvironment } from './environment.js';
 import { LightRig, makeLampLightFrom } from './lights.js';
 import { FloorMirror } from './mirror.js';
 import { LookPipeline } from './pipeline.js';
+import { warmLookFrame } from '../warm.js';
 
 export { DOF_PRESETS, QUALITY_LEVELS, QUALITY_ORDER };
 
@@ -194,6 +195,79 @@ export function createLook({ renderer, scene, camera }) {
       }
   }
 
+  // The play screen's depth range (view depth, tiles): a SCREEN_W x SCREEN_H rect centred on the
+  // camera subject (the screen a hold preset frames, the window around the hero a follow preset
+  // keeps; it moves with the camera, so the band never jumps at a screen line), from the ground up
+  // to PLAY_TOP, where foes, people and the hero stand. Everything on it is in focus.
+  const PLAY_TOP = 1.5;
+  const _p = new THREE.Vector3();
+  function playBand() {
+    let near = Infinity;
+    let far = -Infinity;
+    for (const dx of [-SCREEN_W / 2, SCREEN_W / 2])
+      for (const dz of [-SCREEN_H / 2, SCREEN_H / 2])
+        for (const y of [GROUND_Y, GROUND_Y + PLAY_TOP]) {
+          const d = -_p.set(subject.x + dx, y, subject.z + dz).applyMatrix4(camera.matrixWorldInverse).z;
+          near = Math.min(near, d);
+          far = Math.max(far, d);
+        }
+    const rect = { x0: subject.x - SCREEN_W / 2, x1: subject.x + SCREEN_W / 2, z0: subject.z - SCREEN_H / 2, z1: subject.z + SCREEN_H / 2, y: GROUND_Y };
+    return { near: Math.max(camera.near, near), far, rect };
+  }
+
+  // ---------------------------------------------------------------- iris
+  // The iris wipe of a fade (setIris, from systems/transitions.js): black everywhere but a circle on the
+  // hero, closing as k goes 0 -> 1. Drawn over the finished frame on the canvas, on the GPU, so a
+  // fade costs no more than a frame without one: the same wipe as a CSS radial-gradient overlay
+  // re-rasterised every frame cost 50-80 ms frames in Firefox. The caller sets it every step of
+  // its fade; one left unset for IRIS_STALE seconds of game time is dropped (a fade cut short).
+  const IRIS_STALE = 0.1;
+  const IRIS_EDGE = 1.5; // CSS px of soft edge, as the overlay had
+  const iris = { k: 0, x: 0, y: 0, at: -Infinity };
+  let irisPass = null;
+  function makeIrisPass() {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
+    const mat = new THREE.ShaderMaterial({
+      name: 'Iris',
+      uniforms: { center: { value: new THREE.Vector2() }, radius: { value: 0 }, edge: { value: 1 } },
+      vertexShader: /* glsl */ `void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+      fragmentShader: /* glsl */ `uniform vec2 center; uniform float radius, edge;
+        void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, clamp((distance(gl_FragCoord.xy, center) - radius) / edge, 0.0, 1.0)); }`,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    const sc = new THREE.Scene();
+    sc.add(mesh);
+    return { sc, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mat };
+  }
+  // k 0 (open, nothing drawn) .. 1 (closed: all black); at: the circle's centre in CSS px of the canvas
+  function setIris(k, at = null) {
+    iris.k = at && k > 0 ? Math.min(1, k) : 0;
+    if (at) [iris.x, iris.y] = at;
+    iris.at = state.time;
+  }
+  function drawIris(w, h, css) {
+    if (iris.k <= 0 || state.time - iris.at > IRIS_STALE || state.time < iris.at) return;
+    irisPass ??= makeIrisPass();
+    const cw = Math.max(1, css.width);
+    const ch = Math.max(1, css.height);
+    const s = h / ch; // CSS px -> drawing-buffer px
+    const R = Math.hypot(Math.max(iris.x, cw - iris.x), Math.max(iris.y, ch - iris.y)); // to the far corner
+    const U = irisPass.mat.uniforms;
+    U.center.value.set(iris.x * (w / cw), h - iris.y * s);
+    U.radius.value = R * (1 - iris.k) * s;
+    U.edge.value = IRIS_EDGE * s;
+    renderer.setRenderTarget(null);
+    const clear = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.render(irisPass.sc, irisPass.cam);
+    renderer.autoClear = clear;
+  }
+
   function render() {
     const t0 = performance.now();
     renderer.info.reset();
@@ -232,12 +306,18 @@ export function createLook({ renderer, scene, camera }) {
     });
     setWaterTime(state.time);
 
-    // depth of field: the hero's feet (view depth) plus the camera preset's offset
+    // depth of field: sharp from the hero's feet (view depth, plus the camera preset's offset, +-
+    // its focusRange) out to the whole play screen around the camera subject (playBand), the blur
+    // ramping in only past that, as steeply as the preset says
     const blur = Number.isFinite(state.settings?.blur) ? state.settings.blur : 1;
     const dofBase = dofForCamera(bound.cameraPresetName(), bound.cameraPreset());
-    const dof = blur <= 0 ? null : blur === 1 ? dofBase : { ...dofBase, farMaxBlur: dofBase.farMaxBlur * blur, nearMaxBlur: dofBase.nearMaxBlur * blur };
     _hero.set(hero ? hero.x : subject.x, GROUND_Y, hero ? hero.z : subject.z).applyMatrix4(camera.matrixWorldInverse);
-    const focusDistance = -_hero.z + (dofBase.focusOffset ?? 0);
+    const heroFocus = -_hero.z + (dofBase.focusOffset ?? 0);
+    const band = playBand();
+    const lo = Math.min(heroFocus - dofBase.focusRange, band.near);
+    const hi = Math.max(heroFocus + dofBase.focusRange, band.far);
+    const focusDistance = (lo + hi) / 2;
+    const dof = blur <= 0 ? null : { ...dofBase, focusRange: (hi - lo) / 2, farMaxBlur: dofBase.farMaxBlur * blur, nearMaxBlur: dofBase.nearMaxBlur * blur };
     const exp = exposure() * display.brightness;
 
     if (Q.post) {
@@ -250,7 +330,8 @@ export function createLook({ renderer, scene, camera }) {
       renderer.toneMappingExposure = Q.flat ? 1 : exp;
       renderer.render(scene, camera);
     }
-    lastFrame = { dof, focusDistance, exposure: exp, path: Q.post ? 'post' : Q.flat ? 'flat' : 'direct', ms: performance.now() - t0 };
+    drawIris(w, h, css);
+    lastFrame = { dof: blur <= 0 ? null : dofBase, focus: { hero: heroFocus, near: lo, far: hi, rect: band.rect }, focusDistance, exposure: exp, path: Q.post ? 'post' : Q.flat ? 'flat' : 'direct', ms: performance.now() - t0 };
   }
 
   // Every registered look's reflection environment (environment.js's PMREM-prefiltered "orb",
@@ -265,14 +346,9 @@ export function createLook({ renderer, scene, camera }) {
   // given look a no-op, so calling this again and again (every registerLighting) costs nothing once a
   // look is warm.
   //
-  // Verified with scripts/perf-stream.mjs (Firefox) that this removes every PMREM/program compile at
-  // the moment a room first switches to the crypt look: 0 new WebGLPrograms link there now, and
-  // look.info().cpuMs for that frame is ~2 ms. Firefox's D1-entry freeze (measured 733-850 ms) still
-  // reproduces after this fix, though: it is a single very long gap between two rAF callbacks, with
-  // no corresponding render or program-link cost that frame, so it is not a look/shader-compile stall
-  // at all; it happens somewhere in the world-build/streaming/meshing side of entering a dungeon
-  // (systems/transitions.js's warp fade, or world/meshing.js's worker pool under headless Firefox),
-  // outside this module. Left to whichever lane owns that path.
+  // Firefox's D1-entry freeze (733-850 ms at black) was shader links after all, only not in the
+  // frame that asked for them: Firefox links in its GPU process, so a program costs the frame after
+  // its link, not the JS that made it (scripts/perf-d1.mjs times it). See core/warm.js.
   const envWarmed = new Set();
   function warmEnvironments() {
     const names = Object.keys(LIGHTING).filter((n) => LIGHTING[n].env && !envWarmed.has(n));
@@ -289,35 +365,43 @@ export function createLook({ renderer, scene, camera }) {
     requestAnimationFrame(step);
   }
 
-  // Boot warm-up (main.js, behind the title): link every shader program the current scene can
-  // predict before the player can act, via KHR_parallel_shader_compile, so neither the first play
-  // frame nor the first room whose look differs structurally from the start has to stall to compile.
-  // renderer.compileAsync(scene, camera) finds every material already in the scene graph (the voxel
-  // kinds are shared singletons used everywhere, so warming the start screen's meshes warms them
-  // all) and, as a side effect of the render() call inside it that seeds the shadow map's light list,
-  // primes the depth/distance materials three.js generates for shadow-casting objects. Two things the
-  // outdoor start screen never has of its own are added as throwaway, invisible meshes so compile()
-  // (a plain scene.traverse, visibility does not matter) finds them too: the 'fine' and 'prop' kinds
-  // (dungeon floors and stone props, materials.js), which otherwise cold-compile on the first dungeon
-  // entered; and the polished floor's Reflector shader, which otherwise waits for the first room with
-  // reflect > 0 (a crypt).
+  // Boot warm-up (main.js, behind the title): make every shader program play can need before the
+  // player can act, so neither the first play frame nor the first room of another kind (a dungeon's
+  // glow, its void, the polished floor, the lamps' light count) has to stall to link one. It runs
+  // core/warm.js's warmLookFrame with its stand-in meshes (every voxel kind, water, glow, the
+  // sword's slab and swipe) and the polished floor switched on for the compile: every program for
+  // the target the look draws the scene into and with the point-light count it always keeps
+  // (lights.js MAX_LIT_LAMPS), which is what a frame then finds cached. Browsers with
+  // KHR_parallel_shader_compile link these on the driver's threads; Firefox links each on the spot
+  // (50-150 ms for a lit one), so the work waits for the title's first frame to be on screen, then runs
+  // in one go while the title is up. Resolves when the driver is done.
   function warmUp() {
-    const rect = { x0: 0, x1: 1, z0: 0, z1: 1 };
-    mirror.update({ enabled: true, strength: 0, blur: 0, tint: [1, 1, 1], rect, floorY: GROUND_Y, width: 2, height: 2 });
-    const stubs = ['fine', 'prop'].map((kind) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.001, 0.001, 0.001), getMaterial(kind));
-      m.visible = false;
-      scene.add(m);
-      return m;
+    return new Promise((resolve) => {
+      const go = () => {
+        const rect = { x0: 0, x1: 1, z0: 0, z1: 1 };
+        mirror.update({ enabled: true, strength: 0, blur: 0, tint: [1, 1, 1], rect, floorY: GROUND_Y, width: 2, height: 2 });
+        let done;
+        try {
+          done = warmLookFrame({ renderer, scene, camera, look: { quality: () => quality, pipeline }, stubs: true });
+        } finally {
+          mirror.update({ enabled: false });
+        }
+        irisPass ??= makeIrisPass();
+        const target = renderer.getRenderTarget();
+        renderer.setRenderTarget(null);
+        const iris = renderer.compileAsync(irisPass.sc, irisPass.cam);
+        renderer.setRenderTarget(target);
+        warmEnvironments();
+        resolve(Promise.allSettled([done, iris]));
+      };
+      // two animation frames: the title has been painted (rAF does not run in a hidden tab; the timer covers that)
+      let started = false;
+      const once = () => {
+        if (!started) (started = true), go();
+      };
+      requestAnimationFrame(() => requestAnimationFrame(once));
+      setTimeout(once, 500);
     });
-    const done = renderer.compileAsync(scene, camera).catch(() => {});
-    mirror.update({ enabled: false });
-    for (const m of stubs) {
-      scene.remove(m);
-      m.geometry.dispose();
-    }
-    warmEnvironments();
-    return done;
   }
 
   // content may narrow the mirror for the current room; it resets on the next screen
@@ -352,6 +436,8 @@ export function createLook({ renderer, scene, camera }) {
     },
     render,
     warmUp,
+    setIris,
+    iris: () => ({ k: iris.k, at: [iris.x, iris.y], shown: iris.k > 0 && state.time - iris.at <= IRIS_STALE && state.time >= iris.at }),
     sampleFrame: (now) => watchdog.sample(now),
     // pin: false lets the frame-time watchdog lower it again (the default pins it, like ?look=)
     setQuality: (level, { pin = true } = {}) => setQuality(level, { pin }),
@@ -386,6 +472,8 @@ export function createLook({ renderer, scene, camera }) {
         camera: bound.cameraPresetName(),
         dof: lastFrame.dof,
         focusDistance: +lastFrame.focusDistance.toFixed(3),
+        // the sharp band in view depth: the hero's own focus (feet + offset) and the band's ends
+        focus: lastFrame.focus && { hero: +lastFrame.focus.hero.toFixed(3), near: +lastFrame.focus.near.toFixed(3), far: +lastFrame.focus.far.toFixed(3), rect: { ...lastFrame.focus.rect } },
         exposure: +lastFrame.exposure.toFixed(3),
         mirror: !!mirror.mesh?.parent,
         shadowMap: rig.sun.shadow.mapSize.x,

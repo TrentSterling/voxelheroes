@@ -19,16 +19,21 @@ export default async function (t) {
     if (!h.state.swords.owned.includes('blade-start')) h.give('blade-start');
     S.equipSword('blade-start');
     const sold = S.SWORD_STATS.filter((k) => S.levelPrice('blade-start', k) !== null);
-    const before = S.bladeSize(S.bladeStats({ id: 'blade-start', full: true }));
+    const beforeFull = S.bladeSize(S.bladeStats({ id: 'blade-start', full: true }));
+    const beforeSmall = S.bladeSize(S.bladeStats({ id: 'blade-start', full: false }));
     h.give('coins', 2000);
     const buy = sold.includes('length') ? S.buyLevel('blade-start', 'length') : { ok: false, reason: 'not-sold' };
     const coinsAfter = h.state.coins;
-    const after = S.bladeSize(S.bladeStats({ id: 'blade-start', full: true }));
-    return { sold, buy, coinsAfter, beforeLength: before.length, afterLength: after.length };
+    const afterFull = S.bladeSize(S.bladeStats({ id: 'blade-start', full: true }));
+    const afterSmall = S.bladeSize(S.bladeStats({ id: 'blade-start', full: false }));
+    return { sold, buy, coinsAfter, beforeLength: beforeFull.length, afterLength: afterFull.length, beforeSmallLength: beforeSmall.length, afterSmallLength: afterSmall.length };
   });
   t.expect(smith.sold.length >= 3, `the smith sells at least 3 stats on the Squire Blade (sells: ${smith.sold.join(', ') || 'none'})`);
   t.expect(smith.buy.ok, `buying a length level succeeds (${JSON.stringify(smith.buy)})`);
   t.expect(smith.afterLength > smith.beforeLength, `bladeSize().length grows after the level (${smith.beforeLength} -> ${smith.afterLength})`);
+  // fun audit: a bought level changed nothing below full life; the small thrusting blade must
+  // still lengthen, not just the full-life one.
+  t.expect(smith.afterSmallLength > smith.beforeSmallLength, `a length level lengthens the blade below full life too (${smith.beforeSmallLength} -> ${smith.afterSmallLength})`);
   t.expect(smith.coinsAfter === 2000 - smith.buy.price, `coins were spent on the level (2000 -> ${smith.coinsAfter}, price ${smith.buy.price})`);
 
   // ---------------------------------------------------------------- Warden's Blade
@@ -82,5 +87,5 @@ export default async function (t) {
   const gained = after.gems - coins0;
   t.note(`kills ${kills}, coins gained ${gained}`);
   t.expect(kills >= 10, `the run kills a reasonable number of foes (${kills})`);
-  t.expect(gained >= 60, `9 screens of combat plus drops clear at least 60 coins (baseline 18, got ${gained})`);
+  t.expect(gained >= 50, `9 screens of combat plus drops clear at least 50 coins (hoppers take 2 hits now, so fewer kills) (baseline 18, got ${gained})`);
 }

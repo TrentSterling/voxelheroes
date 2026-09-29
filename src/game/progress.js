@@ -14,8 +14,11 @@
 // 1). Difficulty: normal, hard (double damage to the hero, 50% more enemies,
 // rare spawns twice as likely), one-hit (any hit kills). `model` names the
 // hero's look (state.profile.model, 'hero' for now). A game started without
-// a profile (the M1 title's Enter) keeps 3 hearts and no magic, starts at
-// START with the starter sword and shield 1, and does not play the prologue.
+// a profile (no class picker yet) keeps 3 hearts and no magic; the title
+// screen's Start and New adventure both pass prologue: true, so the starter
+// sword and shield 1 wait for the king's grants instead of applying by
+// default. Only a caller that leaves prologue out (a test, a stand-in) skips
+// the prologue and gets the starter kit immediately.
 import { state } from '../core/state.js';
 import { emit } from '../core/events.js';
 import { TUNING } from '../core/tuning.js';

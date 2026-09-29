@@ -43,6 +43,10 @@ class King extends CharmNpc {
       await showDialog(['Go north through Mossbrook, then west, then south to the barrow.', 'Find what sleeps at its heart.'], sp);
       return;
     }
+    // Set every time through, not only on the arming branch above: a save loaded from
+    // before this flag existed, or any other way the hero ends up already armed, still
+    // needs one real talk with the king to move the "Next:" objective off his name.
+    setFlag('overworld:talked:king');
     if (hasFlag('boss:d1')) return showDialog(['You beat the warden of the barrow! The whole valley sleeps easier.', 'But the orb you found is only the first of four...'], sp);
     return showDialog(['The barrow lies west of Mossbrook, then south.', 'Cut the grass as you go. Coins hide everywhere.'], sp);
   }

@@ -41,7 +41,7 @@ const ERRANDS = {
     reward: { type: 'coins', amount: 40 },
   },
   Rowan: {
-    ask: ['I owe Guard Oswin a word of thanks, for the timber he let me take off the castle grounds.', 'Would you carry it to him? Past the West Gate, south to Crownhold Courtyard.'],
+    ask: ['I owe Guard Oswin a word of thanks, for the timber he let me take off the castle grounds.', 'Would you carry it to him? Down Castle Road, south to Crownhold Courtyard.'],
     need: { type: 'deliver', to: 'Guard Oswin' },
     reward: { type: 'smith-discount', amount: 20 },
     arrive: ['Rowan sent you? ...Tell him the timber squares up fine.', 'Here, tell the smith Guard Oswin sends his thanks too. Ask for the soldier\'s rate.'],

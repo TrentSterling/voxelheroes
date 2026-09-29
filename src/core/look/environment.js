@@ -6,18 +6,24 @@ import * as THREE from 'three';
 
 const cache = new Map();
 
-function makeGradientEnv(renderer, { zenith, horizon, ground, sun = 0x000000, sunSize = 0.12 }, sunDir) {
-  const scene = new THREE.Scene();
+// One orb scene and one PMREM generator for every environment built, kept for good: a program is
+// freed with the last material holding it, so a generator (or orb material) disposed after each build
+// had its shaders linked again for the next one (in Firefox, which links on the spot, ~0.5 s a look).
+let orb = null;
+const generators = new WeakMap(); // renderer -> PMREMGenerator
+
+function orbScene() {
+  if (orb) return orb;
   const geo = new THREE.SphereGeometry(10, 64, 32);
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     uniforms: {
-      zenith: { value: new THREE.Color(zenith) },
-      horizon: { value: new THREE.Color(horizon) },
-      ground: { value: new THREE.Color(ground) },
-      sun: { value: new THREE.Color(sun) },
-      sunDir: { value: new THREE.Vector3(...sunDir).normalize() },
-      sunSize: { value: sunSize },
+      zenith: { value: new THREE.Color() },
+      horizon: { value: new THREE.Color() },
+      ground: { value: new THREE.Color() },
+      sun: { value: new THREE.Color() },
+      sunDir: { value: new THREE.Vector3(0, 1, 0) },
+      sunSize: { value: 0.12 },
     },
     vertexShader: /* glsl */ `varying vec3 vDir;
       void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -29,13 +35,23 @@ function makeGradientEnv(renderer, { zenith, horizon, ground, sun = 0x000000, su
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
+  const scene = new THREE.Scene();
   scene.add(new THREE.Mesh(geo, mat));
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const rt = pmrem.fromScene(scene, 0.02);
-  pmrem.dispose();
-  geo.dispose();
-  mat.dispose();
-  return rt.texture;
+  orb = { scene, uniforms: mat.uniforms };
+  return orb;
+}
+
+function makeGradientEnv(renderer, { zenith, horizon, ground, sun = 0x000000, sunSize = 0.12 }, sunDir) {
+  const { scene, uniforms: u } = orbScene();
+  u.zenith.value.set(zenith);
+  u.horizon.value.set(horizon);
+  u.ground.value.set(ground);
+  u.sun.value.set(sun);
+  u.sunDir.value.set(...sunDir).normalize();
+  u.sunSize.value = sunSize;
+  let pmrem = generators.get(renderer);
+  if (!pmrem) generators.set(renderer, (pmrem = new THREE.PMREMGenerator(renderer)));
+  return pmrem.fromScene(scene, 0.02).texture;
 }
 
 // One prefiltered texture per distinct gradient, built on first use and kept.

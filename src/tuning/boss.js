@@ -26,6 +26,13 @@ export const boss = {
     headKnock: 1.5, headStagger: 0.8,
     // the telegraphed lunge: a wind-up shake, then a fast straight dash it recovers from
     lungeCooldown: 2.6, lungeTell: 0.5, lungeSpeed: 8, lungeTime: 0.55,
+    // the glowing tail's tell (fun audit: the rule needs to read at a glance): a brighter pulse
+    // and a few sparks while it glows, on top of the flat emissive tint.
+    tailPulseRate: 7, tailPulseMin: 0x5a4a10, tailPulseMax: 0xffdd55, tailSparkEvery: 0.22,
+    // reward pacing (fun audit item 5): the arena used to shower the whole bossPay amount; most of
+    // it now lives in D1's own chests (world/areas/d1.js) so the smith is reachable mid-dungeon,
+    // and the arena keeps a smaller shower on top of the heart container.
+    coinCap: 80,
   },
   intro: { name: 1.2 }, // the name card lingers this long into the fight (s)
 };

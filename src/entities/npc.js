@@ -85,10 +85,13 @@ export class Npc extends Entity {
     return this.rs / 0x7fffffff;
   }
 
-  remove() {
+  // onRemove, not an override of remove(): the manager calls onRemove() on every path an NPC
+  // leaves the world, including reapBucket and clearScreenEntities, which remove it straight
+  // through entities/manager.js's removeEntity() and never call remove() at all (ghost markers,
+  // fun audit: "!"/"?" and bark bubbles froze on screen forever once their NPC's screen was reaped).
+  onRemove() {
     live.delete(this);
     this.bubble.dispose();
-    super.remove();
   }
 
   update(dt) {

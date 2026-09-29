@@ -44,6 +44,8 @@ registerArea({
     '0,0': {
       name: "West Pasture",
       // A pair of pots by the fence line (fun audit item 2: every combat screen earns a find).
+      // A way west into Drover's Cut, the other end of the loop back to Barrowfield (fun audit
+      // item 1); rows 6-8 line up with Drover's Cut's own east gap.
       rows: [
         'TTTTTTTTTTTTTTTT',
         'TTTT......,,,..T',
@@ -51,9 +53,9 @@ registerArea({
         'TT..,,,........T',
         'T...,,,...RR...T',
         'T.........R....T',
-        'T..B............',
-        'T........G......',
-        'T......,,.......',
+        '...B............',
+        '.........G......',
+        '.......,,.......',
         'T.R....,,....B..',
         'T..v..........vT',
         'T...B.......,,.T',
@@ -65,18 +67,20 @@ registerArea({
     },
     '1,0': {
       name: "Castle Road",
-      spawns: {},
+      // First trip pays (fun audit item 1): a wildflower patch (Hettie's errand), a couple of
+      // blobs and pots to find, so this leg of the road is worth walking, not just passing through.
+      spawns: { G: field(['hopper', 'blob', 'buzzer']) },
       spawnsAt: {
         '12,10': { type: 'npc', name: 'Cobb', palette: { tunic: 0x5a7a4a, tunicLight: 0x7a9a6a, cap: 0x8a6a3a }, wander: 2, lines: ['Flour for the castle kitchens. Long walk on a hot day.'] },
       },
       rows: [
         'TTTTTTppppTTTTTT',
         'TTT...pppp...TTT',
-        'TT..,.pppp.,..TT',
-        'T....fpppp.....T',
+        'TT,,,.pppp.,..TT',
+        'T....fpppp...v.T',
         'T.B..fpppp..R..T',
-        'T....fpppp.....T',
-        'pppppppppppppppp',
+        'Tv...fpppp.....T',
+        '.G..pppppppppppp',
         'pppppppppppppppp',
         '......pppp......',
         '..R..ipppp..B...',
@@ -135,7 +139,9 @@ registerArea({
     },
     '1,1': {
       name: "Crownhold Courtyard",
-      spawns: {},
+      // First trip pays (fun audit item 1): already a garden of wildflowers and a couple of coin
+      // bushes; add a find and a couple of blobs so the king's own dooryard isn't a fully safe walk.
+      spawns: { G: field(['blob', 'hopper'], [1, 2]) },
       spawnsAt: {
         '7,5': { type: 'npc-king', wander: 1 },
         '5,7': { type: 'npc', name: 'Guard Oswin', palette: { tunic: 0x6a6f7c, tunicLight: 0x8a8f9c, cap: 0x3a3a44, extras: ['helm'] }, wander: 2, schedule: 'always', lines: ['The king has been waiting for you.', 'Straight ahead. He is expecting you.'] },
@@ -150,13 +156,13 @@ registerArea({
         'TM............MT',
         'TM............MT',
         'TM..f..pp..f..MT',
-        'TM.....pp.....MT',
+        'TM.v...pp...v.MT',
         'TM..,,.pp.,,..MT',
         'TM.....pp.....MT',
         'TM..B..pp..B..MT',
         'TM,,,..pp..,,,MT',
         'TMMMMMMMMMMMMMMT',
-        'T..............T',
+        'TG.............T',
         'TTTTTTTTTTTTTTTT',
       ],
     },
@@ -335,6 +341,8 @@ registerArea({
     },
     '0,1': {
       name: "West Gate",
+      // Rook's errand (Gnome Rook, game/errands.js need.type 'bush'): cut a bush on this screen.
+      // It had none to cut; this is the "brush by this gate" he means (fun audit item 2).
       spawnsAt: {
         '12,8': { type: 'npc', name: 'Rook', palette: { tunic: 0x7a5a8a, tunicLight: 0x9a7aaa }, lines: ['West is Barrowfield. Take the road and keep south.'] },
       },
@@ -342,9 +350,9 @@ registerArea({
         'TTTTTTppppTTTTTT',
         'T.TT..pppp..HHHT',
         'T.T...pppp..HhHT',
-        'T.....pppp.....T',
+        'TBBB..pppp.....T',
         'T.f.f.pppp.....T',
-        'T.....pppp..,,.T',
+        'TBB...pppp..,,.T',
         'pppppppppppppppp',
         'pppppppppppppppp',
         '......pppp......',
@@ -587,7 +595,12 @@ registerArea({
     },
     '1,1': {
       name: "Barrow Crossing",
+      // Overworld teeth (fun audit item 3): the one screen between the village and the barrow
+      // gets a real threat on top of its usual hopper/blob/buzzer (area default, the 'G' below):
+      // an archer pair, dug in on the chokepoint. Additive, not a swap: the economy lane's own
+      // combat-screen baseline (scripts/scenarios/economy.mjs COMBAT) counts on this screen's coins.
       chest: 'heart-piece',
+      spawns: { A: field(['archer'], [2, 2]) },
       rows: [
         'TTTTTTppppTTTTTT',
         'T.T...pppp...T.T',
@@ -597,7 +610,7 @@ registerArea({
         'T.G...pppp...C.T',
         'pppppppppppppppp',
         'pppppppppppppppp',
-        '......pppp......',
+        '.A....pppp......',
         '..B...pppp..R...',
         'T.....pppp.....T',
         'T.,,..pppp..G..T',
@@ -655,8 +668,9 @@ registerArea({
     },
     '1,2': {
       name: "The Old Barrow",
+      // Overworld teeth (fun audit item 3): the barrow door used to be undefended. An ambush on
+      // its own doorstep (the area's default roster: hopper, blob, buzzer) before the real fight.
       warps: { D: D1_ENTRANCE },
-      spawns: {},
       spawnsAt: { '12,10': { type: 'npc', name: 'Warden Cray', palette: { tunic: 0x5a6a4a, tunicLight: 0x7a8a6a }, lines: ['That door opened on its own a week ago.', 'Small keys you find in there open only doors in there.'] } },
       rows: [
         'TTTTTTppppTTTTTT',
@@ -669,9 +683,9 @@ registerArea({
         '...####DD###....',
         '.....pppp.......',
         '..R.pppppp..R...',
-        'T......pp......T',
+        'T.G....pp......T',
         'T.T....pp....T.T',
-        'T..R...pp......T',
+        'T..R...pp...G..T',
         'T......pp......T',
         'T..............T',
         'TTTTTTTTTTTTTTTT',
@@ -683,6 +697,8 @@ registerArea({
       chests: { '8,11': 'heart-piece' },
       // The unused guardian gets a post (fun audit: a set piece on the heart-piece chest).
       spawnsAt: { '8,9': { type: 'guardian', wander: 1 } },
+      // A way south into Drover's Cut (fun audit item 1: a loop, not the same 3 screens back to
+      // Mossbrook). Cols 1-4 line up with Drover's Cut's own north gap; edit both sides together.
       rows: [
         'TTTTTTppppTTTTTT',
         'T.....pppp.....T',
@@ -697,6 +713,46 @@ registerArea({
         'T......BBB.....T',
         'T......BCB.....T',
         'T......BBB..R..T',
+        'T..............T',
+        'T..............T',
+        'T....TTTTTTTTTTT',
+      ],
+    },
+  },
+});
+
+// A loop, not the same 3 screens back (fun audit item 1): one screen south of Barrow Meadow and
+// west of West Pasture closes Crownhold Castle -> west -> north back into Barrowfield, so the
+// road is a circuit instead of a dead-end retrace through Mossbrook every time. Global screen
+// (8, 6): south neighbour of Barrow Meadow (ow-3-2 2,2, origin [6, 3]) and west neighbour of West
+// Pasture (ow-4-3 0,0, origin [9, 6]) by tile adjacency alone (world/areas.js); no warps needed.
+registerArea({
+  id: 'ow-pass',
+  name: "Drover's Cut",
+  kind: 'overworld',
+  tileset: 'town',
+  lighting: 'day',
+  music: 'overworld',
+  screen: [16, 16],
+  origin: [8, 6],
+  start: [0, 0],
+  screens: {
+    '0,0': {
+      name: "Drover's Cut",
+      rows: [
+        'T....TTTTTTTTTTT',
+        'T..............T',
+        'T....R.........T',
+        'T..............T',
+        'T.......T......T',
+        'T..............T',
+        'T...............',
+        'T...............',
+        'T...............',
+        'T..............T',
+        'T....T.........T',
+        'T..............T',
+        'T..,,..........T',
         'T..............T',
         'T..............T',
         'TTTTTTTTTTTTTTTT',

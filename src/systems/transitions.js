@@ -60,6 +60,7 @@ import { sfx } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { registerMode, setMode } from '../core/modes.js';
 import { applyLighting, renderer, scene, camera, look } from '../core/renderer.js';
+import { warmLookFrame } from '../core/warm.js';
 import { isManual } from '../core/loop.js';
 import * as THREE from 'three';
 import { GROUND_Y } from '../core/constants.js';
@@ -436,6 +437,22 @@ function heroOnScreen() {
   return [((_onScreen.x + 1) / 2) * el.clientWidth, ((1 - _onScreen.y) / 2) * el.clientHeight];
 }
 
+// A fade's black at e (0 clear .. 1 black; eased). The iris itself is drawn by the look on the
+// canvas (look.setIris), so it costs a frame nothing; the page's black layer (ui/overlay.js setFade,
+// over the HUD) only comes in where the loading card needs it: a load's black hold, and the first
+// half of its iris opening, the card fading out with it (the hole brightens with it there). Closing,
+// and a warp inside one area (stairs), is the iris alone, with the HUD left on as in the SNES game.
+// With the hero off screen it is a plain fade.
+function showFade(e, at = null, card = false) {
+  if (!at || e <= 0 || (card && e >= 1)) {
+    look.setIris(0);
+    setFade(e);
+    return;
+  }
+  look.setIris(e, at);
+  setFade(card ? Math.max(0, 2 * e - 1) : 0);
+}
+
 registerMode('warp', {
   update(dt) {
     const f = fade;
@@ -452,14 +469,14 @@ registerMode('warp', {
       const waiting = building || f.compile === 'busy';
       if (!building && !f.compile && !isManual()) { // play-tests never draw
         f.compile = 'busy';
-        renderer.compileAsync(scene, camera).then(() => (f.compile = 'done'), () => (f.compile = 'done'));
+        warmLookFrame({ renderer, scene, camera, look, post: false }).then(() => (f.compile = 'done'), () => (f.compile = 'done'));
       }
       if (late && waiting && f.t - f.out < MAX_LOAD_HOLD) f.hold += dt;
       else if (late && building) for (const sc of screensToShow(f.dest.screen)) world.ensureBuilt(sc); // (a slow device: the fade has waited long enough)
     }
     const inAt = f.out + f.hold; // the fade-in starts
     const k = f.t < f.out ? f.t / f.out : f.t < inAt ? 1 : Math.max(0, 1 - (f.t - inAt) / f.in);
-    setFade(k * k * (3 - 2 * k), heroOnScreen()); // an eased iris on the hero, out and back in
+    showFade(k * k * (3 - 2 * k), heroOnScreen(), f.areaChange && f.moved); // an eased iris on the hero, out and back in
     if (!f.moved && f.walk) {
       const k = Math.min(1, f.t / f.out);
       player.x = f.walk.x0 + (f.walk.x1 - f.walk.x0) * k;
@@ -477,7 +494,7 @@ registerMode('warp', {
     }
     player.animate(dt, !f.moved && !!f.walk);
     if (f.t >= inAt + f.in) {
-      setFade(0);
+      showFade(0);
       fade = null;
       setMode('play');
       enterScreen(f.via);

@@ -50,6 +50,49 @@ const dofProfile = (t) =>
     return { profile, centroid: Math.round(ys / ws), focusRow: Math.round((1 - (f.y * 0.5 + 0.5)) * H) };
   });
 
+// The depth of field against the same frame drawn sharp (state.settings.blur = 0): the mean
+// absolute luminance change per 24 px band over x 200 to 1080, and the screen row of the play
+// screen's far edge (look.info().focus.rect, its north edge on the ground, in the middle).
+const dofBlur = (t) =>
+  t.eval(() => {
+    const h = window.__voxelHeroes;
+    const cam = h.look.camera;
+    const gl = document.querySelector('canvas').getContext('webgl2');
+    const S = h.state.settings;
+    const had = S.blur;
+    const grab = (blur) => {
+      S.blur = blur;
+      h.render();
+      const px = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
+      gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      return px;
+    };
+    const sharp = grab(0);
+    const soft = grab(1);
+    if (had === undefined) delete S.blur;
+    else S.blur = had;
+    const W = gl.drawingBufferWidth;
+    const H = gl.drawingBufferHeight;
+    const Y = (px, x, y) => {
+      const i = ((H - 1 - y) * W + x) * 4;
+      return 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    };
+    const bands = [];
+    for (let y0 = 24; y0 + 24 <= H - 24; y0 += 24) {
+      let s = 0;
+      let n = 0;
+      for (let y = y0; y < y0 + 24; y += 2)
+        for (let x = 200; x < 1080; x += 2) {
+          s += Math.abs(Y(soft, x, y) - Y(sharp, x, y));
+          n++;
+        }
+      bands.push([y0, +(s / n).toFixed(2)]);
+    }
+    const r = h.look.info().focus.rect;
+    const f = new cam.position.constructor((r.x0 + r.x1) / 2, r.y, r.z0).project(cam);
+    return { bands, farRow: Math.round((1 - (f.y * 0.5 + 0.5)) * H) };
+  });
+
 export default async function lookScenario(t) {
   await t.press('Enter');
   await t.step(1.2);
@@ -75,17 +118,25 @@ export default async function lookScenario(t) {
     const v = new cam.position.constructor(h.player.x, 0.125, h.player.z).applyMatrix4(cam.matrixWorldInverse);
     return -v.z + 0.9;
   });
-  t.expect(Math.abs(i.focusDistance - focusA) < 0.02, `DOF focus on the hero's feet + 0.9 (${i.focusDistance} vs ${focusA.toFixed(3)})`);
-
-  // depth of field: one sharp band at the focus point, blur in front of it and behind it
-  const dof = await dofProfile(t);
-  const far = dof.profile.filter(([y]) => y < dof.centroid - 70).map((b) => b[1]);
-  const near = dof.profile.filter(([y]) => y > dof.centroid + 70).map((b) => b[1]);
   t.expect(
-    Math.abs(dof.centroid - dof.focusRow) < 40 && Math.max(...far, 0) < 0.35 && Math.max(...near, 0) < 0.35,
-    `DOF sharp band at y ${dof.centroid} (focus point ${dof.focusRow}); far bands <= ${Math.max(...far, 0)}, near bands <= ${Math.max(...near, 0)}`
+    Math.abs(i.focus.hero - focusA) < 0.02 && i.focus.near <= focusA - 0.3 && i.focus.far >= focusA + 0.3,
+    `DOF focus holds the hero's feet + 0.9 (${i.focus.hero} vs ${focusA.toFixed(3)}) inside its sharp band (${i.focus.near} to ${i.focus.far})`
   );
-  t.note(`sharpness per 28 px band: ${dof.profile.map(([y, v]) => `${y}:${v}`).join(' ')}`);
+
+  // depth of field: the whole play screen sharp (the frame barely changes with the blur on), the
+  // tilt-shift blur past its far edge
+  const dof = await dofBlur(t);
+  const inside = dof.bands.filter(([y]) => y > dof.farRow + 24).map((b) => b[1]);
+  const beyond = dof.bands.filter(([y]) => y + 24 < dof.farRow - 24).map((b) => b[1]);
+  const mean = (xs) => xs.reduce((a, x) => a + x, 0) / Math.max(1, xs.length);
+  t.expect(
+    inside.length > 5 && Math.max(...inside) < 1.5 && beyond.length > 0 && mean(beyond) > 3 * Math.max(0.5, mean(inside)),
+    `DOF: play screen sharp below y ${dof.farRow} (change <= ${Math.max(...inside).toFixed(2)}), blurred past it (mean change ${mean(beyond).toFixed(2)})`
+  );
+  t.note(`blur change per 24 px band: ${dof.bands.map(([y, v]) => `${y}:${v}`).join(' ')}`);
+  // the old measure (appendix B), for the record
+  const prof = await dofProfile(t);
+  t.note(`sharpness per 28 px band: ${prof.profile.map(([y, v]) => `${y}:${v}`).join(' ')}`);
 
   // ---------------------------------------------------------------- quality levels
   for (const level of ['medium', 'low', 'flat']) {

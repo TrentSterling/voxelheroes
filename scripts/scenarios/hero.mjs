@@ -90,6 +90,13 @@ const install = (t) =>
 export default async function hero(t) {
   await t.track('sword-swing', 'enemy-hit', 'hero-hit', 'blade-changed');
   await t.eval(() => window.__voxelHeroes.start());
+  // New games start unarmed now (the king arms the hero); this scenario swings from the start.
+  await t.eval(() => {
+    const h = window.__voxelHeroes;
+    if (!h.state.swords.owned.includes('blade-start')) h.state.swords.owned.push('blade-start');
+    h.state.swords.equipped = 'blade-start';
+    h.state.gear.shield = Math.max(1, h.state.gear.shield ?? 0);
+  });
   await t.step(1.1);
   await t.eval(() => {
     const h = window.__voxelHeroes;
@@ -297,7 +304,9 @@ export default async function hero(t) {
   });
   t.expect(near(r.fullReach, 9.85, 1e-6) && near(r.thrustReach, 9.85, 1e-6), `at full life with L10 the thrust reaches 9.85 tiles (${r.fullReach}, thrust ${r.thrustReach})`);
   t.expect(r.slab, 'the full blade is the long white slab, not the small sword');
-  t.expect(near(r.hurtReach, 1.6, 1e-6) && r.small && r.thrustAfter <= 1.6 + 1e-6, `half a heart of damage shrinks the reach to 1.6 on the same tick (${r.hurtReach}; the blade out ${r.thrustAfter})`);
+  // Smith levels now carry below full life (the full-life blade is a bonus on top, never erasing
+  // them), so the hurt reach drops from the full slab but stays above the bare 1.6 small sword.
+  t.expect(r.hurtReach < r.fullReach && r.hurtReach > 1.6 && r.thrustAfter <= r.hurtReach + 1e-6, `half a heart of damage drops the reach below the full blade on the same tick, keeping smith levels (${r.hurtReach}; the blade out ${r.thrustAfter})`);
   t.expect(near(r.backReach, 9.85, 1e-6), `full life again: the long blade is back (${r.backReach})`);
   const changes = (await t.events('blade-changed')).map((e) => e.full).join(',');
   t.expect(/false,true/.test(changes), `'blade-changed' reports the swap both ways (${changes})`);

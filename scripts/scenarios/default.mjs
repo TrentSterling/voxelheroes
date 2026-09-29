@@ -39,6 +39,20 @@ export default async function defaultScenario(t) {
   t.expect(s.mode === 'play' && !s.overlay, 'Enter starts the game');
   t.expect(s.hp === 6 && s.maxHp === 6 && s.gems === 0 && s.keys === 0, 'a new game has 3 hearts, no gems and no keys');
   t.expect(s.screenName === 'Mossbrook Square' && near(s.lx, 8, 0.01) && near(s.lz, 14, 0.01), 'the hero starts in Mossbrook Square, facing the pond and the stalls');
+  // The title now starts every new game through the prologue (fun audit CLARITY
+  // 2/10, item 1): unarmed until the king's grants at Crownhold. This M1
+  // smoke test is about the old Crossroads-and-crypt map, not that ceremony
+  // (d1.mjs and goals.mjs cover talking to the king for real), so it arms the
+  // hero directly here (owned + equipped, no grant event) and goes straight
+  // to the fight.
+  const armed = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    h.state.swords.owned.push('blade-start');
+    h.state.swords.equipped = 'blade-start';
+    h.state.gear.shield = 1;
+    return { equipped: h.state.swords.equipped, shield: h.state.gear.shield };
+  });
+  t.expect(armed.equipped === 'blade-start' && armed.shield === 1, `armed for the M1 combat below (${JSON.stringify(armed)})`);
   await t.teleport('Crossroads', 8, 5.5);
   await t.step(0.2);
   s = await t.state();

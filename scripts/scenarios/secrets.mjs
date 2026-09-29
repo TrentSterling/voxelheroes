@@ -172,4 +172,52 @@ export default async function (t) {
     });
     t.expect(cast.result === 'cast' && cast.active, `casting reveal starts the effect (${JSON.stringify(cast)})`);
   }
+
+  // ---------------------------------------------------------------- 9) first trip pays (fun audit
+  // item 1): Castle Road and Crownhold Courtyard, the leg of the road every new hero walks before
+  // ever seeing the village, now earn their keep like any other combat screen.
+  const firstTrip = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const FIND = new Set(['k', 'K', 'v', 'C', 'c', 'D']);
+    const check = (key) => {
+      const s = h.world.screen(key);
+      const foes = s.spawns.some((sp) => sp.type === 'group');
+      const find = !!s.def.chest || Object.keys(s.def.chests ?? {}).length > 0 || s.tiles.some((row) => row.some((ch) => FIND.has(ch)));
+      return { name: s.name, foes, find };
+    };
+    return { road: check('ow-4-3:1,0'), courtyard: check('ow-4-3:1,1') };
+  });
+  t.expect(firstTrip.road.foes && firstTrip.road.find, `Castle Road has foes and a find (${JSON.stringify(firstTrip.road)})`);
+  t.expect(firstTrip.courtyard.foes && firstTrip.courtyard.find, `Crownhold Courtyard has foes and a find (${JSON.stringify(firstTrip.courtyard)})`);
+
+  // ---------------------------------------------------------------- 10) Rook's errand (fun audit
+  // item 2): West Gate had no bush tiles at all, so "cut through the bushes around here" could
+  // never be satisfied. It needs at least 5 real 'B' bush tiles.
+  const westGateBushes = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    const s = h.world.screen('v1:0,1');
+    return s.tiles.flat().filter((ch) => ch === 'B').length;
+  });
+  t.note(`West Gate has ${westGateBushes} bush tiles (was 0)`);
+  t.expect(westGateBushes >= 5, `West Gate has at least 5 bush tiles for Rook's errand (found ${westGateBushes})`);
+
+  // ---------------------------------------------------------------- 11) reward pacing (fun audit
+  // item 5): most of boss-serpent's coin drop moved into D1's own chests (world/areas/d1.js, the
+  // arena itself keeps TUNING.boss.serpent.coinCap, checked in foes.mjs), so the smith is in reach
+  // before the boss. A deterministic sum: chest grants only, not pots' random rolls.
+  const d1Coins = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    let total = 0;
+    const add = (c) => {
+      if (c && typeof c === 'object' && c.grant === 'coins') total += c.amount ?? 0;
+    };
+    for (const s of h.world.screens.values()) {
+      if (s.area.id !== 'd1') continue;
+      add(s.def.chest);
+      for (const c of Object.values(s.def.chests ?? {})) add(c);
+    }
+    return total;
+  });
+  t.note(`D1's own chests hold ${d1Coins} coins outright (was 0; the boss kept the whole payout)`);
+  t.expect(d1Coins >= 120, `D1's chests hold at least 120 coins (found ${d1Coins})`);
 }
