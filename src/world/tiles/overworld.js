@@ -8,14 +8,19 @@
 //   ^  stairs cut into a raised tile's south face (decoration: the hero stays on the ground)
 //   ~  water       =  stone bridge over water                  f  wooden fence
 //   g  gravestone  i  signpost     v  clay pot     C  chest (walk into it)
+//   k  cracked rock (a bomb clears it)   K  a bush like any other, but it hides stairs down
+//   y  a cleared secret (what 'k' becomes)   j  hidden stairs (what 'K' becomes)
 // Backdrop only (the far distance around an area, see farband.js):
 //   4  four levels   u / t / w  a tree on raised ground of level 1 / 2 / 4
+import * as THREE from 'three';
 import { hash3, shadeHex, mixHex } from '../../core/vox.js';
+import { GROUND_Y } from '../../core/constants.js';
+import { emit } from '../../core/events.js';
 import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile } from '../tiles.js';
 import { LEVEL } from '../terrain.js';
 import { TP, GROUND, PROP } from '../palette.js';
-import { bushProp, potProp, chestProp, cutPlant, breakPot, openChest } from '../tilekit.js';
+import { bushProp, potProp, chestProp, cutPlant, breakPot, openChest, revealBurst, revealGlint } from '../tilekit.js';
 import { gravestone, signpost } from '../../models/props.js';
 import { showDialog } from '../../ui/dialog.js';
 
@@ -420,6 +425,83 @@ registerTile('overworld', 'v', {
   onBomb: (ctx) => breakPot(ctx),
 });
 registerTile('overworld', 'C', { name: 'chest', solid: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, onPush: openChest });
+
+// ---------------------------------------------------------------- secrets (fun audit: every
+// screen earns a find, ALttP-style). A cracked rock looks exactly like a plain one until a bomb
+// clears it: onBomb sets it to 'y', whatever the screen's own `warps` table sends that char to (a
+// cave, a shortcut, a small vault) -- the same "walk into a tile, warp" the game already uses for
+// doors, so a revealed secret needs no new machinery. It has no separate mesh (the rock is baked
+// into the terrain), so its prop is a bare glint anchor for the reveal spell.
+registerTile('overworld', 'k', {
+  name: 'cracked-rock',
+  solid: true,
+  becomes: 'y',
+  ground: 'grass',
+  build(ctx) {
+    rock(ctx, land(ctx) + 1);
+  },
+  prop(ctx) {
+    const obj = new THREE.Group();
+    obj.position.set(ctx.cx, GROUND_Y, ctx.cz);
+    revealGlint(ctx, obj, 2.2);
+    return obj;
+  },
+  onBomb(ctx) {
+    const { world, tx, tz, def } = ctx;
+    if (!world.setTile(tx, tz, def.becomes, { persist: true, reason: 'bomb-wall' })) return false;
+    revealBurst(tx, tz, [TP.rock, TP.rockDark, TP.cliff]);
+    emit('secret-found', { kind: 'bomb-wall', tx, tz });
+    return true;
+  },
+});
+
+// A cleared secret: open ground, a shadowed hollow to hint at the way down, a warp wherever the
+// screen's `warps.y` (or `warps.j`, for a stair-bush) sends it.
+function darkenHollow(ctx, top) {
+  const { T, X0, Z0 } = ctx;
+  for (let z = 2; z < 6; z++) for (let x = 2; x < 6; x++) T.set(X0 + x, top, Z0 + z, shadeHex(surfaceColor('dirt', X0 + x, Z0 + z), 0.5));
+}
+registerTile('overworld', 'y', {
+  name: 'cleared-secret',
+  ground: 'grass',
+  onEnter: enterWarp,
+  build(ctx) {
+    darkenHollow(ctx, land(ctx));
+  },
+});
+registerTile('overworld', 'j', {
+  name: 'hidden-stairs',
+  ground: 'grass',
+  onEnter: enterWarp,
+  build(ctx) {
+    darkenHollow(ctx, land(ctx));
+  },
+});
+
+// A stair-bush: a bush like any other kit bush (same model, same cut), except cutting it clears to
+// 'j' instead of grass. onBomb clears it too, same as a plain bush.
+function revealStairBush(ctx) {
+  const { world, tx, tz, def } = ctx;
+  const cols = world.propAt(tx, tz)?.userData.colors ?? [TP.leaf, TP.leafDark, TP.leafLight, TP.leaf];
+  if (!world.setTile(tx, tz, def.becomes ?? '.', { reason: 'cut' })) return false;
+  revealBurst(tx, tz, cols, { up: 3 });
+  emit('secret-found', { kind: 'hidden-stairs', tx, tz });
+  return true;
+}
+registerTile('overworld', 'K', {
+  name: 'stair-bush',
+  solid: true,
+  becomes: 'j',
+  ground: 'grass',
+  build: (ctx) => land(ctx),
+  prop(ctx) {
+    const obj = bushProp(ctx);
+    revealGlint(ctx, obj, 1.4);
+    return obj;
+  },
+  onSword: revealStairBush,
+  onBomb: revealStairBush,
+});
 
 // ---------------------------------------------------------------- backdrop tiles
 registerTile('overworld', '4', { name: 'cliff-4', solid: true, ground: 'grass', level: 4, build: (ctx) => land(ctx) });

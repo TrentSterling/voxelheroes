@@ -11,6 +11,8 @@ import { getMaterial } from '../../core/materials.js';
 import { makeHero } from '../../models/hero.js';
 import { Npc } from '../npc.js';
 import { registerEntity } from '../registry.js';
+import { befriend } from '../../game/npc-talk.js';
+import { handleTalk, tickErrandMarker } from '../../game/errands.js';
 
 export const TOWNSFOLK = {
   tunic: 0x9a6a44,
@@ -24,4 +26,29 @@ export const TOWNSFOLK = {
   shield: null,
 };
 
-registerEntity('npc', (opts) => new Npc(opts, { rig: makeHero(getMaterial('character'), { ...TOWNSFOLK, ...opts.palette }), wander: 2 }));
+// The charm layer (game/errands.js): a persistent "!" or "?" over anyone with an errand, a
+// delivery due, or a heart event ready, and the errand conversation in place of the default
+// chat whenever there is one to have. Falls straight through to Npc's own talk() otherwise.
+class VillagerNpc extends Npc {
+  update(dt) {
+    super.update(dt);
+    tickErrandMarker(this);
+  }
+  onInteract(player) {
+    if (!this.out) return false;
+    this.face(player.x, player.z);
+    this.mind.mode = 'watch';
+    this.mind.greeted = true;
+    const offer = handleTalk(this);
+    const r = offer ?? this.talk(player);
+    if (offer) {
+      Promise.resolve(r).then(() => {
+        const f = befriend(this.name);
+        if (f.up) this.heartUp();
+      });
+    }
+    return true;
+  }
+}
+
+registerEntity('npc', (opts) => new VillagerNpc(opts, { rig: makeHero(getMaterial('character'), { ...TOWNSFOLK, ...opts.palette }), wander: 2 }));

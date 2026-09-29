@@ -12,13 +12,23 @@ import { showDialog } from '../../ui/dialog.js';
 import { Npc } from '../npc.js';
 import { registerEntity } from '../registry.js';
 import { TOWNSFOLK } from './npc.js';
+import { tickErrandMarker } from '../../game/errands.js';
+
+// A heart event ready shows the same "!" a villager's errand does (game/errands.js); these six
+// have no errand of their own, but they befriend the hero same as anyone (Npc.onInteract).
+class CharmNpc extends Npc {
+  update(dt) {
+    super.update(dt);
+    tickErrandMarker(this);
+  }
+}
 
 const look = (palette) => makeHero(getMaterial('character'), { ...TOWNSFOLK, ...palette }); // a rig: it walks and poses
 
 // ---------------------------------------------------------------- the king
 // A new game with the prologue starts unarmed (CONTRACTS 8.16): the king arms
 // the hero with the starter blade and the first shield.
-class King extends Npc {
+class King extends CharmNpc {
   constructor(opts) {
     super(opts, { rig: look({ tunic: 0x8a2a3a, tunicLight: 0xaa4a5a, cap: 0xe6b43a, leg: 0x5a2a3a, extras: ['crown', 'beard'] }), name: 'King Aldric', schedule: 'always' });
   }
@@ -40,7 +50,7 @@ class King extends Npc {
 registerEntity('npc-king', (opts) => new King(opts));
 
 // ---------------------------------------------------------------- Mossbrook's services
-class Shopkeeper extends Npc {
+class Shopkeeper extends CharmNpc {
   constructor(opts) {
     super(opts, { rig: look({ tunic: 0x3a6a8a, tunicLight: 0x5a8aaa, cap: 0xe8e0d0, extras: ['apron', 'bun'] }), name: 'Mags' });
     this.shop = opts.shop ?? 'v1-shop';
@@ -52,7 +62,7 @@ class Shopkeeper extends Npc {
 }
 registerEntity('npc-shop', (opts) => new Shopkeeper(opts));
 
-class Smith extends Npc {
+class Smith extends CharmNpc {
   constructor(opts) {
     super(opts, { rig: look({ tunic: 0x4a3a2e, tunicLight: 0x6a5a4e, cap: 0x3a3a44, leg: 0x3a3a44, extras: [['apron', 0x6a4a2a], ['beard', 0x3a2418]] }), name: 'Brannoc' });
   }
@@ -64,7 +74,7 @@ class Smith extends Npc {
 }
 registerEntity('npc-smith', (opts) => new Smith(opts));
 
-class Innkeeper extends Npc {
+class Innkeeper extends CharmNpc {
   constructor(opts) {
     super(opts, { rig: look({ tunic: 0x8a6a2a, tunicLight: 0xaa8a4a, cap: 0x6a3a2a, extras: ['apron', 'bun'] }), name: 'Wenna' });
     this.inn = opts.inn ?? 'inn-1';
@@ -77,7 +87,7 @@ registerEntity('npc-inn', (opts) => new Innkeeper(opts));
 
 // ---------------------------------------------------------------- the inventor
 // Gives the Sprint Boots once (gameplay spec: the inventor in V1, before D1); dash needs them.
-class Inventor extends Npc {
+class Inventor extends CharmNpc {
   constructor(opts) {
     super(opts, { rig: look({ tunic: 0x6a5a8a, tunicLight: 0x8a7aaa, cap: 0xc8a040, hair: 0x7a7a84, extras: ['glasses', ['beard', 0xf0f0f0]] }), name: 'Tinker Wyll' });
   }
@@ -96,7 +106,7 @@ registerEntity('npc-inventor', (opts) => new Inventor(opts));
 // ---------------------------------------------------------------- the sage (CONTRACTS 8.12)
 // Grants its spell once ({ source: 'npc' }), sets its flag, then only talks.
 // A spell nobody has registered yet (the items stream's) is not granted.
-class Sage extends Npc {
+class Sage extends CharmNpc {
   constructor(opts) {
     super(opts, { rig: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0, extras: [['hood', 0xe8e0f0], 'beard'] }), name: 'Sage Oriel', schedule: 'always' });
     this.spell = opts.spell ?? null;

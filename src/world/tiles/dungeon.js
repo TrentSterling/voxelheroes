@@ -5,6 +5,7 @@
 //   L  locked door (walk into it with a small key)   C  chest (walk into it)
 //   _  pressure plate, X mark       =  pressure plate, ring mark
 //   P  push block (solid for now)   *  spike ball (solid for now)
+//   v  clay pot (sword or bomb breaks it; back on the next visit)
 //
 // Walls are 2 tiles (16 blocks of 1/8) tall: from the floor up a darker base course, a band of
 // long slabs with one bed line, a teal trim, tall panels split by grooves every 8 blocks, a second
@@ -32,7 +33,7 @@ import { enterWarp } from '../../systems/transitions.js';
 import { defineTileset, registerTile, getTile } from '../tiles.js';
 import { GOLD } from '../palette.js';
 import { BPT, FPT, registerRing, registerLayer, screenBox } from '../terrain.js';
-import { doorProp, chestProp, flameProp, spikeBallProp, pushBlockProp, unlockDoor, openChest, pushTile } from '../tilekit.js';
+import { doorProp, chestProp, flameProp, spikeBallProp, pushBlockProp, potProp, unlockDoor, openChest, pushTile, breakPot } from '../tilekit.js';
 import { statue, brazier } from '../../models/props.js';
 
 defineTileset('dungeon', { floor: '.' });
@@ -381,3 +382,16 @@ registerTile('dungeon', '=', { name: 'plate-o', build: plate('o') });
 
 registerTile('dungeon', 'P', { name: 'push-block', solid: true, regrow: true, onPush: pushTile, build: (ctx) => fineFloor(ctx), prop: pushBlockProp });
 registerTile('dungeon', '*', { name: 'spike-ball', solid: true, build: (ctx) => fineFloor(ctx), prop: spikeBallProp });
+
+// A pot, same as the overworld's: the sword or a bomb breaks it (a drop roll), and it is back the
+// next time the room is entered.
+registerTile('dungeon', 'v', {
+  name: 'pot',
+  solid: true,
+  regrow: true,
+  becomes: '.',
+  build: (ctx) => fineFloor(ctx),
+  prop: potProp,
+  onSword: (ctx) => breakPot(ctx),
+  onBomb: (ctx) => breakPot(ctx),
+});

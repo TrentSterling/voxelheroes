@@ -62,7 +62,7 @@ registerArea({
       rows: [
         'WWWWWWW..WWWWWWW',
         'W.F..........F.W',
-        'W..............W',
+        'W.v............W',
         'W...S......S...W',
         'W......T.......W',
         'W...............',
@@ -82,7 +82,7 @@ registerArea({
       rows: [
         'WWWWWWWWWWWWWWWW',
         'W.F..........F.W',
-        'W..............W',
+        'W............v.W',
         'W....s.....s...W',
         'W..............W',
         'H..............W',
@@ -121,7 +121,7 @@ registerArea({
       rows: [
         'WWWWWWWllWWWWWWW',
         'W.F..........F.W',
-        'W..............W',
+        'W.v..........v.W',
         'W..S........S..W',
         'W.......c......W',
         '...............W',
@@ -159,7 +159,7 @@ registerArea({
         'W.F..........F.W',
         'W..S..S..S..S..W',
         'W..........g...W',
-        'W..............W',
+        'W.v............W',
         '....g..........W',
         '...............W',
         'W..........g...W',
@@ -232,12 +232,16 @@ registerArea({
     // F-3
     '2,5': {
       name: "Blade Gallery",
+      // A cracked wall backing the real one, no different to look at (buildWall draws the same
+      // panel off the room's edge): warps.y is where a bomb sends the hero once it gives way (the
+      // vault, in the free columns off the main grid, the way the boss arena sits off it too).
+      warps: { y: { area: 'd1-vault', screen: [0, 0], x: 1.5, z: 4.5, yaw: Math.PI / 2 } },
       rows: [
         'WWWWWWW..WWWWWWW',
         'Wx............xW',
-        'W..............W',
+        'Wz.............W',
         'W...S.....S....W',
-        'W..............W',
+        'W..v...........W',
         'W..............W',
         'W..............W',
         'W..............W',
@@ -259,7 +263,7 @@ registerArea({
         'W..............W',
         'W......T.......r',
         'W..............r',
-        'W..............W',
+        'W.v............W',
         'W..S..S..S..S..W',
         'W.............dW',
         'W.F..........F.W',
@@ -293,7 +297,7 @@ registerArea({
       rows: [
         'WWWWWWWWWWWWWWWW',
         'W.F..........F.W',
-        'W..............W',
+        'W.v............W',
         'W...s......s...W',
         'W..............W',
         'W.....b........H',
@@ -331,7 +335,7 @@ registerArea({
       rows: [
         'WWWWWWWWWWWWWWWW',
         'W.F..........F.W',
-        'W..............W',
+        'W.v............W',
         'W..............W',
         'W...S......S...W',
         '........c......W',
@@ -430,6 +434,42 @@ registerArea({
         'W.F................F.W',
         'W....................W',
         'WWWWWWWWWWUUWWWWWWWWWW',
+      ],
+    },
+  },
+});
+
+// The vault behind Blade Gallery's cracked wall (fun audit item 3: a real reward moment). One
+// small room, its own column off the main grid the way the boss arena sits off it (free columns
+// 216-217; the arena itself starts at 218), reached only through the breach, with the best find in
+// the dungeon: a chest granting the blade-warden sword the economy lane registers, plus a heart
+// piece so the barrow's total heart pieces clears the fun audit's bar of at least 8 (see
+// world/areas/slice.js for the other four).
+registerArea({
+  id: 'd1-vault',
+  name: 'Buried Vault',
+  kind: 'cave',
+  tileset: 'dungeon',
+  lighting: 'crypt',
+  camera: 'interior',
+  rooms: true,
+  screen: [12, 9],
+  at: [216 * 16, 0],
+  warps: { X: { area: 'd1', screen: [2, 5], x: 2.5, z: 2.5, yaw: Math.PI } },
+  screens: {
+    '0,0': {
+      name: 'Buried Vault',
+      chests: { '4,4': 'blade-warden', '9,4': 'heart-piece' },
+      rows: [
+        'WWWWWWWWWWWW',
+        'W..........W',
+        'W.S......S.W',
+        'W..........W',
+        'W...c....c.W',
+        'W..........W',
+        'W..v....v..W',
+        'W..........W',
+        'WWWWWXXWWWWW',
       ],
     },
   },

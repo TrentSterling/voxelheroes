@@ -23,6 +23,7 @@ for adding to it. The short version:
 
 Contents: [Module map](#module-map) ·
 [Frame, modes and coordinates](#frame-modes-and-coordinates) · [Look](#look) ·
+[Streaming](#streaming) ·
 [Registries](#registries) · [Events](#events) · [How to add things](#how-to-add-things) ·
 [Kits and models](#kits-and-models) · [Test hook](#test-hook) · [Play-test harness](#play-test-harness) ·
 [Working in parallel (M2)](#working-in-parallel-m2) · [Build rules](#build-rules) ·
@@ -362,6 +363,79 @@ CPUs) at 1280 x 720; only the ratios mean anything. JS is the CPU time of
 The post stack is two thirds of a high frame here, and GTAO, the 96-sample
 gather and the glare (what medium leaves out) are half of it. The polished
 floor draws the scene a second time, into a full-size 4x MSAA target.
+
+## Streaming
+
+The overworld streams seamlessly (`systems/streaming.js`, `world/world.js`
+"loads and streaming"): no fade between outdoor screens, and a screen a couple
+of steps away is already built, lit and standing with its people and foes
+before the camera reaches it.
+
+**The ring.** Every step, `updateStreaming` lays a ring around the hero's
+screen (`layRing`, `TUNING.stream`, `src/tuning/stream.js`): screens within
+`radius` (2; `lowRadius` 1 at the `low` look) are **live** (terrain, props,
+people and foes, built nearest-first and ahead of the way the hero is
+heading); one ring further out (`scenery`) is terrain only, no entities; a
+screen leaves either only `hysteresis` screens further out again, so walking
+back and forth over a line frees nothing. Screens within `active` (1) are
+**simulated** each step (`updateBuckets`); further live screens lie
+**dormant**, still drawn but not ticked, same as the SNES game keeping foes to
+their own room.
+
+**Buckets and dormancy.** A screen's markers spawn once its terrain is in
+(`world.onBuilt` -> `built()`, `'world:screen-live'`), into their own bucket
+(`entities/manager.js`), already standing there: never when the camera
+arrives. Nothing is deleted when the hero leaves a screen; `transitions.js`
+stashes the stage into its bucket (`leaveStage`/`arriveStage`), and a bucket
+is reaped only when its screen leaves the live ring (`free()`,
+`'world:screen-free'`). The hero's own screen is the one exception to
+`'world:screen-live'`: it spawns on `'room-enter'` instead, once he actually
+arrives (`arriveStage`), which is also the event a screen's own ambient life
+(`systems/critters.js`) and clear memory (`systems/foe-clears.js`) key off.
+
+**Building ahead.** A door, cave mouth or stairs within `prebuildTiles` (10)
+of the hero has its interior built in the background (`buildAhead`,
+`world.keep`), so the fade through it only has to fade; the area frees again
+once the hero is `prebuildDrop` (20) tiles from every one of its doors. Out of
+an area of its own the outdoor ring past the exit is kept live the same way,
+so the screen beyond a door is never the first one built.
+
+**Workers.** Terrain meshing (`world/meshing.js`) runs in a small pool of Web
+Workers (`world/mesh-worker.js`) when the page can start them, one voxel grid
+transferred per job; without workers (`?workers=0`, manual mode, or a worker
+that failed to start) it meshes on the main thread in slices instead, byte
+for byte the same result. Either way a build is a sequence of small steps
+(`terrain.js screenTerrainSteps`) that `world.pump()` spends within a
+per-frame budget (`budgetMs` 3 ms in play, the larger `loadBudgetMs` 8 ms at
+black behind a fade), so a screen streaming in never costs a frame on its
+own; `pumpBuilds()` is the one call site (`main.js`, once a frame).
+
+**Warm-up.** Everything above keeps a *building* screen from costing a frame;
+the look (`src/core/look/`, `src/core/warm.js`) separately keeps a screen
+whose **look differs structurally** from the one behind the title from
+costing one to compile. `warmLookFrame()` links the scene and post-stack
+programs the current look's quality will draw with (`renderer.compileAsync`,
+`KHR_parallel_shader_compile`) before the player can act; `look.warmUp()`
+adds what the start screen never has of its own (the `fine`/`prop` material
+kinds, the polished floor's Reflector shader) as throwaway stubs so they
+compile once, at boot, instead of cold on the first dungeon. It also builds
+every *registered* look's reflection environment (`core/look/environment.js`'s
+PMREM-prefiltered "orb", cached there by value) one look per animation frame,
+behind the title: that texture is normally built lazily, the moment a room
+first uses a look nobody has shown yet, and `PMREMGenerator.fromScene` renders
+several passes and links its own shader synchronously, with nothing to hide
+it behind on a browser with no parallel shader compile. `registerLighting`
+re-triggers this warm whenever content adds a look after boot, so a look
+registered late still gets it. What is *not* covered here: shadow-map depth
+programs (a couple, ~12 ms together, left to the first frame their object
+casts one) and anything the world/meshing side of streaming does on the main
+thread during a fade (see "Workers" above) - a slow *first room of a kind*
+that is not a shader stall shows up there instead of in `look.info()`'s
+`cpuMs`.
+
+`scripts/perf-stream.mjs` walks this for real (a real GPU, Chrome and
+Firefox): the outdoor walk, then the approach to a dungeon door, checking
+frame times and long tasks against budget.
 
 ## Registries
 

@@ -14,6 +14,7 @@ import { player } from '../entities/player.js';
 import { hideOverlay, setFade } from '../ui/overlay.js';
 import { setAreaLabel } from '../ui/hud.js';
 import { placeAt, applyScreenAmbience, clearScreen, enterScreen } from './transitions.js';
+import { areaEntrance } from '../game/places.js';
 
 // Places are spots: { area, screen: [i, j], x, z, yaw } with the area's local
 // screen and tile coordinates in that screen (world.resolveSpot), so they do
@@ -55,12 +56,17 @@ export function resolvePlace(p) {
 export const respawnPoint = () => (resolvePlace(state.respawn) ? state.respawn : startPoint());
 
 // Where the hero gets back up after falling: the entrance of the area he fell
-// in, if the area names one (a dungeon, gameplay spec 6.7 and 11), else the
-// respawn point.
+// in, if it names one (a dungeon, gameplay spec 6.7 and 11); else wherever he
+// walked into that area this session (game/places.js areaEntrance, an
+// overworld area names no entrance of its own); else the respawn point
+// (an inn, or the prologue's, if neither of those has anything yet).
 export function continuePoint() {
   const area = currentScreen()?.area;
   const entrance = area?.entrance ? { area: area.id, ...area.entrance } : null;
-  return entrance && resolvePlace(entrance) ? entrance : respawnPoint();
+  if (entrance && resolvePlace(entrance)) return entrance;
+  const here = area ? areaEntrance(area.id) : null;
+  if (here && resolvePlace(here)) return here;
+  return respawnPoint();
 }
 
 // The screen the hero gets back up on.

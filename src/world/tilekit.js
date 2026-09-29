@@ -9,9 +9,10 @@ import * as THREE from 'three';
 import { GROUND_Y } from '../core/constants.js';
 import { hash3 } from '../core/vox.js';
 import { getMaterial, makeGlowMaterial } from '../core/materials.js';
-import { sfx } from '../core/audio.js';
+import { sfx, tone, noise } from '../core/audio.js';
 import { emit } from '../core/events.js';
 import { hasFlag, setFlag } from '../core/state.js';
+import { effectActive } from '../game/effects.js';
 import { modelMesh, PoseMesh } from '../models/kit.js';
 import {
   bushModel,
@@ -202,6 +203,41 @@ export function unlockDoor(ctx) {
   burst(tx + 0.5, GROUND_Y + 0.6, tz + 0.5, doorModel(false).colors, 30, { speed: 3, size: 0.1, up: 4 });
   emit('door-opened', { tx, tz });
   return true;
+}
+
+// ---------------------------------------------------------------- secrets
+// A find (fun audit: every screen earns its keep): a cracked rock or wall a bomb clears, hidden
+// stairs under a bush that looks like any other, a bomb wall into a small vault. The reveal is the
+// point, so it gets its own beat: a chime on top of the usual crack/debris burst.
+function secretChime() {
+  tone(880, 0.1, { vol: 0.07, type: 'triangle' });
+  tone(1318, 0.16, { vol: 0.07, type: 'triangle', delay: 0.09 });
+}
+
+// Debris burst + chime for a secret giving way (a bomb wall, a lifted rock, a cut stair-bush):
+// call it, then set the tile to what the secret becomes (world.setTile; default rebuild, so a
+// baked wall or rock re-meshes the screen).
+export function revealBurst(tx, tz, colors, { up = 4.5 } = {}) {
+  noise(0.16, { vol: 0.26, freq: 700, q: 1.1 }); // stone giving way
+  secretChime();
+  burst(tx + 0.5, GROUND_Y + 0.6, tz + 0.5, colors, 34, { speed: 3.2, size: 0.1, up });
+  smoke(tx + 0.5, GROUND_Y + 0.1, tz + 0.5, 10, { radius: 0.3, spread: 0.6, life: 0.9 });
+}
+
+// An unfound secret glints gold while the reveal spell runs (game/effects.js 'reveal',
+// src/spells/reveal.js): a few sparks every second or so, so a hero holding it can spot a crack or
+// a stair-bush without bombing or cutting every wall in the room. `obj` is the tile's prop (a real
+// mesh, or a bare Group standing in for a baked-terrain secret with nothing else to attach the
+// tick to); composes with any tick the caller already set.
+export function revealGlint(ctx, obj, y = 0.6) {
+  const prev = obj.userData.tick;
+  let next = 0;
+  obj.userData.tick = (t, dt) => {
+    prev?.(t, dt);
+    if (!effectActive('reveal') || t < next) return;
+    next = t + 0.6 + hash3(ctx.tx, 4, ctx.tz, 12) * 0.5;
+    sparks(ctx.cx, GROUND_Y + y, ctx.cz, [0xf1c232, 0xfff2b0], 5, { speed: 1, size: 0.06, up: 1.4, life: 0.5 });
+  };
 }
 
 // What a chest holds: screen.chests['x,z'] or screen.chest, as grant() takes it.

@@ -132,10 +132,15 @@ export default async function contractsM2(t) {
   });
   let swings = await count('sword-swing');
   await t.press('KeyM');
+  // M now opens the map screen for real (ui/screens/map.js, a deliberate change: the fun audit's
+  // map button did nothing before). Back to play to finish probing the other raw bindings.
+  const afterM = await t.eval(() => window.__voxelHeroes.state.mode);
+  await t.eval(() => window.__voxelHeroes.setMode('play'));
   await t.press('Space');
   await t.press('Tab');
   await t.press('KeyE');
   r = await t.eval(() => ({ acts: window.__acts.join(','), muted: window.__voxelHeroes.state.settings.muted }));
+  t.expect(afterM === 'map', `M presses the map action and opens the map screen (mode: ${afterM})`);
   t.expect(r.acts === 'map,dash,inventory,next-item' && !r.muted, `M, Space, Tab and E press map, dash, inventory and next-item in play (${r.acts}), and M does not mute`);
   t.expect((await count('sword-swing')) === swings, 'Space no longer swings the sword');
   await t.press('KeyN');

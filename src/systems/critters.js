@@ -5,9 +5,14 @@
 // collision are unaffected. Layout and behaviour are seeded from the screen key (core/voxel.js's
 // rng, never Math.random), so a screen looks the same every time it is entered.
 //
-// Spawns on 'room-enter' for the screen just entered, clears on 'screen-leave'. Ticking is not
-// wired to anything yet: add one line to src/main.js's update(), after updateParticles(dt):
-//   updateCritters(dt);
+// One live list per streamed screen (`screens`, keyed by screen.key), not a single global list: the
+// overworld now streams seamlessly (systems/streaming.js keeps every screen within TUNING.stream's
+// radius built with its entities), so a screen's butterflies, birds and chickens must already be
+// there when it comes into view, never spawned the moment the hero steps onto it. A screen spawns
+// its critters on 'world:screen-live' (a streamed neighbour joining the ring) or 'room-enter' (the
+// hero's own screen, which 'world:screen-live' skips, see streaming.js built()), and frees them on
+// 'world:screen-free' (the screen leaving the ring); 'world:reset' (a new game or a load) frees
+// every screen. A room (screen.area.rooms) never gets ambient life either way.
 import { on } from '../core/events.js';
 import { GROUND_Y } from '../core/constants.js';
 import { scene } from '../core/renderer.js';
@@ -30,7 +35,7 @@ const hubBonus = (screen) => (HUB_SCREENS.has(screen.name) ? 1 : 0);
 // "... Pasture" (Crownhold's West/East Pasture).
 const isFarmland = (screen) => screen.area.id === 'v1' || /pasture/i.test(screen.name ?? '');
 
-let live = []; // every critter and chimney timer on the current screen
+const screens = new Map(); // screen.key -> its critters and chimney timers (spawned and live)
 
 // FNV-1a: a short string (a screen key, or a screen key plus a tag) to a 32-bit seed for rng().
 function seedOf(s) {
@@ -42,9 +47,15 @@ function seedOf(s) {
   return h >>> 0;
 }
 
-function clearAll() {
-  for (const c of live) if (c.mesh) scene.remove(c.mesh);
-  live = [];
+function clearScreen(key) {
+  const list = screens.get(key);
+  if (!list) return;
+  for (const c of list) if (c.mesh) scene.remove(c.mesh);
+  screens.delete(key);
+}
+
+function clearEverything() {
+  for (const key of [...screens.keys()]) clearScreen(key);
 }
 
 function tilesWhere(screen, chars) {
@@ -90,7 +101,7 @@ function houseClusters(screen) {
   return clusters;
 }
 
-function spawnButterflies(screen, rand) {
+function spawnButterflies(screen, rand, list) {
   const spots = tilesWhere(screen, FLOWER_CHARS);
   if (!spots.length) return;
   const bonus = hubBonus(screen);
@@ -102,11 +113,11 @@ function spawnButterflies(screen, rand) {
     const mesh = makeButterfly(Math.floor(seed() * BUTTERFLY_COLORS.length));
     mesh.position.set(ax, GROUND_Y + 0.32, az);
     scene.add(mesh);
-    live.push({ kind: 'butterfly', mesh, rand: seed, ax, az, t: seed() * 10, phase: seed() * Math.PI * 2, radius: 0.3 + seed() * 0.35, speed: 0.55 + seed() * 0.5, flapT: 0 });
+    list.push({ kind: 'butterfly', mesh, rand: seed, ax, az, t: seed() * 10, phase: seed() * Math.PI * 2, radius: 0.3 + seed() * 0.35, speed: 0.55 + seed() * 0.5, flapT: 0 });
   }
 }
 
-function spawnBirds(screen, rand) {
+function spawnBirds(screen, rand, list) {
   const spots = tilesWhere(screen, GROUND_CHARS);
   if (!spots.length) return;
   const bonus = hubBonus(screen);
@@ -120,11 +131,11 @@ function spawnBirds(screen, rand) {
     mesh.position.set(x, GROUND_Y, z);
     mesh.rotation.y = yaw;
     scene.add(mesh);
-    live.push({ kind: 'bird', mesh, rand: seed, x, z, yaw, state: 'ground', hopT: 0.6 + seed() * 1.5, hopping: 0, t: 0 });
+    list.push({ kind: 'bird', mesh, rand: seed, x, z, yaw, state: 'ground', hopT: 0.6 + seed() * 1.5, hopping: 0, t: 0 });
   }
 }
 
-function spawnChickens(screen, rand) {
+function spawnChickens(screen, rand, list) {
   const spots = tilesWhere(screen, GROUND_CHARS);
   if (!spots.length) return;
   const n = Math.min(spots.length, MAX.chicken, 2 + Math.floor(rand() * 3));
@@ -137,11 +148,11 @@ function spawnChickens(screen, rand) {
     mesh.position.set(x, GROUND_Y, z);
     mesh.rotation.y = yaw;
     scene.add(mesh);
-    live.push({ kind: 'chicken', mesh, rand: seed, colors, x, z, yaw, anchor: { x, z }, state: 'idle', idleT: seed() * 2, bobT: 0 });
+    list.push({ kind: 'chicken', mesh, rand: seed, colors, x, z, yaw, anchor: { x, z }, state: 'idle', idleT: seed() * 2, bobT: 0 });
   }
 }
 
-function spawnChimneys(screen, rand) {
+function spawnChimneys(screen, rand, list) {
   for (const tiles of houseClusters(screen)) {
     const zs = tiles.map((t) => t[1]);
     const zMid = Math.round((Math.min(...zs) + Math.max(...zs)) / 2);
@@ -150,24 +161,31 @@ function spawnChimneys(screen, rand) {
     const x = screen.x0 + (Math.min(...xs) + Math.max(...xs)) / 2 + 0.5;
     const z = screen.z0 + zMid + 0.5;
     const seed = rng(seedOf(`${screen.key}:chimney:${x},${z}`));
-    live.push({ kind: 'chimney', rand: seed, x, y: CHIMNEY_Y, z, t: seed() * 1.5 });
+    list.push({ kind: 'chimney', rand: seed, x, y: CHIMNEY_Y, z, t: seed() * 1.5 });
   }
 }
 
+// Spawns `screen`'s critters into its own list (screens.get(key)), if it does not have one yet: a
+// screen already streamed in keeps its critters (and their state) when the hero's own arrival fires
+// a second event for it (room-enter after world:screen-live, or the reverse).
 function spawnScreen(screen) {
-  clearAll();
+  if (screens.has(screen.key)) return;
   if (screen.area.rooms) return; // indoors and dungeon rooms: no ambient life
+  const list = [];
+  screens.set(screen.key, list);
   const rand = rng(seedOf(screen.key));
-  spawnButterflies(screen, rand);
-  spawnBirds(screen, rand);
+  spawnButterflies(screen, rand, list);
+  spawnBirds(screen, rand, list);
   if (isFarmland(screen)) {
-    spawnChickens(screen, rand);
-    spawnChimneys(screen, rand);
+    spawnChickens(screen, rand, list);
+    spawnChimneys(screen, rand, list);
   }
 }
 
-on('screen-leave', clearAll);
 on('room-enter', ({ screen }) => spawnScreen(screen));
+on('world:screen-live', ({ screen }) => spawnScreen(screen));
+on('world:screen-free', ({ screen }) => clearScreen(screen.key));
+on('world:reset', clearEverything);
 
 // ---------------------------------------------------------------- per-frame behaviour
 function updateButterfly(c, dt) {
@@ -300,19 +318,25 @@ function updateChimney(c, dt) {
 }
 
 export function updateCritters(dt) {
-  if (!live.length) return;
-  let anyDead = false;
-  for (const c of live) {
-    if (c.kind === 'butterfly') updateButterfly(c, dt);
-    else if (c.kind === 'bird') updateBird(c, dt);
-    else if (c.kind === 'chicken') updateChicken(c, dt);
-    else if (c.kind === 'chimney') updateChimney(c, dt);
-    if (c.dead) anyDead = true;
+  if (!screens.size) return;
+  for (const [key, list] of screens) {
+    if (!list.length) continue;
+    let anyDead = false;
+    for (const c of list) {
+      if (c.kind === 'butterfly') updateButterfly(c, dt);
+      else if (c.kind === 'bird') updateBird(c, dt);
+      else if (c.kind === 'chicken') updateChicken(c, dt);
+      else if (c.kind === 'chimney') updateChimney(c, dt);
+      if (c.dead) anyDead = true;
+    }
+    if (anyDead)
+      screens.set(
+        key,
+        list.filter((c) => {
+          if (!c.dead) return true;
+          if (c.mesh) scene.remove(c.mesh);
+          return false;
+        })
+      );
   }
-  if (anyDead)
-    live = live.filter((c) => {
-      if (!c.dead) return true;
-      if (c.mesh) scene.remove(c.mesh);
-      return false;
-    });
 }

@@ -201,6 +201,15 @@ export function onAreaChange(fn) {
 export const roomEntry = () => entry;
 export const hasVisited = (screenOrId) => state.visited.has(typeof screenOrId === 'string' ? screenOrId : screenId(screenOrId));
 
+// Where the hero crossed into each area, this session (not saved): systems/
+// flow.js's continuePoint falls back to it for an area with no `entrance` of
+// its own (only dungeons register one), so dying anywhere outdoors gets him
+// back up near the fall instead of at the last respawn point, wherever that
+// was set (gameplay: no more waking up in Crownhold from a death in
+// Barrowfield).
+const areaEntrances = new Map();
+export const areaEntrance = (id) => areaEntrances.get(id) ?? null;
+
 on('screen-enter', ({ screen }) => {
   if (!screen) return;
   entry = spotHere();
@@ -211,6 +220,7 @@ on('screen-enter', ({ screen }) => {
   }
   state.visitedAreas.add(screen.area.id);
   if (screen.area !== lastArea) {
+    areaEntrances.set(screen.area.id, entry);
     const prev = lastArea;
     lastArea = screen.area;
     for (const fn of areaHandlers) fn(screen.area, prev);

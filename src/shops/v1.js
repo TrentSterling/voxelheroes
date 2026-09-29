@@ -2,6 +2,7 @@
 import { registerShop } from '../game/shops.js';
 import { registerInn } from '../game/services.js';
 import { TUNING } from '../core/tuning.js';
+import { hasItem } from '../items/inventory.js';
 
 registerShop({
   id: 'v1-shop',
@@ -11,7 +12,8 @@ registerShop({
   entries: [
     { id: 'heart', grant: 'heart', price: 5 },
     { id: 'magic', grant: 'magic', price: 10 },
-    { id: 'bombs', grant: 'bombs', price: 30, stock: 1 }, // the bag and 10 bombs (the items registry's grant fallback)
+    { id: 'bombs', name: 'Bomb Bag', grant: 'bombs', price: 30, stock: 1 }, // the bag and 10 bombs (the items registry's grant fallback)
+    { id: 'bomb-refill', name: 'Bombs (10)', grant: 'bombs', amount: TUNING.economy.bombRefill.amount, price: TUNING.economy.bombRefill.price, when: () => hasItem('bombs') },
     { id: 'key-red', grant: 'key-red', price: 1000, stock: 1 },
   ],
 });

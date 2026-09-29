@@ -18,6 +18,7 @@ import * as D from '../tuning/dungeon.js';
 import * as I from '../tuning/items.js';
 import * as O from '../tuning/economy.js';
 import * as U from '../tuning/ui.js';
+import { stream } from '../tuning/stream.js';
 
 export const TUNING = {
   sim: { hz: 60 }, // the fixed simulation rate (core/loop.js)
@@ -25,6 +26,10 @@ export const TUNING = {
   camera: W.camera,
   scroll: W.scroll,
   load: W.load,
+  // the streamed outdoors and building ahead (systems/streaming.js); assembled here like every
+  // other section even though streaming.js also sets it (`TUNING.stream ??= stream`, harmless once
+  // this import has already run: same module, same object, so that line is a no-op)
+  stream,
   minimap: U.minimap,
   worldMap: U.worldMap,
   hero: H.hero,

@@ -77,6 +77,20 @@ export const REFUSALS = {
 };
 export const refusal = (reason) => REFUSALS[reason] ?? `Not now (${reason}).`;
 
+// What the smith says after a level lands (fun audit: buying coins felt like
+// nothing happened). Keyed by stat; a stat with no line here still gets a
+// plain one.
+const SMITH_LINES = {
+  length: 'There. A longer reach for you.',
+  width: 'Broader steel now; it should bite wider.',
+  strength: 'Ground hard. That will hit harder.',
+  spin: 'Balanced up nicely for the spin.',
+  beam: 'That edge should throw a truer beam.',
+  pierce: 'It should punch clean through, now.',
+  special: 'There. That ought to do something new.',
+};
+const smithLine = (stat) => SMITH_LINES[stat] ?? 'There, that should help.';
+
 // ---------------------------------------------------------------- fallbacks
 registerFallback('shop', async ({ shop, speaker = null } = {}) => {
   const s = getShop(shop);
@@ -108,6 +122,11 @@ registerFallback('smith', async ({ speaker = null, sword = equippedId() } = {}) 
     return undefined;
   }
   const name = getSword(sword).name;
+  // The line he opens with; a bought level swaps it for a reaction to that
+  // stat until he is asked again (fun audit: buying coins felt like nothing
+  // happened). Kept as the next prompt, not an extra dialog, so buying stays
+  // one beat: pick a level, see the shelf update.
+  let greeting = `The ${name}. What shall I work on?`;
   for (;;) {
     const stars = swordStars(sword);
     const sold = SWORD_STATS.filter((k) => levelPrice(sword, k) !== null);
@@ -116,15 +135,17 @@ registerFallback('smith', async ({ speaker = null, sword = equippedId() } = {}) 
       return undefined;
     }
     const choices = [...sold.map((k) => `${k} ${stars[k].level}/${stars[k].max}: ${levelPrice(sword, k)}`), 'Reset', 'Leave'];
-    const pick = await ask(`The ${name}. What shall I work on?`, choices, { speaker });
+    const pick = await ask(greeting, choices, { speaker });
     if (pick === undefined || pick === sold.length + 1) return undefined;
     if (pick === sold.length) {
       const sure = await ask(`Back to how it was made? The ${spentOn(sword)} coins you spent on it are gone for good.`, ['Reset', 'Keep it'], { speaker });
       if (sure === 0) resetSword(sword);
+      greeting = `The ${name}. What shall I work on?`;
       continue;
     }
     const r = buyLevel(sword, sold[pick]);
     if (!r.ok) await showDialog(refusal(r.reason), { speaker });
+    greeting = r.ok ? smithLine(sold[pick]) : `The ${name}. What shall I work on?`;
   }
 });
 

@@ -24,6 +24,13 @@
 //                          the screen's chest / chests)
 //   h  hidden chest        plain floor until the room is cleared (or its
 //                          `chestOn` event), then a chest
+//   z  cracked wall         looks like any other wall block until a bomb
+//                          clears it (fun audit: a secret per screen); it
+//                          becomes 'y', whatever the room's `warps` table
+//                          sends that char to (usually a small vault); 'z'
+//                          not 'k', which d1-boss already spends on its
+//                          tombstone marker
+//   y  revealed passage    open floor and a warp (what 'z' becomes)
 //
 // Room behaviour is data on the screen: `clear: 'key' | 'chest' | 'shutters'`
 // (what clearing the room gives), `switches: { count, window, opens: 'E' |
@@ -37,7 +44,8 @@ import { sfx } from '../../core/audio.js';
 import { TUNING } from '../../core/tuning.js';
 import { registerTile } from '../tiles.js';
 import { fineFloor, buildWall } from './dungeon.js';
-import { wallFace, chestProp, doorProp } from '../tilekit.js';
+import { BPT } from '../terrain.js';
+import { wallFace, chestProp, doorProp, revealBurst, revealGlint } from '../tilekit.js';
 import { modelMesh } from '../../models/kit.js';
 import { pushBlockModel } from '../../models/props.js';
 import { barsModel, bossDoorModel, colorDoorModel, switchModel, tabletModel, portalModel } from '../../models/d1/props.js';
@@ -426,6 +434,38 @@ registerTile('dungeon', 'c', {
   onPush: (ctx) => openChest(ctx),
 });
 registerTile('dungeon', 'h', { name: 'chest-spot', driven: 'room', build: (ctx) => fineFloor(ctx) }); // floor where the room's chest appears
+
+// ---------------------------------------------------------------- secrets (fun audit: a secret per
+// screen). A cracked wall is built exactly like any other wall block (buildWall handles wherever it
+// stands in the room, boundary or not), so it hides in plain sight; a bomb clears it to 'y', a
+// doorway the room's own `warps` table sends wherever it likes (usually a one-room vault off the
+// dungeon's free columns, the way the boss arena sits off its own).
+registerTile('dungeon', 'z', {
+  name: 'cracked-wall',
+  solid: true,
+  height: 2 * BPT,
+  becomes: 'y',
+  build: (ctx) => buildWall(ctx),
+  prop(ctx) {
+    const obj = new THREE.Group();
+    obj.position.set(ctx.cx, GROUND_Y, ctx.cz);
+    revealGlint(ctx, obj, 1.6);
+    return obj;
+  },
+  onBomb(ctx) {
+    const { world, tx, tz, def } = ctx;
+    if (!world.setTile(tx, tz, def.becomes, { persist: true, reason: 'bomb-wall' })) return false;
+    revealBurst(tx, tz, [0x9a8866, 0x6a5a44, 0xc8b898]);
+    emit('secret-found', { kind: 'bomb-wall', tx, tz });
+    return true;
+  },
+});
+registerTile('dungeon', 'y', {
+  name: 'revealed-passage',
+  doorway: true,
+  onEnter: enterWarp,
+  build: (ctx) => fineFloor(ctx),
+});
 
 // ---------------------------------------------------------------- room rules
 // A key that drops once per room (clear, switch, puzzle).

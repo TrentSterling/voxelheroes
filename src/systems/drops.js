@@ -16,8 +16,9 @@
 //   registerDropTable('pack-a', [{ chance: 0.2, type: 'heart' }, { chance: 0.1, type: 'arrows-5', when: () => hasItem('bow'), else: 'coin-1' }]);
 //   rollDrop('pack-a', x, z)   -> the type spawned, or null
 //
-// Only foes-overworld changes these tables; other streams do not addDrop
-// to the spec's packs.
+// Only foes-overworld changes what drops in a pack (which type, which foe);
+// this file (economy lane) owns what those drops pay in coins, and adds
+// 'secret-stash' for the secrets lane's hidden finds.
 import { state } from '../core/state.js';
 import { random } from '../core/random.js';
 import { spawn } from '../entities/manager.js';
@@ -46,10 +47,16 @@ export const DROP_TABLES = {
 // The spec's packs (gameplay spec 8.7): [roll, [type, weight, when?]...].
 // Arrows and bombs drop only for a hero who owns the bow or bombs; otherwise
 // their weight goes to coin-1.
+//
+// pack-a's coin-1/coin-10 split (economy lane, fun audit: 18 coins from 42
+// kills): the old 40/10 split paid 0.75 coins per kill on average (roll 0.5,
+// weight/100, times value, plus the arrows/bombs overflow to coin-1 before
+// either is owned); the 5/45 split below pays about 2.3, roughly tripling
+// foe income, at the same 30/10/5/5 heart/magic/arrows/bombs odds.
 const ownsBow = () => hasItem('bow');
 const ownsBombs = () => hasItem('bombs');
 const PACKS = {
-  'pack-a': [0.5, [['heart', 30], ['coin-1', 40], ['coin-10', 10], ['magic', 10], ['arrows-5', 5, ownsBow], ['bomb-1', 5, ownsBombs]]],
+  'pack-a': [0.5, [['heart', 30], ['coin-1', 5], ['coin-10', 45], ['magic', 10], ['arrows-5', 5, ownsBow], ['bomb-1', 5, ownsBombs]]],
   'pack-b': [0.6, [['arrows-5', 30, ownsBow], ['coin-1', 25], ['heart', 25], ['coin-10', 20]]],
   'pack-c': [1.0, [['magic', 100]]],
   'pack-d': [0.6, [['coin-10', 40], ['heart', 30], ['magic', 20], ['coin-100', 10]]],
@@ -74,6 +81,13 @@ for (const [name, pack] of Object.entries(PACKS)) if (name !== 'bush') registerD
 // 'bush' keeps M1's table until the overworld's bushes move to the spec's
 // pack (the gate scenarios cut M1 bushes); the pack is here for them.
 registerDropTable('bush-pack', packTable(PACKS.bush));
+
+// A generous, always-hits coin table for hidden finds (fun audit: "screens
+// are empty, no bomb walls or hidden stairs"): the secrets lane can point a
+// bush, pot or crack behind a bomb wall at rollDrop('secret-stash', x, z) for
+// a stash that pays off finding it (about 31 coins on average, weighted to
+// the high denominations).
+registerDropTable('secret-stash', packTable([1.0, [['coin-100', 25], ['coin-10', 55], ['coin-1', 20]]]));
 
 // Roll a table at (x, z); spawns the drop and returns its type, or null.
 export function rollDrop(table, x, z) {

@@ -49,6 +49,7 @@ export function createLook({ renderer, scene, camera }) {
     if (!parent) throw new Error(`registerLighting("${name}"): unknown base look "${base}"`);
     LIGHTING[name] = mergeLook(parent, fromLegacy(rest));
     if (lookName === name) applyLook(name, true);
+    warmEnvironments(); // content can register a look at any time, not only at boot
     return LIGHTING[name];
   }
 
@@ -252,6 +253,42 @@ export function createLook({ renderer, scene, camera }) {
     lastFrame = { dof, focusDistance, exposure: exp, path: Q.post ? 'post' : Q.flat ? 'flat' : 'direct', ms: performance.now() - t0 };
   }
 
+  // Every registered look's reflection environment (environment.js's PMREM-prefiltered "orb",
+  // scene.environment) is cached there by value, but only ever built lazily, the moment applyLook()
+  // first wants one it has not seen before. That is a real stall the first time a room's look
+  // differs from the one behind the title: PMREMGenerator.fromScene renders several passes and links
+  // its own blur shader synchronously (no compileAsync path), which a browser with no parallel
+  // shader compile (Firefox) has nothing to hide behind. Built here instead, one look per animation
+  // frame so it never costs a frame of its own: behind the title (warmUp(), called before the player
+  // can reach any room) and again whenever content registers a look afterwards. gradientEnvironment's
+  // own cache (keyed by the env values and sun direction) makes every call after the first for a
+  // given look a no-op, so calling this again and again (every registerLighting) costs nothing once a
+  // look is warm.
+  //
+  // Verified with scripts/perf-stream.mjs (Firefox) that this removes every PMREM/program compile at
+  // the moment a room first switches to the crypt look: 0 new WebGLPrograms link there now, and
+  // look.info().cpuMs for that frame is ~2 ms. Firefox's D1-entry freeze (measured 733-850 ms) still
+  // reproduces after this fix, though: it is a single very long gap between two rAF callbacks, with
+  // no corresponding render or program-link cost that frame, so it is not a look/shader-compile stall
+  // at all; it happens somewhere in the world-build/streaming/meshing side of entering a dungeon
+  // (systems/transitions.js's warp fade, or world/meshing.js's worker pool under headless Firefox),
+  // outside this module. Left to whichever lane owns that path.
+  const envWarmed = new Set();
+  function warmEnvironments() {
+    const names = Object.keys(LIGHTING).filter((n) => LIGHTING[n].env && !envWarmed.has(n));
+    if (!names.length) return;
+    let i = 0;
+    const step = () => {
+      if (i >= names.length) return;
+      const name = names[i++];
+      const L = LIGHTING[name];
+      gradientEnvironment(renderer, L.env, L.lights.sun.dir);
+      envWarmed.add(name);
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
   // Boot warm-up (main.js, behind the title): link every shader program the current scene can
   // predict before the player can act, via KHR_parallel_shader_compile, so neither the first play
   // frame nor the first room whose look differs structurally from the start has to stall to compile.
@@ -279,6 +316,7 @@ export function createLook({ renderer, scene, camera }) {
       scene.remove(m);
       m.geometry.dispose();
     }
+    warmEnvironments();
     return done;
   }
 

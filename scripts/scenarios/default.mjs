@@ -232,7 +232,10 @@ export default async function defaultScenario(t) {
   await t.press('Enter');
   await t.step(1.1);
   s = await t.state();
-  t.expect(s.mode === 'play' && s.screenName === 'Mossbrook Square' && s.hp === s.maxHp, 'Try again: back at the start, Mossbrook Square, with full health');
+  // Respawn near the fall (systems/flow.js continuePoint, a deliberate change: dying used to send
+  // the hero all the way back to the start): the overworld names no entrance of its own, so he gets
+  // up wherever he last walked into it this session, Cairn Ridge, the crypt's own door onto it.
+  t.expect(s.mode === 'play' && s.screenName === 'Cairn Ridge' && s.hp === s.maxHp, 'Try again: back near the fall, on Cairn Ridge, with full health');
   await t.shot('15-try-again');
 
   // ---------------------------------------------------------------- an M1 save

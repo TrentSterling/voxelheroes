@@ -1,6 +1,7 @@
 // Falling: the hero tips over, enemies spin, then the game-over panel offers a
-// fresh start with full health (startGame) at the entrance of the dungeon he
-// fell in, or else at the respawn point.
+// fresh start with full health (startGame) near where he fell: a dungeon's
+// entrance, or else wherever he walked into the area this session
+// (systems/flow.js continuePoint), not the far-off last respawn point.
 import { GROUND_Y } from '../../core/constants.js';
 import { state } from '../../core/state.js';
 import { input } from '../../core/input.js';
@@ -24,10 +25,10 @@ registerMode('dead', {
     if (state.deadT <= PANEL_DELAY) return;
     if (!overlayVisible()) {
       const where = continueScreen()?.name ?? 'the start';
-      const gems = state.gems;
+      const coins = state.coins;
       showOverlay({
         title: 'You fell',
-        msg: `You collected ${gems} gem${gems === 1 ? '' : 's'}. Get back up and try again from the ${where}.`,
+        msg: `You collected ${coins} coin${coins === 1 ? '' : 's'}. Get back up and try again from the ${where}.`,
         button: 'Try again',
         kicker: 'Game over',
         onAction: startGame,

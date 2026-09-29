@@ -6,7 +6,8 @@
 //   heartsOf('Hettie')        -> 0..5
 //   chatLine(npc)             the next line for a repeat conversation (rotates, by hearts)
 //   bark(npc, 'greet')        a line for the speech bubble, or null
-import { defineState, state } from '../core/state.js';
+import { defineState, state, hasFlag } from '../core/state.js';
+import { hour } from './clock.js';
 
 defineState('friends', () => ({}));
 
@@ -110,10 +111,73 @@ export function chatLine(npc) {
 }
 
 export function bark(npc, kind) {
+  if (kind === 'greet') {
+    const ctx = contextGreet(npc);
+    if (ctx) return ctx;
+  }
   const list = (npc.barks?.[kind]) ?? PERSONALITIES[personalityOf(npc)][kind];
   if (!list?.length) return null;
   npc.barkN = (npc.barkN ?? 0) + 1;
   return fill(list[(npc.barkN + (npc.seed ?? 0)) % list.length]);
+}
+
+// ---------------------------------------------------------------- ambient reactions (charm)
+// A greeting that notices the world instead of just the weather: the barrow's warden dead, a fat
+// purse, a blade that has grown, or the golden hour. Checked highest priority first, rolled once
+// per NPC per day so the village does not repeat itself by afternoon, and even then only some of
+// the time, so most hellos stay personal.
+const CONTEXT = [
+  {
+    when: () => hasFlag('boss:d1'),
+    lines: {
+      cheery: 'You did it! The whole valley sleeps easier because of you.',
+      grumpy: 'Heard the barrow went quiet. ...Good. Fine work, I suppose.',
+      gossip: 'Everyone is talking about the barrow! You are the whole conversation.',
+      dreamy: 'I slept without the old dream, the one with the coils. Thank you for that.',
+      worker: 'Barrow is done, they say. One less thing between us and a quiet winter.',
+    },
+  },
+  {
+    when: () => (state.coins ?? 0) >= 100,
+    lines: {
+      cheery: 'Look at that purse! Somebody has been busy.',
+      grumpy: 'Coins jingling like that, you are either very good or very loud. Probably both.',
+      gossip: 'Ooh, listen to those coins! Do tell me where they came from.',
+      dreamy: 'I heard your coins before I saw you. A little song, all their own.',
+      worker: 'That is a fair haul. Spend some of it on something that lasts.',
+    },
+  },
+  {
+    when: () => (state.swords?.owned?.length ?? 0) > 1 || Object.values(state.swords?.bought ?? {}).some((b) => Object.keys(b).length),
+    lines: {
+      cheery: 'That blade of yours has grown since I last saw it!',
+      grumpy: 'Hmph. At least the smith is putting his hours to use on you.',
+      gossip: 'Is that a new edge on your sword? Everyone will want to know where you got it.',
+      dreamy: 'Your blade catches the light differently now. Sharper dreams, maybe.',
+      worker: 'Good steel, that. Keep it fed and it will keep you standing.',
+    },
+  },
+  {
+    when: () => hour() >= 17.5 && hour() < 20,
+    lines: {
+      cheery: 'The evening light always makes the square look kinder.',
+      grumpy: 'Getting dark. Mind the road, or do not, see if I care.',
+      gossip: 'Dusk is the best time to hear things. Everyone talks slower.',
+      dreamy: 'The light goes gold right about now. I could watch it forever.',
+      worker: 'Almost done for the day. My back agrees with the hour.',
+    },
+  },
+];
+
+function contextGreet(npc) {
+  if (!npc.name) return null;
+  const f = friend(npc.name);
+  const today = state.clock?.day ?? 1;
+  if (f.ctxDay === today) return null;
+  const hit = CONTEXT.find((c) => c.when());
+  if (!hit || npc.next() < 0.4) return null;
+  f.ctxDay = today;
+  return fill(hit.lines[personalityOf(npc)] ?? hit.lines.cheery);
 }
 
 export const heartString = (n) => (n > 0 ? ' ' + '♥'.repeat(n) : '');

@@ -43,6 +43,7 @@ registerArea({
   screens: {
     '0,0': {
       name: "West Pasture",
+      // A pair of pots by the fence line (fun audit item 2: every combat screen earns a find).
       rows: [
         'TTTTTTTTTTTTTTTT',
         'TTTT......,,,..T',
@@ -54,7 +55,7 @@ registerArea({
         'T........G......',
         'T......,,.......',
         'T.R....,,....B..',
-        'T..............T',
+        'T..v..........vT',
         'T...B.......,,.T',
         'T.........G....T',
         'TT.............T',
@@ -89,13 +90,15 @@ registerArea({
     },
     '2,0': {
       name: "East Pasture",
+      // A cracked rock among the plain ones (fun audit item 2): a bomb opens it onto Pasture Hollow.
+      warps: { y: { area: 'cave-crownhold-1', screen: [0, 0], x: 6, z: 7.4, yaw: Math.PI } },
       rows: [
         'TTTTTTTTTTTTTTTT',
         'T..,,,......TTTT',
         'T..B.....G....TT',
         'T.............TT',
         'T...RR...,,,...T',
-        'T...R....,,,...T',
+        'T...R.k..,,,...T',
         '...........B...T',
         '......G........T',
         '...............T',
@@ -110,10 +113,11 @@ registerArea({
     },
     '0,1': {
       name: "Old Orchard",
+      // Pots between the trees (fun audit item 2).
       rows: [
         'TTTTTT....TTTTTT',
         'T.T..T..T..T...T',
-        'T..............T',
+        'T..v.......v...T',
         'T.T..T..T..T...T',
         'T......G.......T',
         'T.T..T..T..T...T',
@@ -180,6 +184,9 @@ registerArea({
     },
     '0,2': {
       name: "South Fields",
+      // One bush here is like any other until it is cut (fun audit item 2): hidden stairs down to
+      // Sunken Nook.
+      warps: { j: { area: 'cave-crownhold-2', screen: [0, 0], x: 6, z: 7.4, yaw: Math.PI } },
       rows: [
         'TTTTTT....TTTTTT',
         'T..............T',
@@ -188,7 +195,7 @@ registerArea({
         'T..............T',
         'T.....RR.......T',
         'T......R........',
-        'T.B.............',
+        'T.K.............',
         'T.........G.....',
         'T...............',
         'T...,,,........T',
@@ -201,6 +208,7 @@ registerArea({
     },
     '1,2': {
       name: "Moat Meadow",
+      // Pots past the reeds (fun audit item 2).
       rows: [
         'TTTTTTTTTTTTTTTT',
         'T.~~~~~~~~~~~~.T',
@@ -214,7 +222,7 @@ registerArea({
         '..........G.....',
         'T..............T',
         'T...R.......R..T',
-        'T..............T',
+        'T..v.......v...T',
         'T..............T',
         'T..............T',
         'TTTTTTTTTTTTTTTT',
@@ -222,12 +230,13 @@ registerArea({
     },
     '2,2': {
       name: "Thicket Edge",
+      // Pots in the thicket (fun audit item 2).
       rows: [
         'TTTTTT....TTTTTT',
         'T..............T',
         'T...TT....G....T',
         'T...TT.........T',
-        'T..............T',
+        'T..v.......v...T',
         'T.........B....T',
         '...............T',
         '.....G.........T',
@@ -509,13 +518,14 @@ registerArea({
     '1,0': {
       name: "Buzzing Heath",
       spawns: { G: field(['buzzer', 'buzzer', 'hopper'], [1, 2]) },
+      // Pots in the heather (fun audit item 2).
       rows: [
         'TTTTTTTTTTTTTTTT',
         'T.T..........T.T',
         'T...G..........T',
         'T......,,,.....T',
         'T.R....,,,...G.T',
-        'T..............T',
+        'T..v.......v...T',
         '................',
         'pppppppppppppppp',
         'pppppppppppppppp',
@@ -531,12 +541,14 @@ registerArea({
     '2,0': {
       name: "Stump Wood",
       spawns: { G: field(['stump', 'stump', 'blob'], [1, 2]) },
+      // A cracked rock among the stumps (fun audit item 2): a bomb opens it onto Stump Hollow.
+      warps: { y: { area: 'cave-barrowfield-1', screen: [0, 0], x: 6, z: 7.4, yaw: Math.PI } },
       rows: [
         'TTTTTTTTTTTTTTTT',
         'T.T.T.T.T.T.T..T',
         'T..............T',
         'T.T...G...T.T..T',
-        'T.........T....T',
+        'T........kT....T',
         'T.T.T.T........T',
         '...............T',
         'ppppppp....G...T',
@@ -553,11 +565,12 @@ registerArea({
     '0,1': {
       name: "Leaper Hollow",
       spawns: { G: field(['leaper', 'blob-blue'], [1, 2]) },
+      // Pots by the crossing (fun audit item 2).
       rows: [
         'TTTTTTppppTTTTTT',
         'T.TT..pppp.....T',
         'T.T...pppp..R..T',
-        'T.....pppp.....T',
+        'Tv....pppp...v.T',
         'T.R.....G......T',
         'T............G.T',
         'T........ppppppp',
@@ -574,13 +587,14 @@ registerArea({
     },
     '1,1': {
       name: "Barrow Crossing",
+      chest: 'heart-piece',
       rows: [
         'TTTTTTppppTTTTTT',
         'T.T...pppp...T.T',
         'T.....pppp.....T',
         'T.R...pppp..G..T',
         'T.....pppp.....T',
-        'T.G...pppp.....T',
+        'T.G...pppp...C.T',
         'pppppppppppppppp',
         'pppppppppppppppp',
         '......pppp......',
@@ -595,6 +609,8 @@ registerArea({
     },
     '2,1': {
       name: "Barrow Road",
+      // One bush here hides stairs down to Roadside Nook (fun audit item 2).
+      warps: { j: { area: 'cave-barrowfield-2', screen: [0, 0], x: 6, z: 7.4, yaw: Math.PI } },
       rows: [
         'TTTTTTppppTTTTTT',
         'T.T...pppp...T.T',
@@ -607,7 +623,7 @@ registerArea({
         '................',
         '..R.....B.......',
         'T.........G....T',
-        'T..B...........T',
+        'T..K...........T',
         'T.........TT...T',
         'T....,,...TT...T',
         'T.....pppp.....T',
@@ -617,6 +633,7 @@ registerArea({
     '0,2': {
       name: "Archer Ridge",
       spawns: { G: field(['archer', 'hopper'], [1, 2]) },
+      // Pots along the back wall (fun audit item 2).
       rows: [
         'TTTTTTppppTTTTTT',
         'T.....pppp.....T',
@@ -632,7 +649,7 @@ registerArea({
         'T.........R....T',
         'T.T............T',
         'T......B.......T',
-        'T..............T',
+        'T..v.......v...T',
         'TTTTTTTTTTTTTTTT',
       ],
     },
@@ -664,6 +681,8 @@ registerArea({
       name: "Barrow Meadow",
       spawns: { G: field(['blob', 'buzzer'], [1, 2], { rare: ['treasure-slime'] }) },
       chests: { '8,11': 'heart-piece' },
+      // The unused guardian gets a post (fun audit: a set piece on the heart-piece chest).
+      spawnsAt: { '8,9': { type: 'guardian', wander: 1 } },
       rows: [
         'TTTTTTppppTTTTTT',
         'T.....pppp.....T',
@@ -702,6 +721,7 @@ registerArea({
     '0,0': {
       name: 'Hollow Cave',
       chest: 'heart-piece',
+      spawnsAt: { '5,3': { type: 'guardian', wander: 1 } },
       rows: [
         'WWWWWWWWWWWW',
         'W..........W',

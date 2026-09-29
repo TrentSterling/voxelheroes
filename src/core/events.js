@@ -66,6 +66,9 @@ export const EVENTS = {
   'screen-visited': E('{ key, area, screen }', 'places.js, the first time a screen or room is entered in this save', 'ui (map fill)'),
   warp: E('{ dest }', 'world: transitions.js when a warp starts', 'anyone'),
   'tile-changed': E('{ tx, tz, from, to, screen, reason }', 'world: world.setTile', 'dungeon, overworld'),
+  'world:screen-live': E('{ screen }', "world: systems/streaming.js built(), for a streamed neighbour whose markers are about to spawn (not the hero's own screen, which spawns on room-enter)", 'foe-clears (forgets an expired clear), critters (spawns its ambient life)'),
+  'world:screen-free': E('{ screen }', 'world: systems/streaming.js free(), when a streamed screen leaves the live ring (its people and foes are gone)', 'foe-clears (starts the clear-memory clock), critters (frees its ambient life)'),
+  'world:reset': E('{}', 'world: world.js, a new game or a load starting every screen over', 'systems/streaming.js (its own buckets and populated set), critters'),
   'door-opened': E("{ tx, tz, kind?: 'small' | 'boss' | 'red' | 'blue' | 'green', flag?, room?, side? }", 'world: tilekit unlockDoor (M1 chars); systems/tile-actions.js openKeyDoor; dungeon doors', 'ui (key toast)'),
   'chest-opened': E('{ tx, tz, contents, source? }', 'world: tilekit openChest (M1 chars); systems/tile-actions.js openChest (every new chest)', 'anyone'),
 
