@@ -740,9 +740,8 @@ export default async function foes(t) {
     h.spawn('boss-serpent', 11, 4.5, { dungeon: 'test-foes', refight: true });
     await H.until(() => h.state.mode === 'boss-intro', 240);
     await H.until(() => h.state.mode === 'play', 400);
-    const toastEl = document.getElementById('toast');
     const hint = g.bestiary.getBestiaryEntry('boss-serpent')?.text; // SERPENT_HINT, without importing the module here
-    const hintShown = !!hint && toastEl?.textContent === hint && toastEl.style.opacity === '1';
+    const hintShown = !!hint && g.toast.toastView().text === hint && g.toast.toastView().visible;
     const boss = H.of('boss-serpent')[0];
     const tail = boss.tail();
     await H.until(() => tail.glowing, 200);

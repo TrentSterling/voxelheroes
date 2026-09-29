@@ -207,7 +207,7 @@ export default async function rooms(t) {
   await t.setHp(0);
   await t.step(1.5);
   s = await t.state();
-  const msg = await t.eval(() => document.getElementById('overlay-msg').textContent);
+  const msg = await t.eval(() => window.__voxelHeroes.game.overlay.overlayView().message);
   t.expect(s.mode === 'dead' && s.overlay && msg.includes('Sunken Gate'), `falling in the Pillar Hall: the game-over panel says "${msg}"`);
   await t.press('Enter');
   await t.step(0.2);

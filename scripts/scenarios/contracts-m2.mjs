@@ -1435,14 +1435,14 @@ export default async function contractsM2(t) {
     const P = h.camera.presets;
     const { TUNING } = g.tuning;
     out.presets = [!!P.boss && !!P['boss-intro'], P.boss?.selectable === false, P.boss?.height === TUNING.camera.bossHeight, P['boss-intro']?.height < P.boss?.height];
-    out.regions = ['vitals', 'counters', 'slots', 'minimap', 'prompts', 'toast'].filter((k) => !(k in g.hud.REGIONS));
+    out.regions = ['vitals', 'counters', 'center', 'slots', 'system'].filter((k) => !(k in g.hud.REGIONS));
     return out;
   });
   const chest = await last('chest-opened');
   t.expect(r.contents === 'coins' && r.first && !r.second && r.open && r.coins === 1, 'openChest opens once, by its flag, and grants what the screen lists');
   t.expect(chest?.tx === 900 && chest?.contents === 'coins' && chest?.source === 'probe-chest', "'chest-opened' names the contents and the source");
   t.expect(r.presets.every(Boolean), "the 'boss' and 'boss-intro' camera presets are registered once, for every stream");
-  t.expect(r.regions.length === 0, `the HUD regions of the art bible exist (missing: ${r.regions.join(', ') || 'none'})`);
+  t.expect(r.regions.length === 0, `the HUD regions exist (missing: ${r.regions.join(', ') || 'none'})`);
 
   // ---------------------------------------------------------------- records and events
   r = await t.eval(() => {

@@ -1,9 +1,14 @@
-// The Settings panel: the HUD's Settings button opens it (and pauses play); Close, Esc or a click
-// outside closes it. Each row edits one option in game/settings.js through setSetting, so the
-// choices are saved for the browser and apply at once.
+// The Settings panel, drawn in the UI canvas: the HUD's Settings button (or O) opens it as a mode
+// over play (gameplay stops on its own, like the map); Close, Esc/Enter/P or a click outside
+// closes it. Each row edits one option in game/settings.js through setSetting, so the choices are
+// saved for the browser and apply at once. Rows cycle with < > (left/right, or a click on either
+// half of the value); the level rows are sliders you drag or nudge with left/right. Up/down picks
+// a row.
+import { input } from '../core/input.js';
 import { state } from '../core/state.js';
+import { registerMode, pushMode, popMode } from '../core/modes.js';
 import { setSetting } from '../game/settings.js';
-import { pauseGame, resumeGame } from '../systems/flow.js';
+import { registerUiPart, requestUi, COLORS } from './canvas/gfx.js';
 
 const ROWS = [
   { key: 'look', label: 'Quality', options: [['auto', 'Auto'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']] },
@@ -19,69 +24,122 @@ const ROWS = [
   { key: 'sfx', label: 'Effects', range: [0, 1, 0.05] },
 ];
 
-let root = null;
-let pausedByUs = false;
-
-function build() {
-  root = document.createElement('div');
-  root.id = 'settings';
-  root.hidden = true;
-  root.innerHTML = `<div class="settings-panel" role="dialog" aria-label="Settings">
-    <h2>Settings</h2><div class="settings-rows"></div>
-    <button type="button" class="settings-close">Close</button></div>`;
-  const rows = root.querySelector('.settings-rows');
-  for (const R of ROWS) {
-    const row = document.createElement('label');
-    row.className = 'settings-row';
-    row.innerHTML = `<span>${R.label}</span>`;
-    let el;
-    if (R.range) {
-      el = document.createElement('input');
-      el.type = 'range';
-      [el.min, el.max, el.step] = R.range;
-      el.addEventListener('input', () => setSetting(R.key, Number(el.value)));
-    } else {
-      el = document.createElement('select');
-      R.options.forEach(([v, text], i) => el.add(new Option(text, String(i))));
-      el.addEventListener('change', () => setSetting(R.key, R.options[Number(el.value)][0]));
-    }
-    el.dataset.key = R.key;
-    row.append(el);
-    rows.append(row);
-  }
-  root.querySelector('.settings-close').addEventListener('click', closeSettings);
-  root.addEventListener('click', (e) => e.target === root && closeSettings());
-  root.addEventListener('keydown', (e) => {
-    e.stopPropagation(); // arrows and Enter drive the controls, not the hero
-    if (e.key === 'Escape') closeSettings();
-  });
-  root.addEventListener('keyup', (e) => e.stopPropagation());
-  document.getElementById('app')?.append(root) ?? document.body.append(root);
-}
-
-function sync() {
-  for (const R of ROWS) {
-    const el = root.querySelector(`[data-key="${R.key}"]`);
-    const v = state.settings[R.key];
-    if (R.range) el.value = String(v);
-    else el.value = String(Math.max(0, R.options.findIndex(([o]) => o === v)));
-  }
-}
+let open = false;
+let sel = 0; // the picked row; ROWS.length is the Close button
 
 export function openSettings() {
-  if (!root) build();
-  pausedByUs = state.mode === 'play';
-  if (pausedByUs) pauseGame();
-  sync();
-  root.hidden = false;
-  root.querySelector('select, input')?.focus();
+  if (state.mode !== 'settings') pushMode('settings');
 }
-
 export function closeSettings() {
-  if (!root || root.hidden) return;
-  root.hidden = true;
-  if (pausedByUs) resumeGame();
-  pausedByUs = false;
+  if (state.mode === 'settings') popMode();
+}
+export const settingsOpen = () => open;
+
+registerMode('settings', {
+  enter() {
+    open = true;
+    sel = 0;
+    requestUi();
+  },
+  exit() {
+    open = false;
+    requestUi();
+  },
+  update() {
+    if (input.pressed('menu') || input.pressed('cancel') || input.pressed('settings')) return void closeSettings();
+    if (input.pressed('up')) sel = (sel + ROWS.length) % (ROWS.length + 1);
+    if (input.pressed('down')) sel = (sel + 1) % (ROWS.length + 1);
+    const dir = (input.pressed('right') ? 1 : 0) - (input.pressed('left') ? 1 : 0);
+    if (sel === ROWS.length) {
+      if (input.pressed('confirm')) closeSettings();
+    } else if (dir || input.pressed('confirm')) nudge(ROWS[sel], dir || 1);
+    if (input.pressed('up') || input.pressed('down') || dir) requestUi();
+  },
+});
+
+const optionIndex = (R) => Math.max(0, R.options.findIndex(([o]) => o === state.settings[R.key]));
+
+const snap = (v, [lo, hi, step]) => Math.round((Math.min(hi, Math.max(lo, v)) - lo) / step) * step + lo;
+
+// One step along a row: to the next or previous choice (wrapping), or a tenth along a slider.
+function nudge(R, dir) {
+  if (R.range) {
+    const [lo, hi, step] = R.range;
+    setSetting(R.key, snap(state.settings[R.key] + dir * Math.max(step, (hi - lo) / 10), R.range));
+  } else {
+    setSetting(R.key, R.options[(optionIndex(R) + dir + R.options.length) % R.options.length][0]);
+  }
+  requestUi();
 }
 
-export const settingsOpen = () => !!root && !root.hidden;
+// The rows and their values, for tests.
+export const settingsView = () => ({
+  open,
+  sel,
+  rows: ROWS.map((R) => ({ key: R.key, value: state.settings[R.key], text: R.range ? null : R.options[optionIndex(R)][1] })),
+});
+
+// ---------------------------------------------------------------- drawing
+const ROW_H = 13;
+const COL_W = 176;
+const CTRL_W = 92;
+
+function drawRow(g, R, i, x, y) {
+  const on = sel === i;
+  if (on) g.rect(x - 4, y - 2, COL_W + 4, ROW_H, 'rgba(243, 236, 210, 0.09)');
+  if (on) g.text('▶', x - 3, y, { color: COLORS.gold });
+  g.text(R.label, x + 6, y, { color: on ? COLORS.ink : COLORS.muted });
+  const cx = x + COL_W - CTRL_W - 2;
+  if (R.range) {
+    const [lo, hi] = R.range;
+    const f = (state.settings[R.key] - lo) / (hi - lo);
+    g.rect(cx, y + 1, CTRL_W, 5, '#1a2e26');
+    g.rect(cx + 1, y + 2, Math.round((CTRL_W - 2) * f), 3, COLORS.gold);
+    g.rect(cx + Math.round((CTRL_W - 3) * f), y - 1, 3, 9, COLORS.ink);
+    g.hit(`setting-${R.key}`, cx - 3, y - 3, CTRL_W + 6, ROW_H, null, 'ew-resize', (px) => {
+      setSetting(R.key, snap(lo + Math.min(1, Math.max(0, (px - cx) / CTRL_W)) * (hi - lo), R.range));
+      sel = i;
+    });
+  } else {
+    const text = R.options[optionIndex(R)][1];
+    g.text('<', cx, y, { color: COLORS.gold });
+    g.text('>', cx + CTRL_W - 5, y, { color: COLORS.gold });
+    g.text(text, cx + CTRL_W / 2, y, { align: 'center', color: COLORS.ink });
+    g.hit(`setting-${R.key}-prev`, cx - 3, y - 3, CTRL_W / 2 + 3, ROW_H, () => ((sel = i), nudge(R, -1)));
+    g.hit(`setting-${R.key}-next`, cx + CTRL_W / 2, y - 3, CTRL_W / 2 + 3, ROW_H, () => ((sel = i), nudge(R, 1)));
+  }
+}
+
+function drawSettings(g) {
+  g.rect(0, 0, g.w, g.h, 'rgba(8, 17, 13, 0.7)');
+  g.hit('settings-scrim', 0, 0, g.w, g.h, () => closeSettings(), 'default');
+  // as many columns as the view is short of rows
+  const avail = g.h - 16 - 22 - 30;
+  const perCol = Math.max(4, Math.min(ROWS.length, Math.floor(avail / ROW_H)));
+  const cols = Math.ceil(ROWS.length / perCol);
+  const pw = cols * COL_W + (cols - 1) * 14 + 28;
+  const ph = 14 + 20 + perCol * ROW_H + 10 + 17 + 14;
+  const px = Math.round((g.w - pw) / 2);
+  const py = Math.max(6, Math.round((g.h - ph) / 2));
+  g.panel(px, py, pw, ph, { accent: true });
+  g.hit('settings-panel', px, py, pw, ph, () => {}, 'default');
+  g.text('Settings', px + 14, py + 12, { color: COLORS.gold, tracking: 1 });
+  const top = py + 14 + 20;
+  ROWS.forEach((R, i) => {
+    const c = Math.floor(i / perCol);
+    drawRow(g, R, i, px + 18 + c * (COL_W + 14), top + (i % perCol) * ROW_H);
+  });
+  const by = top + perCol * ROW_H + 10;
+  const w = g.measure('Close') + 20;
+  if (sel === ROWS.length) g.rect(px + pw - 12 - w - 3, by - 3, w + 6, 23, 'rgba(243, 236, 210, 0.16)');
+  g.primary('settings-close', 'Close', px + pw - 12 - w, by, () => closeSettings());
+}
+
+registerUiPart({
+  id: 'settings',
+  order: 80,
+  key: () => (open ? `${sel}|${ROWS.map((R) => state.settings[R.key]).join(',')}` : '-'),
+  draw(g) {
+    if (open) drawSettings(g);
+  },
+});

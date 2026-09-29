@@ -111,7 +111,7 @@ export default async function (t) {
       h.input.tap('sword');
       for (let i = 0; i < 10; i++) await h.tick();
       const mode = h.state.mode;
-      const text = document.querySelector('#dialog')?.textContent ?? '';
+      const text = h.game.dialog.dialogView()?.text ?? '';
       for (let i = 0; i < 300 && h.state.mode === 'dialog'; i++) {
         if (i % 20 === 0) h.input.tap('confirm');
         await h.tick();

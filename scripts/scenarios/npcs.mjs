@@ -64,7 +64,7 @@ export default async function (t) {
       n.onInteract(h.player);
       for (let i = 0; i < 400 && h.state.mode === 'dialog'; i++) {
         if (i % 20 === 0) h.input.tap('confirm');
-        speakers.push(document.querySelector('#dialog, .dialog')?.textContent?.slice(0, 40) ?? '');
+        speakers.push(h.game.dialog.dialogView()?.text?.slice(0, 40) ?? '');
         await h.tick();
       }
       for (let i = 0; i < 20; i++) await h.tick();
@@ -160,10 +160,10 @@ export default async function (t) {
   t.expect(w.none || w.gained === 1, `cutting a flower tile picks one wildflower, not two from the same tile (${JSON.stringify(w)})`);
 
   // Ghost markers (entities/manager.js removeEntity, entities/npc.js onRemove): a bark or emote
-  // bubble is HTML laid over the view, not scene geometry, so it must be disposed the moment its
+  // bubble is drawn over the view in the UI canvas, not scene geometry, so it must be disposed the moment its
   // NPC leaves the live ring, however it leaves (reapBucket skips remove() and calls onRemove()
   // straight through the manager). Give Hettie a bubble, push her out of the ring, and check the
-  // #speech overlay does not keep her nodes around forever.
+  // canvas does not keep drawing her bubbles.
   await t.teleport('Mossbrook Square', 8, 4.5);
   await t.step(0.2);
   const ghostBefore = await t.eval(async () => {
@@ -172,18 +172,18 @@ export default async function (t) {
     n.bubble.say('Testing');
     n.bubble.emote('!', 9999);
     await h.tick();
-    return { nodes: document.getElementById('speech')?.children.length ?? 0, resident: !!n && !n.removed };
+    return { nodes: h.game.npcFx.bubblesShown(), resident: !!n && !n.removed };
   });
-  t.expect(ghostBefore.resident && ghostBefore.nodes > 0, `Hettie's bark bubble is in the DOM while she is live (${ghostBefore.nodes} nodes)`);
+  t.expect(ghostBefore.resident && ghostBefore.nodes > 0, `Hettie's bark bubble is on show while she is live (${ghostBefore.nodes} nodes)`);
 
   await t.teleport('ow-3-2:1,1', 8, 8); // Barrow Crossing: a full area away, Mossbrook Square leaves the live ring
   await t.step(2);
   const ghostAfter = await t.eval(() => {
     const h = window.__voxelHeroes;
-    return { nodes: document.getElementById('speech')?.children.length ?? 0, resident: h.entities.some((e) => e.name === 'Hettie') };
+    return { nodes: h.game.npcFx.bubblesShown(), resident: h.entities.some((e) => e.name === 'Hettie') };
   });
   t.expect(!ghostAfter.resident, 'Hettie is no longer in the live ring once Mossbrook Square is reaped');
-  t.expect(ghostAfter.nodes === 0, `and her bark/emote nodes do not linger in #speech forever (${ghostAfter.nodes} left)`);
+  t.expect(ghostAfter.nodes === 0, `and her bark/emote bubbles are not drawn forever (${ghostAfter.nodes} left)`);
   await t.teleport('Mossbrook Square', 8, 4.5);
   await t.step(0.3);
 

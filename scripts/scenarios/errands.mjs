@@ -25,7 +25,7 @@ export default async function (t) {
     const h = window.__voxelHeroes;
     const n = h.entities.find((e) => e.name === 'Hettie');
     for (let i = 0; i < 15; i++) await h.tick();
-    return n.bubble.emoteEl?.textContent ?? null;
+    return n.bubble.mark;
   });
   t.expect(offer === '!', `Hettie shows "!" with an errand to offer (${offer})`);
   await t.shot('errands-01-offer');
@@ -39,7 +39,7 @@ export default async function (t) {
       await talk(h, 'Hettie');
       const n = h.entities.find((e) => e.name === 'Hettie');
       for (let i = 0; i < 15; i++) await h.tick();
-      return { status: h.state.errands?.Hettie?.status, mode: h.state.mode, mark: n.bubble.emoteEl?.textContent ?? null };
+      return { status: h.state.errands?.Hettie?.status, mode: h.state.mode, mark: n.bubble.mark };
     },
     TALK_SRC
   );
@@ -116,7 +116,7 @@ export default async function (t) {
     const h = window.__voxelHeroes;
     const n = h.entities.find((e) => e.name === 'Guard Oswin');
     for (let i = 0; i < 15; i++) await h.tick();
-    return n.bubble.emoteEl?.textContent ?? null;
+    return n.bubble.mark;
   });
   t.expect(oswinMark === '!', `Guard Oswin shows "!" for the delivery waiting on him (${oswinMark})`);
 
@@ -144,7 +144,7 @@ export default async function (t) {
     const h = window.__voxelHeroes;
     const n = h.entities.find((e) => e.name === 'Rook');
     for (let i = 0; i < 15; i++) await h.tick();
-    return n?.bubble.emoteEl?.textContent ?? null;
+    return n?.bubble.mark ?? null;
   });
   t.expect(rookOffer === '!', `Rook shows "!" with an errand to offer (${rookOffer})`);
 

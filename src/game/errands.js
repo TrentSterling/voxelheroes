@@ -211,7 +211,7 @@ function markerFor(npc) {
 // itself the moment a greet bark or a delivered errand clears it, each return popping in fresh.
 export function tickErrandMarker(npc) {
   const sym = markerFor(npc);
-  const showing = npc.bubble.e && npc.bubble.emoteEl?.textContent === sym;
+  const showing = npc.bubble.mark === sym;
   if (sym && !showing) npc.bubble.emote(sym, 9999);
   else if (!sym && npc._errandMarked) npc.bubble.e = null;
   npc._errandMarked = !!sym;

@@ -123,7 +123,7 @@ stream adds. Paths in `src/` unless they start with a top-level folder.
 |---|---|---|
 | `.gitignore`, `package.json`, `package-lock.json`, `vite.config.js` | contracts | no package changes in M2 |
 | `README.md` | contracts | its controls table follows section 7 |
-| `index.html` | ui | keep the ids `core/input.js` and `ui/hud.js` bind: `#touch`, `#stick`, `#knob`, the `TOUCH_BUTTONS` ids, `#mute`, `#hud-*`, `#overlay*`, `#start` |
+| `index.html` | ui | keep the ids `core/input.js` binds: `#touch`, `#stick`, `#knob`, the `TOUCH_BUTTONS` ids; `#fade` for `ui/overlay.js`. Everything else in the interface is drawn in the UI canvas (`src/ui/canvas/`) |
 | `docs/PLAN.md`, `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md` | contracts | streams put notes in file headers and in their report; M3 folds them into ARCHITECTURE.md |
 | `scripts/playtest.mjs`, `scripts/build-artifact.mjs` | contracts | |
 | `scripts/lib/bot.js` | world | one exception: the hero may change `fight()` and `steer()` to the spec's controls (spec 7.3: close in until the foe is in line on one axis, turn with `hero.faceToward`, then press the sword; stop within one 8-way step), and nothing else in the file, if world has not done it first |
@@ -1496,7 +1496,7 @@ dies (`player-revived`). The rest:
 | `systems/drops.js` | entries with `else`; a type nobody has registered is skipped with one warning |
 | `systems/keys.js` | `keys-changed` |
 | `items/registry.js`, `items/inventory.js` | item `kind` and `model`; the quick ring (`setOnRing`, `ringItems`) |
-| `ui/dialog.js`, `ui/dialog.css` | text speed and large text options, `{hero}`, `ask`, wrapping choices, `dialogView` |
+| `ui/dialog.js` | text speed and large text options, `{hero}`, `ask`, wrapping choices, `dialogView` |
 | `ui/hud.js` | mute through the `muted` option, `muteLabel`; the art bible's region names (`REGIONS`, with M1's as aliases) |
 | `ui/overlay.js` | `overlayView` |
 | `content.js` | globs for the M2 content folders |

@@ -33,11 +33,11 @@ Contents: [Module map](#module-map) ·
 ## Module map
 
 ```
-index.html              HUD regions, overlay panel, touch controls (markup only)
+index.html              overlay panel, touch controls (markup only)
 src/
   main.js               bootstrap: mount, build the world, start the loop (small, rarely edited)
   content.js            eager import.meta.glob of every content folder below
-  style.css             base page, HUD, overlay and touch styles
+  style.css             base page, overlay and touch styles
   core/                 engine pieces with no game content
     constants.js        SCREEN_W 16, SCREEN_H 11 (the default screen), R 8 (terrain voxels per tile), TV, GROUND_Y, DEG
     renderer.js         WebGL renderer, scene, lights; LIGHTING presets + registerLighting
@@ -103,9 +103,10 @@ src/
     inventory.js        owned items, ammo, selection, useSelectedItem; saved state
   ui/
     dom.js, banner.js, overlay.js   helpers, the big screen-name banner, the centred panel + fade
-    hud.js              HUD WIDGET REGISTRY (regions, order) + hearts, area name, gems, keys
+    canvas/             the in-canvas UI: gfx.js (layer, hit regions), font.js (pixel font), sprites.js
+    hud.js              HUD WIDGET REGISTRY (regions, order) + hearts, coins, keys, area, clock, buttons
     hud/item-slot.js    B item slot (hidden while the inventory is empty)
-    dialog.js           showDialog(lines, opts) -> Promise, 'dialog' mode
+    dialog.js           showDialog(lines, opts) -> Promise, 'dialog' mode, drawn in canvas
     screens/            title.js, pause.js ('paused'), gameover.js ('dead')
   debug/testhook.js     window.__voxelHeroes
 scripts/
@@ -796,27 +797,38 @@ stop while paused, in dialogs and during slides. Use a hook instead of
 editing `flow.js` or `player.js` for hotkeys, lifting and throwing, or
 anything else that must act every play tick whether or not an item is owned.
 
-### HUD widgets: `src/ui/hud.js`
+### The canvas UI and HUD widgets: `src/ui/canvas/`, `src/ui/hud.js`
+
+The interface is drawn by the game, not the DOM: one canvas over the view
+(`ui/canvas/gfx.js`), immediate mode, our own 5x7 pixel font (`font.js`) and
+outlined sprites (`sprites.js`), at whole device pixels (about two CSS pixels
+per logical pixel). A "part" is one piece of interface (`registerUiPart({ id,
+order, key, busy, draw(g) })`); the layer repaints only when a key changed, a
+part is `busy` (animating) or `requestUi()` was called. `g` is the drawing kit:
+`text`, `panel`, `button`, `sprite`, `rect`, `wrap`, `fit`, `measure`, and
+`hit(id, x, y, w, h, onPress)` for anything that answers a tap. The HUD and the
+dialog box are parts; the title panel, banner, toasts, speech and map still
+move over one piece at a time (docs/ui-canvas.md is the plan).
 
 ```js
 registerHudWidget({
   id: 'bombs',
-  region: 'right',                 // 'left' | 'center' | 'right' (default 'right')
+  region: 'counters',              // vitals | counters | center | system | slots (default 'slots')
   order: 25,                       // place in the region, low first (default 50)
-  mount({ host }) { host.append(el('span', { class: 'hud-bombs' })); },
-  key: (state) => String(...),     // redraw only when this string changes
-  render(state) {},
+  key: (state) => String(...),     // the widget's redraw key
+  render(state) {},                // optional, when the key changes (popHud('bombs'))
+  measure(g, state, maxW) { return [w, h]; },   // logical pixels, or null to hide
+  draw(g, state, x, y, w, h) { g.text('x3', x, y); },
 });
 ```
 
-Each widget gets its own `host` element in its region, placed by `order` and
-then by id, so the HUD reads the same whatever order the files load in. A
-widget only fills its host and never prepends or appends into a region
-itself. Hosts are `display: contents`, so the widget's elements line up in the
-region's row. `mount` also gets `{ region, hud }`. Orders in use: left: hearts
-10; center: area name 10; right: B item slot 20, gems 30, keys 40 (the Sound
-button stays last). Widgets are redrawn from state every rendered frame when
-their key changes, so game code never calls "update HUD".
+Regions are rows that flow from a side (vitals and counters: top left, rows
+one and two; system and slots: top right, rows one and two) and a stack at the
+top centre (center). Inside a region widgets sit by `order`, then id. Orders in
+use: vitals: hearts 10; counters: coins 10, keys 20; center: area name 10, Next:
+line 20; system: Settings 10, Sound 20; slots: B item slot 20, clock 30. Tests
+read `hud.hudView()` (where every widget sat after the last draw) and
+`ui.uiView()` (the hit regions; `ui.pressUi(id)` taps one), never pixels.
 
 ### Grants: `src/systems/grants.js`
 
@@ -1601,8 +1613,8 @@ its helpers are async and step with `__voxelHeroes.tick()`.
 needs: `clearFoes(t)` (take the enemies off the screen) and
 `pushUntilMoving(t, key)` (hold a key until a slide or a fade starts).
 
-Gotchas: HUD widgets redraw when a frame renders, so call
-`__voxelHeroes.render()` before reading HUD elements (`shot()` does). B is
+Gotchas: the canvas UI repaints when a frame renders, so call
+`__voxelHeroes.render()` before reading `hudView()` or pressing a hit region (`shot()` does). B is
 ignored while the sword is mid-swing, and the hero blinks for a second after
 starting or getting up, so step past it before a screenshot that should show
 him. Inside `t.eval`, step with `await __voxelHeroes.step()` or `tick()`, not
@@ -1709,9 +1721,9 @@ changes:
 - **Phones.** The title and pause panel fits a 390 px wide screen (it was
   20 px too wide), and the single-file build keeps the viewport meta tag, so
   a phone lays it out at device width.
-- **HUD markup.** Hearts, the area name and the right-hand group sit in
-  three region elements (`#hud-left`, `#hud-center`, `#hud-right`). It looks
-  the same.
+- **HUD markup.** Gone: the HUD, dialog, banner, toast, title/pause panel, map,
+  settings, loading card and speech bubbles are all drawn in the UI canvas
+  (`src/ui/canvas/`); only the touch pad, the fade and the SEO About block are DOM.
 
 ## Known quirks kept from the prototype
 

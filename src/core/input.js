@@ -35,7 +35,7 @@ import { TUNING, TICK } from './tuning.js';
 
 // Actions and where they are read. docs/CONTRACTS.md ("Input") explains each.
 export const ACTIONS = {
-  play: ['up', 'down', 'left', 'right', 'sword', 'item', 'dash', 'guard', 'map', 'inventory', 'prev-item', 'next-item', 'menu', 'mute'],
+  play: ['up', 'down', 'left', 'right', 'sword', 'item', 'dash', 'guard', 'map', 'inventory', 'prev-item', 'next-item', 'menu', 'mute', 'settings'],
   menu: ['up', 'down', 'left', 'right', 'confirm', 'cancel', 'prev-item', 'next-item'],
 };
 
@@ -53,6 +53,7 @@ const DEFAULT_KEYS = {
   confirm: ['KeyJ', 'KeyZ', 'Enter', 'Space'],
   cancel: ['KeyK', 'KeyX', 'Escape', 'Backspace'],
   mute: ['KeyN'],
+  settings: ['KeyO'],
   up: ['ArrowUp', 'KeyW'],
   down: ['ArrowDown', 'KeyS'],
   left: ['ArrowLeft', 'KeyA'],

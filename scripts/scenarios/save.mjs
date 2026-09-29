@@ -47,7 +47,7 @@ export default async function save(t) {
   await t.step(0.3);
   ov = await t.eval(() => window.__voxelHeroes.game.overlay.overlayView());
   t.expect(ov.secondary === 'New adventure', 'back at the title, the same save is still offered');
-  await t.eval(() => document.getElementById('start-secondary').click());
+  await t.eval(() => { const h = window.__voxelHeroes; h.render(); return h.game.ui.pressUi('overlay-secondary'); });
   await t.step(0.5);
   s = await t.state();
   t.expect(s.mode === 'play' && s.screenName === 'Mossbrook Square' && s.gems === 0, `New adventure starts fresh in Mossbrook Square, ignoring the save (${s.screenName}, ${s.gems} coins)`);

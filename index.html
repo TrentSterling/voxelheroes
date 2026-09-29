@@ -25,59 +25,7 @@
     <!-- body:start -->
     <div id="app">
       <div id="game"></div>
-      <header id="hud">
-        <div id="hud-left" class="hud-region">
-          <div id="hearts" aria-label="Health"></div>
-        </div>
-        <div id="hud-center" class="hud-region">
-          <div id="area">Crossroads</div>
-        </div>
-        <div id="hud-right" class="hud-region">
-          <div id="purse" aria-label="Gems">
-            <svg viewBox="0 0 5 9" width="12" height="22" shape-rendering="crispEdges" aria-hidden="true">
-              <path fill="#2fd36b" d="M2 0h1v1h1v2h1v3h-1v2h-1v1h-1v-1h-1v-2h-1v-3h1v-2h1z" />
-              <path fill="#bff5d3" d="M2 1h1v1h-1zM1 3h1v3h-1z" />
-            </svg>
-            <span id="gems">0</span>
-          </div>
-          <div id="keys" aria-label="Small keys" hidden>
-            <svg viewBox="0 0 5 9" width="12" height="22" shape-rendering="crispEdges" aria-hidden="true">
-              <path fill="#f1c232" d="M1 0h3v1h1v3h-1v1h-1v1h1v1h-1v1h1v1h-2v-5h-1v-1h-1v-3h1z" />
-              <path fill="#10201a" d="M2 1h1v2h-1z" />
-            </svg>
-            <span id="key-count">0</span>
-          </div>
-          <button id="settings-btn" type="button">Settings</button>
-          <button id="mute" type="button" aria-pressed="false">Sound on</button>
-        </div>
-      </header>
-      <div id="banner" hidden></div>
       <div id="fade">
-        <div id="load-card" hidden>
-          <img id="load-card-art" alt="" hidden />
-          <p id="load-card-title"></p>
-          <p id="load-card-text"></p>
-        </div>
-      </div>
-      <div id="overlay">
-        <div class="panel">
-          <p class="kicker">An overworld made of cubes</p>
-          <h1 id="overlay-title">Voxel Heroes</h1>
-          <p id="overlay-msg">The old barrow west of the village has woken, and worse things crawl out of it every night. King Aldric has sent for you: find him at Crownhold, south past the gate, then head west to Barrowfield and see what sleeps in the Old Barrow.</p>
-          <div class="title-actions">
-            <button id="start" type="button">Start adventure</button>
-            <button id="start-secondary" type="button" hidden></button>
-          </div>
-          <dl class="controls">
-            <div><dt>Move</dt><dd>WASD or arrows</dd></div>
-            <div><dt>Sword</dt><dd>J or Z</dd></div>
-            <div><dt>Item</dt><dd>K or X</dd></div>
-            <div><dt>Switch item</dt><dd>Q or E</dd></div>
-            <div><dt>Dash</dt><dd>Space</dd></div>
-            <div><dt>Guard</dt><dd>Hold Shift</dd></div>
-            <div><dt>Pause</dt><dd>Enter, Esc or P</dd></div>
-          </dl>
-        </div>
       </div>
       <div id="touch" hidden>
         <div id="stick"><div id="knob"></div></div>

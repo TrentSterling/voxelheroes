@@ -78,7 +78,6 @@ function tint(h) {
 }
 
 let overlay = null;
-let label = null;
 let lastPaint = -1;
 function paintSoon() {
   const m = Math.floor(state.clock.min);
@@ -90,17 +89,10 @@ function paint() {
     overlay = document.createElement('div');
     overlay.id = 'daylight';
     Object.assign(overlay.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: 5 }); // a plain wash: blend modes over the WebGL canvas are unreliable
-    label = document.createElement('div');
-    label.id = 'clock';
-    Object.assign(label.style, {
-      position: 'fixed', top: 'calc(44px + env(safe-area-inset-top, 0px))', right: '12px', zIndex: 30, pointerEvents: 'none',
-      font: '13px/1 ui-monospace, Consolas, monospace', color: '#f5f1e4', background: 'rgba(12, 14, 12, 0.6)', padding: '5px 9px', borderRadius: '5px',
-    });
-    document.body.append(overlay, label);
+    document.body.append(overlay);
   }
   lastPaint = Math.floor(state.clock.min);
   const [r, g, b, a] = tint(hour());
   overlay.style.background = `rgba(${r | 0}, ${g | 0}, ${b | 0}, ${a.toFixed(3)})`;
-  label.textContent = timeLabel();
 }
 on('room-enter', () => paint());

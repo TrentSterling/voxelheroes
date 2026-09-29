@@ -174,7 +174,7 @@ export default async function contracts(t) {
   await t.step(DT);
   s = await t.state();
   t.expect(s.mode === 'play' && !s.dialog, 'a teleport closes an open dialog');
-  t.expect(await t.eval(() => document.getElementById('dialog').hidden), 'the box is hidden');
+  t.expect(await t.eval(() => window.__voxelHeroes.game.dialog.dialogView() === null), 'the box is closed');
   t.expect((await t.eval(() => window.__cut)) === 'undefined', 'the cut-short choice dialog resolves with undefined');
   await t.eval(() => {
     window.__again = 'pending';
@@ -219,25 +219,23 @@ export default async function contracts(t) {
   t.expect(g.refill && g.a2 === 6 && g.a3 === 10, `later grants add ammo up to the cap (1 -> ${g.a2} -> ${g.a3})`);
   t.expect(g.cap === 30 && g.seeds === 30, 'maxAmmo can be computed from state (a bag upgrade: 30)');
 
+  await t.give('key');
+  await t.step(0.2);
   const order = await t.eval(() => {
     const h = window.__voxelHeroes;
     h.api.registerHudWidget({
       id: 'probe-counter',
-      region: 'right',
-      order: 25,
-      mount: ({ host }) => host.append(Object.assign(document.createElement('span'), { id: 'probe-counter', textContent: 'x3' })),
+      region: 'counters',
+      order: 15,
       key: () => '1',
-      render() {},
+      measure: () => [12, 9],
+      draw() {},
     });
-    const right = document.getElementById('hud-right');
-    return {
-      widgets: [...right.querySelectorAll(':scope > .hud-widget')].map((e) => e.dataset.widget).join(','),
-      last: right.lastElementChild.id,
-    };
+    h.render();
+    const row = h.game.hud.hudView().widgets.filter((w) => w.region === 'counters').sort((a, b) => a.x - b.x);
+    return { widgets: row.map((w) => w.id).join(',') };
   });
-  t.expect(order.widgets === 'item-slot,probe-counter,gems,keys' && order.last === 'mute', `HUD widgets sit by order (${order.widgets}, then the Sound button)`);
-  await t.give('key');
-  await t.step(0.2);
+  t.expect(order.widgets === 'coins,probe-counter,keys', `HUD widgets sit by order in their region (${order.widgets})`);
   await t.shot('03-hud-order');
 
   // ---------------------------------------------------------------- drop odds
@@ -444,7 +442,7 @@ export default async function contracts(t) {
     window.__voxelHeroes.showDialog(['Before you set out: the crypt door needs a key.'], { choices: ['Go', 'Wait'] }).then((v) => (window.__title = v));
   });
   await t.step(0.2);
-  await t.eval(() => document.getElementById('start').click());
+  await t.eval(() => { const h = window.__voxelHeroes; h.render(); return h.game.ui.pressUi('overlay-start'); });
   await t.step(DT);
   s = await t.state();
   t.expect(s.mode === 'dialog' && s.overlay, "the title's start button waits while a dialog is open over it");
@@ -452,7 +450,7 @@ export default async function contracts(t) {
   await t.press('Space');
   s = await t.state();
   t.expect((await t.eval(() => window.__title)) === 0 && s.mode === 'title' && s.overlay, 'answering it returns to the title');
-  await t.eval(() => document.getElementById('start').click());
+  await t.eval(() => { const h = window.__voxelHeroes; h.render(); return h.game.ui.pressUi('overlay-start'); });
   await t.step(DT);
   t.expect((await t.state()).mode === 'play', 'then the start button starts the game');
 }

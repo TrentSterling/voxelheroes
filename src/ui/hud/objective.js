@@ -1,28 +1,24 @@
-// The "Next:" objective line (fun audit): a HUD widget, so it redraws only
-// when the current step changes (ui/hud.js's widget contract) and gets the
-// same small flourish a HUD number gets on a change (hud.js's pop(), kept
-// local here since only this widget needs it).
-import { registerHudWidget } from '../hud.js';
+// The "Next:" objective line (fun audit): a HUD widget, so it only asks to redraw when the current
+// step changes (ui/hud.js's widget contract) and gets the same small hop a HUD number gets.
+import { registerHudWidget, popHud } from '../hud.js';
 import { objectiveId, objectiveText } from '../../game/objective.js';
-import { el, $ } from '../dom.js';
+import { COLORS } from '../canvas/gfx.js';
 
-function pop(node) {
-  node.classList.remove('hud-pop');
-  void node.offsetWidth;
-  node.classList.add('hud-pop');
-}
+const LABEL = 'Next: ';
 
 registerHudWidget({
   id: 'objective',
-  region: 'center', // under the area name (style.css stacks #hud-center)
+  region: 'center', // under the area name
   order: 20,
-  mount({ host }) {
-    host.append(el('div', { id: 'objective', class: 'objective-line' }));
-  },
   key: () => objectiveId(),
-  render() {
-    const node = $('objective');
-    node.textContent = `Next: ${objectiveText()}`;
-    pop(node);
+  render: () => popHud('objective'),
+  measure(g, s, maxW) {
+    const t = g.fit(objectiveText(), maxW - g.measure(LABEL));
+    return [g.measure(LABEL) + g.measure(t) + 2, 9];
+  },
+  draw(g, s, x, y, w) {
+    const o = { outline: COLORS.shade };
+    g.text(LABEL, x + 1, y + 1, { color: COLORS.gold, ...o });
+    g.text(g.fit(objectiveText(), w - g.measure(LABEL) - 2), x + 1 + g.measure(LABEL), y + 1, { color: COLORS.ink, ...o });
   },
 });

@@ -31,7 +31,7 @@ export default async function (t) {
   await t.step(0.3);
 
   // ---------------------------------------------------------------- objective
-  const readObjective = () => t.eval(() => document.getElementById('objective')?.textContent ?? null);
+  const readObjective = () => t.eval(() => window.__voxelHeroes.game.objective.objectiveText());
 
   const obj0 = await readObjective();
   t.expect(!!obj0 && /Aldric/.test(obj0), `objective starts pointed at King Aldric ("${obj0}")`);
@@ -99,21 +99,18 @@ export default async function (t) {
 
   // ---------------------------------------------------------------- map: overworld
   await t.tap('map');
-  let open = await t.eval(() => document.getElementById('map-screen')?.hidden === false);
+  let open = await t.eval(() => window.__voxelHeroes.game.mapScreen.mapView().open);
   t.expect(open, 'Map opens over the overworld on the Map button');
-  const overworld = await t.eval(() => ({
-    cells: document.querySelectorAll('#map-screen .map-cell').length,
-    hero: !!document.querySelector('#map-screen .map-mark-hero'),
-  }));
+  const overworld = await t.eval(() => window.__voxelHeroes.game.mapScreen.mapView());
   t.expect(overworld.cells > 0 && overworld.hero, `overworld map shows charted screens (${overworld.cells}) and the hero's mark`);
   await t.shot('goals-01-map-overworld');
   await t.tap('map');
-  open = await t.eval(() => document.getElementById('map-screen')?.hidden === false);
+  open = await t.eval(() => window.__voxelHeroes.game.mapScreen.mapView().open);
   t.expect(!open, 'Map closes on a second press of the Map button');
 
   // ---------------------------------------------------------------- banner discipline
   let s = await t.state();
-  const bannerBefore = await t.eval(() => document.getElementById('banner')?.textContent ?? null);
+  const bannerBefore = await t.eval(() => window.__voxelHeroes.game.banner.bannerView().text);
   const sibling = await t.eval(
     (areaId) => {
       const h = window.__voxelHeroes;
@@ -126,7 +123,7 @@ export default async function (t) {
   t.expect(!!sibling, `${s.area} has a second screen to cross into for the banner check (${JSON.stringify(sibling)})`);
   if (sibling) {
     await t.teleport(sibling.key, Math.floor(sibling.w / 2), Math.floor(sibling.h / 2));
-    const bannerAfter = await t.eval(() => document.getElementById('banner')?.textContent ?? null);
+    const bannerAfter = await t.eval(() => window.__voxelHeroes.game.banner.bannerView().text);
     t.expect(bannerAfter === bannerBefore, `no big banner on a screen change within one area (banner still says "${bannerAfter}")`);
   }
 
@@ -137,7 +134,7 @@ export default async function (t) {
   await t.setHp(0);
   await t.step(1.5); // past the game-over panel's delay
   let ds = await t.state();
-  const msg = await t.eval(() => document.getElementById('overlay-msg').textContent);
+  const msg = await t.eval(() => window.__voxelHeroes.game.overlay.overlayView().message);
   t.expect(ds.mode === 'dead' && ds.overlay, `falls in ow-3-2 (mode ${ds.mode})`);
   t.expect(/\bcoins?\b/.test(msg) && !/gems?/.test(msg), `the game-over text says coins, not gems ("${msg}")`);
   await t.press('Enter'); // Try again
@@ -150,10 +147,7 @@ export default async function (t) {
   t.expect(backInD1.area === 'd1', `teleported into the Old Barrow (${JSON.stringify(backInD1)})`);
   await t.step(0.2);
   await t.tap('map');
-  const before = await t.eval(() => ({
-    title: document.querySelector('#map-screen .map-title')?.textContent,
-    rooms: document.querySelectorAll('#map-screen .map-room').length,
-  }));
+  const before = await t.eval(() => window.__voxelHeroes.game.mapScreen.mapView());
   // The dungeon's registered name (src/dungeons/d1.js), same as the door banner and the
   // objective line use (fun audit CLARITY 2/10, item 2: one name for the barrow everywhere).
   t.expect(before.title === 'The Old Barrow', `D1's map is titled with the dungeon's name ("${before.title}")`);
@@ -161,7 +155,7 @@ export default async function (t) {
 
   await t.eval(() => window.__voxelHeroes.game.dungeons.giveMap('d1'));
   await t.tap('map'); // reopen, a fresh render with the map chest owned
-  const after = await t.eval(() => document.querySelectorAll('#map-screen .map-room').length);
+  const after = (await t.eval(() => window.__voxelHeroes.game.mapScreen.mapView())).rooms;
   t.expect(after === 17, `D1's map lists all 17 rooms once the map chest is owned (before: ${before.rooms}, after: ${after})`);
   await t.shot('goals-02-map-d1');
   await t.tap('map'); // close

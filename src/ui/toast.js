@@ -9,15 +9,17 @@
 // on top of it.
 import { state } from '../core/state.js';
 import { on } from '../core/events.js';
+import { registerUiPart, requestUi, COLORS } from './canvas/gfx.js';
 
-let el = null;
-let hideAt = 0;
+const FADE = 200; // ms in and out
+let cur = null; // { text, t0, until }
 const lastShown = new Map();
+const live = (now) => !!cur && now < cur.until + FADE;
 
 on('mode-change', ({ to }) => {
-  if (to !== 'play' && el) {
-    el.style.opacity = '0';
-    hideAt = 0;
+  if (to !== 'play' && cur) {
+    cur = null;
+    requestUi();
   }
 });
 
@@ -27,18 +29,26 @@ export function toast(text, seconds = 1.6) {
   const now = performance.now();
   if (now - (lastShown.get(text) ?? -1e9) < 2500) return;
   lastShown.set(text, now);
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'toast';
-    Object.assign(el.style, {
-      position: 'fixed', left: '50%', bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))', transform: 'translateX(-50%)',
-      background: 'rgba(12, 14, 12, 0.82)', color: '#f2efe4', padding: '6px 14px', borderRadius: '6px',
-      font: '14px/1.3 ui-monospace, Consolas, monospace', pointerEvents: 'none', zIndex: 40, transition: 'opacity 0.2s',
-    });
-    document.body.append(el);
-  }
-  el.textContent = text;
-  el.style.opacity = '1';
-  hideAt = now + seconds * 1000;
-  setTimeout(() => { if (performance.now() >= hideAt - 5) el.style.opacity = '0'; }, seconds * 1000);
+  cur = { text, t0: now, until: now + seconds * 1000 };
+  requestUi();
 }
+
+// What the toast says now, for tests.
+export const toastView = () => ({ text: cur?.text ?? '', visible: !!cur && performance.now() < cur.until });
+
+// Drawn in the UI canvas: a small plate low in the view, fading in and out.
+registerUiPart({
+  id: 'toast',
+  order: 30,
+  key: () => (live(performance.now()) ? cur.text : '-'),
+  busy: live,
+  draw(g) {
+    if (!live(g.now)) return;
+    const a = Math.min(1, (g.now - cur.t0) / FADE, (cur.until + FADE - g.now) / FADE);
+    g.alpha(a);
+    const w = g.measure(cur.text) + 16;
+    const h = 15;
+    g.panel((g.w - w) / 2, g.h - 36 - g.safe.b - h, w, h, { shadow: false });
+    g.text(cur.text, g.w / 2, g.h - 36 - g.safe.b - h + 4, { align: 'center', color: COLORS.ink });
+  },
+});

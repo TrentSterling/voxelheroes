@@ -8,7 +8,7 @@
 //
 // Members: the modules docs/CONTRACTS.md section 8.22 lists, plus the entity
 // base and registry (entity, registry: tests register probe- types), the ui
-// views (dialog.dialogView, hud.muteLabel, overlay.overlayView: tests read
+// views (dialog.dialogView, hud.hudView, hud.muteLabel, ui.uiView, overlay.overlayView: tests read
 // these, never the DOM), clears, drops and tileActions.
 //
 // The test hook (debug/testhook.js) is installed after the content modules
@@ -33,7 +33,14 @@ import * as registry from '../entities/registry.js';
 import * as tileActions from '../systems/tile-actions.js';
 import * as drops from '../systems/drops.js';
 import * as dialog from '../ui/dialog.js';
+import * as objective from '../game/objective.js';
+import * as banner from '../ui/banner.js';
+import * as npcFx from '../entities/npc-fx.js';
+import * as mapScreen from '../ui/screens/map.js';
+import * as settingsPanel from '../ui/settings-panel.js';
+import * as toast from '../ui/toast.js';
 import * as hud from '../ui/hud.js';
+import * as ui from '../ui/canvas/gfx.js';
 import * as overlay from '../ui/overlay.js';
 import * as vitals from './vitals.js';
 import * as progress from './progress.js';
@@ -98,6 +105,13 @@ export const gameApi = {
   drops,
   dialog,
   hud,
+  banner,
+  npcFx,
+  mapScreen,
+  settingsPanel,
+  toast,
+  objective,
+  ui,
   overlay,
 };
 

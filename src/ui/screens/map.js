@@ -9,7 +9,8 @@
 // map chest is his (game/dungeons.js hasMap), the boss room marked apart
 // from the rest.
 //
-// Built once, lazily, the way ui/settings-panel.js builds its own panel.
+// Drawn in the UI canvas (ui/canvas/gfx.js). The chart is worked out once when the map opens
+// (play is stopped behind it), then drawn from that model.
 import { input } from '../../core/input.js';
 import { registerMode, pushMode, popMode } from '../../core/modes.js';
 import { registerPlayHook } from '../../systems/flow.js';
@@ -17,7 +18,7 @@ import { world, currentScreen } from '../../world/world.js';
 import { player } from '../../entities/player.js';
 import { areaKind, hasVisited, screenId, places, placeVisited, resolveSpot } from '../../game/places.js';
 import { currentDungeon, dungeonRooms, hasMap } from '../../game/dungeons.js';
-import { el } from '../dom.js';
+import { registerUiPart, requestUi, COLORS } from '../canvas/gfx.js';
 
 // The play mode's documented shape for a feature that opens over it
 // (systems/flow.js, registerPlayHook's doc comment gives this exact example).
@@ -29,65 +30,54 @@ registerPlayHook({
   },
 });
 
+let open = false;
+let model = null;
+
 registerMode('map', {
   enter() {
-    if (!root) build();
-    renderMap();
-    root.hidden = false;
+    model = buildModel();
+    open = true;
+    requestUi();
   },
   exit() {
-    root.hidden = true;
+    open = false;
+    requestUi();
   },
   update() {
     if (input.pressed('map') || input.pressed('menu')) popMode();
   },
 });
 
-let root = null;
+// What the map shows, for tests: { open, title, kind, cells, hero, rooms, hint }.
+export const mapView = () => ({
+  open,
+  title: model?.title ?? '',
+  kind: model?.kind ?? null,
+  cells: model?.cells?.length ?? 0,
+  hero: !!model?.hero,
+  rooms: model?.floors?.reduce((n, f) => n + f.rooms.length, 0) ?? 0,
+  hint: model?.hint ?? '',
+});
 
-function build() {
-  root = el('div', { id: 'map-screen', hidden: true, role: 'dialog', 'aria-label': 'Map' });
-  root.innerHTML = `<div class="map-panel">
-    <h2 class="map-title">Map</h2>
-    <div class="map-canvas"></div>
-    <p class="map-hint"></p>
-    <button type="button" class="map-close">Close</button>
-  </div>`;
-  root.querySelector('.map-close').addEventListener('click', () => popMode());
-  root.addEventListener('click', (e) => e.target === root && popMode());
-  (document.getElementById('app') ?? document.body).append(root);
-}
-
-function renderMap() {
-  const d = currentDungeon();
-  root.querySelector('.map-title').textContent = d ? d.name : 'Map';
-  const canvas = root.querySelector('.map-canvas');
-  const hint = root.querySelector('.map-hint');
-  canvas.className = 'map-canvas';
-  canvas.innerHTML = '';
-  canvas.style.width = '';
-  canvas.style.height = '';
-  hint.textContent = '';
-  if (d) renderDungeon(canvas, hint, d);
-  else renderOverworld(canvas, hint);
-}
-
-// ---------------------------------------------------------------- overworld
+// ---------------------------------------------------------------- the model
 const OUTDOOR_KINDS = new Set(['overworld', 'town', 'castle', 'cave']);
-const MAP_W = 520; // the canvas box; CSS gives .map-panel the room for it
-const MAP_H = 320;
 // Areas of the fun-audit test rigs and scenario probes (columns 410-479,
 // docs/ARCHITECTURE.md "Global regions"): reached only by teleport, so they
 // have no business filling up the real overworld's map. An id prefix catches
 // them even where a test area's `kind` happens to default to 'overworld'.
 const isPlayableArea = (area) => !area.id.startsWith('test-') && OUTDOOR_KINDS.has(areaKind(area));
 
-function renderOverworld(canvas, hint) {
-  canvas.classList.add('map-overworld');
+function buildModel() {
+  const d = currentDungeon();
+  return d ? dungeonModel(d) : overworldModel();
+}
+
+function overworldModel() {
+  const m = { kind: 'overworld', title: 'Map', hint: '', cells: [], marks: [], hero: null, minX: 0, minZ: 0, spanX: 1, spanZ: 1 };
   const screens = [...world.screens.values()].filter((s) => isPlayableArea(s.area));
   if (!screens.length) {
-    hint.textContent = 'Nothing charted yet.';
-    return;
+    m.hint = 'Nothing charted yet.';
+    return m;
   }
   // Frame what has been explored plus a screen of fog around it; the whole world's extent is
   // far wider than tall, and scaling it into the box left a one-pixel sliver.
@@ -102,84 +92,178 @@ function renderOverworld(canvas, hint) {
     maxZ = Math.max(maxZ, s.z1);
   }
   minX -= pad; minZ -= pad; maxX += pad; maxZ += pad;
-  const spanX = Math.max(1, maxX - minX);
-  const spanZ = Math.max(1, maxZ - minZ);
-  // The box shrinks to whatever room a narrow phone screen leaves .map-panel
-  // (its padding plus the close button's row), so the chart never spills
-  // into horizontal scroll; on a full 1280x720 view this is just MAP_W/MAP_H.
-  const boxW = Math.min(MAP_W, Math.max(200, innerWidth - 64));
-  const boxH = Math.min(MAP_H, Math.max(160, innerHeight - 180));
-  const scale = Math.min(boxW / spanX, boxH / spanZ);
-  canvas.style.width = `${spanX * scale}px`;
-  canvas.style.height = `${spanZ * scale}px`;
+  Object.assign(m, { minX, minZ, spanX: Math.max(1, maxX - minX), spanZ: Math.max(1, maxZ - minZ) });
   for (const s of screens) {
     if (s.x1 <= minX || s.x0 >= maxX || s.z1 <= minZ || s.z0 >= maxZ) continue; // outside the frame
-    const seen = hasVisited(screenId(s));
-    const cell = el('div', { class: `map-cell ${seen ? 'seen' : 'fog'}` });
-    place(cell, (s.x0 - minX) * scale, (s.z0 - minZ) * scale, Math.max(1, (s.x1 - s.x0) * scale - 1), Math.max(1, (s.z1 - s.z0) * scale - 1));
-    canvas.append(cell);
+    m.cells.push({ x0: s.x0, z0: s.z0, x1: s.x1, z1: s.z1, seen: hasVisited(screenId(s)) });
   }
   for (const p of places('dungeon')) {
     if (!placeVisited(p.id)) continue;
     const r = resolveSpot(p.spot);
-    if (!r) continue;
-    const mark = el('div', { class: 'map-mark map-mark-dungeon', title: p.name });
-    place(mark, (r.screen.x0 + r.x - minX) * scale, (r.screen.z0 + r.z - minZ) * scale);
-    canvas.append(mark);
+    if (r) m.marks.push({ x: r.screen.x0 + r.x, z: r.screen.z0 + r.z, name: p.name });
   }
-  const hero = el('div', { class: 'map-mark map-mark-hero', title: 'You' });
-  place(hero, (player.x - minX) * scale, (player.z - minZ) * scale);
-  canvas.append(hero);
-  hint.textContent = 'Fog hides screens you have not seen yet.';
+  m.hero = { x: player.x, z: player.z };
+  m.hint = 'Fog hides screens you have not seen yet.';
+  return m;
 }
 
-function place(node, left, top, w = null, h = null) {
-  node.style.left = `${left}px`;
-  node.style.top = `${top}px`;
-  if (w != null) node.style.width = `${w}px`;
-  if (h != null) node.style.height = `${h}px`;
-}
-
-// ---------------------------------------------------------------- dungeon
-const ROOM_CELL = 22;
-
-function renderDungeon(canvas, hint, d) {
-  canvas.classList.add('map-dungeon');
+function dungeonModel(d) {
+  const m = { kind: 'dungeon', title: d.name, hint: '', floors: [], boss: [] };
   const rooms = dungeonRooms(d.id);
   const full = hasMap(d.id);
   const mainRooms = rooms.filter((r) => r.room && (full || r.visited));
   const bossRooms = rooms.filter((r) => !r.room && (full || r.visited));
   if (!mainRooms.length && !bossRooms.length) {
-    hint.textContent = 'Nothing mapped yet. Find a room first.';
-    return;
+    m.hint = 'Nothing mapped yet. Find a room first.';
+    return m;
   }
-  hint.textContent = full ? 'The dungeon map is yours: every room shows.' : 'Only the rooms you have walked into show; the map chest reveals the rest.';
-  const [cols, floorRows] = d.canvas ?? [8, 10];
+  m.hint = full ? 'The dungeon map is yours: every room shows.' : 'Only the rooms you have walked into show; the map chest reveals the rest.';
+  const [cols, rows] = d.canvas ?? [8, 10];
   const here = currentScreen();
   const floors = [...new Set(mainRooms.map((r) => r.floor))].sort((a, b) => a - b);
   for (const floor of floors) {
-    const band = el('div', { class: 'map-floor' });
-    if (floors.length > 1) band.append(el('div', { class: 'map-floor-label', text: `Floor ${floor + 1}` }));
-    const grid = el('div', { class: 'map-rooms' });
-    grid.style.gridTemplateColumns = `repeat(${cols}, ${ROOM_CELL}px)`;
-    grid.style.gridTemplateRows = `repeat(${floorRows}, ${ROOM_CELL}px)`;
+    const band = { label: floors.length > 1 ? `Floor ${floor + 1}` : null, cols, rows, rooms: [] };
     for (const r of mainRooms.filter((x) => x.floor === floor)) {
-      const m = /^([A-J])-([1-8])$/.exec(r.room);
-      if (!m) continue;
-      const cell = el('div', { class: `map-room${r.boss ? ' boss' : ''}${here?.key === r.key ? ' here' : ''}`, title: r.name });
-      cell.style.gridColumn = String(Number(m[2]));
-      cell.style.gridRow = String(m[1].charCodeAt(0) - 64);
-      grid.append(cell);
+      const c = /^([A-J])-([1-8])$/.exec(r.room);
+      if (!c) continue;
+      band.rooms.push({ col: Number(c[2]) - 1, row: c[1].charCodeAt(0) - 65, boss: !!r.boss, here: here?.key === r.key });
     }
-    band.append(grid);
-    canvas.append(band);
+    m.floors.push(band);
   }
-  if (bossRooms.length) {
-    const band = el('div', { class: 'map-floor map-boss-band' });
-    band.append(el('div', { class: 'map-floor-label', text: 'Boss chamber' }));
-    const row = el('div', { class: 'map-rooms map-rooms-boss' });
-    for (const r of bossRooms) row.append(el('div', { class: `map-boss-room${here?.key === r.key ? ' here' : ''}`, title: r.name }));
-    band.append(row);
-    canvas.append(band);
+  m.boss = bossRooms.map((r) => ({ here: here?.key === r.key }));
+  return m;
+}
+
+// ---------------------------------------------------------------- drawing
+const CHART = '#0a1712';
+const SEEN = '#1c3226';
+const CELL = 11; // a dungeon room, logical pixels (a 1px gap between)
+
+const frame = (g, x, y, w, h, color) => {
+  g.rect(x, y, w, 1, color);
+  g.rect(x, y + h - 1, w, 1, color);
+  g.rect(x, y + 1, 1, h - 2, color);
+  g.rect(x + w - 1, y + 1, 1, h - 2, color);
+};
+
+// A small round mark: a plus-shaped blob r pixels across, centred on x, y.
+const blob = (g, x, y, r, color) => {
+  g.rect(x - r + 1, y - r, r * 2 - 1, r * 2 + 1, color);
+  g.rect(x - r, y - r + 1, r * 2 + 1, r * 2 - 1, color);
+};
+
+function chartSize(g) {
+  if (model.kind === 'overworld') {
+    if (!model.cells.length) return [120, 40];
+    const boxW = Math.min(260, g.w - 48);
+    const boxH = Math.min(160, g.h - 100);
+    const scale = Math.min(boxW / model.spanX, boxH / model.spanZ);
+    return [Math.max(40, Math.round(model.spanX * scale)), Math.max(30, Math.round(model.spanZ * scale)), scale];
+  }
+  let w = 60;
+  let h = 8;
+  for (const f of model.floors) {
+    w = Math.max(w, f.cols * (CELL + 1) - 1 + 12);
+    h += (f.label ? 11 : 0) + f.rows * (CELL + 1) + 6;
+  }
+  if (model.boss.length) {
+    w = Math.max(w, model.boss.length * 15 + 12);
+    h += 11 + 13 + 6;
+  }
+  return [w, h];
+}
+
+function drawChart(g, x, y, w, h, scale) {
+  g.rect(x, y, w, h, CHART);
+  frame(g, x - 1, y - 1, w + 2, h + 2, COLORS.line);
+  if (model.kind === 'overworld') {
+    for (const c of model.cells) {
+      const cx = x + Math.round((c.x0 - model.minX) * scale);
+      const cy = y + Math.round((c.z0 - model.minZ) * scale);
+      const cw = Math.max(1, Math.round((c.x1 - c.x0) * scale) - 1);
+      const ch = Math.max(1, Math.round((c.z1 - c.z0) * scale) - 1);
+      // stay inside the chart at the padded frame's edge
+      const x2 = Math.min(x + w, cx + cw);
+      const y2 = Math.min(y + h, cy + ch);
+      if (x2 <= Math.max(x, cx) || y2 <= Math.max(y, cy)) continue;
+      g.rect(Math.max(x, cx), Math.max(y, cy), x2 - Math.max(x, cx), y2 - Math.max(y, cy), c.seen ? SEEN : CHART);
+      frame(g, Math.max(x, cx), Math.max(y, cy), x2 - Math.max(x, cx), y2 - Math.max(y, cy), 'rgba(243, 236, 210, 0.12)');
+    }
+    for (const mk of model.marks) {
+      const mx = x + Math.round((mk.x - model.minX) * scale);
+      const my = y + Math.round((mk.z - model.minZ) * scale);
+      blob(g, mx, my, 3, COLORS.goldDeep);
+      blob(g, mx, my, 2, '#6a4a34');
+    }
+    if (model.hero) {
+      const hx = x + Math.round((model.hero.x - model.minX) * scale);
+      const hy = y + Math.round((model.hero.z - model.minZ) * scale);
+      const big = Math.floor(g.now / 700) % 2 === 0;
+      blob(g, hx, hy, big ? 5 : 4, 'rgba(241, 194, 50, 0.35)');
+      blob(g, hx, hy, 3, COLORS.gold);
+    }
+    return;
+  }
+  let cy = y + 6;
+  for (const f of model.floors) {
+    const gw = f.cols * (CELL + 1) - 1;
+    const gx = x + Math.round((w - gw) / 2);
+    if (f.label) {
+      g.text(f.label, x + w / 2, cy, { align: 'center', color: COLORS.muted });
+      cy += 11;
+    }
+    for (const r of f.rooms) {
+      const rx = gx + r.col * (CELL + 1);
+      const ry = cy + r.row * (CELL + 1);
+      g.rect(rx, ry, CELL, CELL, r.here ? COLORS.gold : r.boss ? '#6a2030' : SEEN);
+      frame(g, rx, ry, CELL, CELL, r.here ? '#ffe28a' : 'rgba(243, 236, 210, 0.15)');
+    }
+    cy += f.rows * (CELL + 1) + 6;
+  }
+  if (model.boss.length) {
+    g.text('Boss chamber', x + w / 2, cy, { align: 'center', color: COLORS.muted });
+    cy += 11;
+    const bw = model.boss.length * 15 - 2;
+    let bx = x + Math.round((w - bw) / 2);
+    for (const r of model.boss) {
+      g.rect(bx, cy, 13, 13, r.here ? COLORS.gold : '#6a2030');
+      frame(g, bx, cy, 13, 13, r.here ? '#ffe28a' : 'rgba(243, 236, 210, 0.15)');
+      bx += 15;
+    }
   }
 }
+
+function drawMap(g) {
+  g.rect(0, 0, g.w, g.h, 'rgba(8, 17, 13, 0.6)');
+  g.hit('map-scrim', 0, 0, g.w, g.h, () => popMode(), 'default'); // a click outside the panel closes it
+  const [cw, ch, scale] = chartSize(g);
+  const hintLines = g.wrap(model.hint, Math.max(cw, 200));
+  const pw = Math.max(cw + 28, 170);
+  const ph = 14 + 18 + ch + 8 + hintLines.length * 11 + 8 + 17 + 12;
+  const px = Math.round((g.w - pw) / 2);
+  const py = Math.max(6, Math.round((g.h - ph) / 2));
+  g.panel(px, py, pw, ph, { accent: true });
+  g.hit('map-panel', px, py, pw, ph, () => {}, 'default');
+  let y = py + 12;
+  g.text(model.title, px + 14, y, { color: COLORS.gold, tracking: 1 });
+  y += 16;
+  drawChart(g, px + Math.round((pw - cw) / 2), y, cw, ch, scale);
+  y += ch + 8;
+  for (const line of hintLines) {
+    g.text(line.text, g.w / 2, y, { align: 'center', color: COLORS.muted });
+    y += 11;
+  }
+  y += 8;
+  const w = g.measure('Close') + 20;
+  g.primary('map-close', 'Close', px + pw - 12 - w, y, () => popMode());
+}
+
+registerUiPart({
+  id: 'map',
+  order: 70,
+  busy: () => open, // the hero's mark pulses
+  key: () => (open ? 'open' : '-'),
+  draw(g) {
+    if (open && model) drawMap(g);
+  },
+});

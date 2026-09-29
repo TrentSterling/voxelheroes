@@ -23,8 +23,9 @@ import { placeAtStart, loadGame } from './systems/flow.js';
 import { applyScreenAmbience, syncScreenVisibility, shownRect } from './systems/transitions.js';
 import { initStreaming, updateStreaming, pumpBuilds } from './systems/streaming.js';
 import { warmLookFrame } from './core/warm.js';
-import { initHud, refreshHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
-import { initOverlay } from './ui/overlay.js';
+import { initHud, setAreaLabel, toggleMuteUi } from './ui/hud.js';
+import { refreshUi } from './ui/canvas/gfx.js';
+import { openSettings } from './ui/settings-panel.js';
 import { initLoadCard } from './ui/loadcard.js';
 import { installTestHook } from './debug/testhook.js';
 import { initCheats } from './debug/cheats.js';
@@ -35,7 +36,6 @@ initCamera();
 look.bind({ hero: player, cameraPreset: currentCameraPreset, cameraPresetName: cameraPreset, roomRect: shownRect });
 initInput();
 input.onGesture(initAudio); // browsers only allow sound after a key press or tap
-initOverlay();
 initLoadCard();
 initCheats();
 initParticles(scene);
@@ -76,6 +76,7 @@ function update(dt) {
   state.time += dt;
   world.update(state.time, dt);
   if (input.pressed('mute')) toggleMuteUi();
+  if (input.pressed('settings') && state.mode === 'play') openSettings();
   updateMode(dt);
   tickClock(dt);
   updateParticles(dt);
@@ -95,7 +96,7 @@ function update(dt) {
 const _cutHero = new THREE.Vector3();
 const _cutCam = new THREE.Vector3();
 function render() {
-  refreshHud();
+  refreshUi();
   setCutaway(_cutHero.set(player.x, GROUND_Y + 0.5, player.z), camera.getWorldPosition(_cutCam), GROUND_Y);
   renderScene();
 }
@@ -105,13 +106,13 @@ function render() {
 // test hook asks (render()): a full look frame takes seconds in software GL.
 function loopRender() {
   if (isManual()) {
-    refreshHud();
+    refreshUi();
     return;
   }
   pumpBuilds(state.mode === 'warp' || !sceneReady); // TUNING.stream's budget: a frame never waits on a build
   syncScreenVisibility();
   if (!sceneReady) {
-    refreshHud();
+    refreshUi();
     return;
   }
   render();
