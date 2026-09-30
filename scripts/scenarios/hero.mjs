@@ -232,16 +232,17 @@ export default async function hero(t) {
     await h.tick();
     out.afterTwo = +H.p.thrust.reach.toFixed(3);
     out.fullReach = H.hero.blade().reach;
-    // rooted during the hold; a press in the hold does nothing. East (the
+    // Rooted during the hold; a very early press expires before recovery. The short buffer's
+    // accepted follow-up is covered by responsiveness.mjs. East (the
     // facing itself, so full-life blade-start's spin steers the swipe back
     // onto the dummy rather than away from it) keeps this a pure root check.
     const x0 = H.p.x;
-    await H.ticks(10, () => h.input.setStick(1, 0));
-    out.rooted = +(H.p.x - x0).toFixed(4) === 0 && +(H.p.z - z - h.screen().z0).toFixed(4) === 0;
     const id = H.p.thrust.id;
     h.input.tap('sword');
     await h.tick();
     out.sameThrust = H.p.thrust.id === id;
+    await H.ticks(10, () => h.input.setStick(1, 0));
+    out.rooted = +(H.p.x - x0).toFixed(4) === 0 && +(H.p.z - z - h.screen().z0).toFixed(4) === 0;
     // run to the last tick of the hold (13 ticks so far; extend + hold from TUNING), then the retract
     await H.ticks(Math.max(0, Math.round((T.extend + T.hold) * 60) - 14), () => h.input.setStick(0, 0));
     out.inHold = H.p.thrust.t < T.extend + T.hold;
@@ -625,6 +626,8 @@ export default async function hero(t) {
       await h.tick();
       w++;
     }
+    // The destination spawns fresh foes. Keep this distance check free of contact knockback.
+    H.clear();
     const s = h.screen();
     const line = h.camera.rules.southLine();
     out.to = h.state.screenKey;

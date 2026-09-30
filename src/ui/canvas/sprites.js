@@ -96,6 +96,11 @@ export const key = () =>
     outlined(fromRows(['.kkk.', 'k...k', 'k...k', '.kkk.', '..k..', '..k..', '..kk.', '..k..', '..kk.'], { k: '#f1c232' }))
   );
 
+export const magic = (filled) => once(`magic${filled}`,()=>outlined(fromRows(
+  ['...x...','..xxx..','.xxxxx.','xxxxxxx','.xxxxx.','..xxx..','...x...'],
+  {x:filled?'#86dde1':'#344e5b'}
+)));
+
 // A pixel-art SVG (an item icon: crisp rects on a small viewBox) rasterised at one pixel per unit.
 // The image decodes asynchronously; the canvas fills in and the UI redraws.
 export function svgIcon(svg) {

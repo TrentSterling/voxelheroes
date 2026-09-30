@@ -321,13 +321,20 @@ export function followSubject(pos, rect) {
   camTarget.copy(subjectFor(pos, rect));
 }
 
+// A local reward can reach higher than the normal character outline. Keep
+// its top below the HUD for the brief presentation, then restore the rig.
+let headroom = null;
+export function setCameraHeadroom(target) { headroom = target; }
+
 export function placeCamera() {
   const lens = currentLens();
   if (camera.fov !== lens.fov) {
     camera.fov = lens.fov;
     camera.updateProjectionMatrix();
   }
-  poseCamera(camera, lens, camTarget);
+  const subject = headroom ? { x: camTarget.x, z: Math.min(camTarget.z,
+    subjectZForRow(lens, headroom.row, headroom.height, headroom.z)) } : camTarget;
+  poseCamera(camera, lens, subject);
   if (shake.t > 0) {
     const k = (shake.t / shake.dur) ** 2;
     shake.t -= 1 / 60;
@@ -335,7 +342,7 @@ export function placeCamera() {
     camera.position.x += Math.sin(shake.n * 2.9) * shake.amp * k;
     camera.position.y += Math.sin(shake.n * 3.7 + 1) * shake.amp * 0.6 * k;
   }
-  camera.userData.subject = camTarget;
+  camera.userData.subject = subject;
   followSun(camTarget);
 }
 

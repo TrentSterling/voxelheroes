@@ -52,6 +52,7 @@ registerUiPart({
     if (a <= 0.01) return;
     g.alpha(a);
     const lines = g.wrap(text.body, Math.min(300, g.w - 32));
+    const titleLines=g.wrap(text.title,g.w-32,2,1);
     let art = null;
     if (text.art) {
       const img = artImage(text.art);
@@ -59,14 +60,14 @@ registerUiPart({
     }
     const artH = art ? Math.min(Math.round(g.h * 0.5), art.naturalHeight) : 0;
     const artW = art ? Math.round((art.naturalWidth * artH) / art.naturalHeight) : 0;
-    const total = artH + (art ? 10 : 0) + 20 + 8 + lines.length * 11;
+    const total = artH + (art ? 10 : 0) + titleLines.length*20 + 8 + lines.length * 11;
     let y = Math.round((g.h - total) / 2);
     if (art) {
       g.image(art, Math.round((g.w - artW) / 2), y, artW, artH);
       y += artH + 10;
     }
-    g.text(text.title, g.w / 2, y, { size: 2, align: 'center', tracking: 1, color: '#f2ecd8' });
-    y += 28;
+    for(const line of titleLines){g.text(line.text,g.w/2,y,{size:2,align:'center',tracking:1,color:'#f2ecd8'});y+=20;}
+    y+=8;
     for (const line of lines) {
       g.text(line.text, g.w / 2, y, { align: 'center', color: COLORS.muted });
       y += 11;

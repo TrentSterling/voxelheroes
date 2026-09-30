@@ -10,6 +10,8 @@
 // music, sfx }) takes 0..1 each and setMuted(on) silences everything; the
 // options (game/settings.js) drive both. Mute is kept while no context exists
 // yet and applied when it is created.
+import { emit } from './events.js';
+
 let ctx = null;
 let master = null;
 let sfxBus = null;
@@ -50,6 +52,7 @@ export function toggleMute() {
 export function setMuted(on) {
   muted = !!on;
   applyLevels();
+  emit('audio-muted', { muted });
   return muted;
 }
 

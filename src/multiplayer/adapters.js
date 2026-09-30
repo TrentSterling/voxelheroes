@@ -1,0 +1,19 @@
+// Offline defaults keep the engine independent of transport and session lifetime.
+export const partyHooks = {
+  added: () => {},
+  drive: (entity, dt) => entity.update(dt),
+  damage: () => null,
+  pickup: () => null,
+  chest: () => null,
+  lift: () => null,
+  regrow: () => true,
+  preserveRoom: () => false,
+  tile: () => {},
+  flag: () => {},
+  grantTo: () => null,
+  granted: () => {},
+  target: () => null,
+  trigger: () => null,
+  freeze: () => false,
+  deflect: () => false,
+};

@@ -83,7 +83,12 @@ function drawTitle(g) {
   const pw = Math.min(g.w - 16 - g.safe.l - g.safe.r, 520);
   const inner = pw - 24;
   const lines = g.wrap(panel.msg, inner);
-  const showControls = panel.controls && !coarse;
+  const kickerLines=g.wrap(panel.kicker.toUpperCase(),inner,1,1);
+  const main=g.buttonMetrics(panel.button,{primary:true,maxWidth:inner});
+  const secondary=panel.secondary?g.buttonMetrics(panel.secondary.label,{pad:8,maxWidth:inner}):null;
+  const stacked=secondary&&main.w+12+secondary.w>inner;
+  const buttonH=stacked?main.h+6+secondary.h:Math.max(main.h,secondary?.h??0);
+  const showControls = panel.controls && !coarse && g.w>=300 && g.h>=180;
   // the controls flow as "Move WASD or arrows" chips, wrapping
   const chips = [];
   let cx = 0;
@@ -99,21 +104,20 @@ function drawTitle(g) {
       cx += w + 14;
     }
   }
-  const h = 12 + 12 + lines.length * 11 + 8 + 17 + 6 + (showControls ? 6 + rows * 10 : 0) + 8;
+  const h = 10+kickerLines.length*12+lines.length*11+8+buttonH+6+(showControls?6+rows*10:0)+8;
   const x = Math.round((g.w - pw) / 2);
   const y = g.h - 8 - g.safe.b - h;
   g.panel(x, y, pw, h, { accent: true });
   let ty = y + 10;
-  g.text(panel.kicker.toUpperCase(), x + 12, ty, { color: COLORS.gold, tracking: 1 });
-  ty += 12;
+  for(const line of kickerLines){g.text(line.text,x+12,ty,{color:COLORS.gold,tracking:1});ty+=12;}
   for (const line of lines) {
     g.text(line.text, x + 12, ty, { color: COLORS.ink, shadow: COLORS.shade });
     ty += 11;
   }
   ty += 8;
-  const bw = g.primary('overlay-start', panel.button, x + 12, ty, press('main'));
-  if (panel.secondary) g.button('overlay-secondary', panel.secondary.label, x + 12 + bw + 12, ty, press('secondary'), { pad: 8 });
-  ty += 17 + 6;
+  g.primary('overlay-start',panel.button,x+12,ty,press('main'),{maxWidth:inner});
+  if(panel.secondary)g.button('overlay-secondary',panel.secondary.label,stacked?x+12:x+12+main.w+12,stacked?ty+main.h+6:ty,press('secondary'),{pad:8,maxWidth:inner});
+  ty += buttonH+6;
   for (const c of chips) {
     const cy = ty + 6 + c.row * 10;
     g.text(c.label, x + 12 + c.x, cy, { color: COLORS.muted });
@@ -126,25 +130,33 @@ function drawMiddle(g) {
   const pw = Math.min(g.w - 24, 300);
   const inner = pw - 32;
   const lines = g.wrap(panel.msg, inner);
-  const h = 14 + 12 + 6 + 20 + 8 + lines.length * 11 + 12 + 17 + 14;
+  const titleLines = g.wrap(panel.title, inner, 2);
+  const kickerLines=g.wrap(panel.kicker.toUpperCase(),inner,1,1);
+  const main=g.buttonMetrics(panel.button,{primary:true,maxWidth:inner});
+  const secondary=panel.secondary?g.buttonMetrics(panel.secondary.label,{pad:8,maxWidth:inner}):null;
+  const stacked=secondary&&main.w+12+secondary.w>inner;
+  const buttonH=stacked?main.h+6+secondary.h:Math.max(main.h,secondary?.h??0);
+  const h=14+kickerLines.length*12+6+titleLines.length*18+8+lines.length*11+12+buttonH+14;
   const x = Math.round((g.w - pw) / 2);
   const y = Math.round((g.h - h) / 2);
   g.panel(x, y, pw, h, { accent: true });
   let ty = y + 14;
-  g.text(panel.kicker.toUpperCase(), g.w / 2, ty, { align: 'center', color: COLORS.gold, tracking: 1 });
-  ty += 18;
-  g.text(panel.title, g.w / 2, ty, { size: 2, align: 'center', color: COLORS.ink, shadow: COLORS.shade });
-  ty += 20 + 8;
+  for(const line of kickerLines){g.text(line.text,g.w/2,ty,{align:'center',color:COLORS.gold,tracking:1});ty+=12;}
+  ty+=6;
+  for (const line of titleLines) {
+    g.text(line.text, g.w / 2, ty, { size: 2, align: 'center', color: COLORS.ink, shadow: COLORS.shade });
+    ty += 18;
+  }
+  ty += 8;
   for (const line of lines) {
     g.text(line.text, g.w / 2, ty, { align: 'center', color: COLORS.muted });
     ty += 11;
   }
   ty += 12;
-  const bw = g.measure(panel.button) + 20;
-  const sw = panel.secondary ? g.measure(panel.secondary.label) + 16 + 12 : 0;
-  const bx = Math.round((g.w - (bw + sw)) / 2);
-  g.primary('overlay-start', panel.button, bx, ty, press('main'));
-  if (panel.secondary) g.button('overlay-secondary', panel.secondary.label, bx + bw + 12, ty, press('secondary'), { pad: 8 });
+  const total=stacked?Math.max(main.w,secondary.w):main.w+(secondary?secondary.w+12:0);
+  const bx=Math.round((g.w-total)/2);
+  g.primary('overlay-start',panel.button,stacked?Math.round((g.w-main.w)/2):bx,ty,press('main'),{maxWidth:inner});
+  if(panel.secondary)g.button('overlay-secondary',panel.secondary.label,stacked?Math.round((g.w-secondary.w)/2):bx+main.w+12,stacked?ty+main.h+6:ty,press('secondary'),{pad:8,maxWidth:inner});
 }
 
 registerUiPart({

@@ -66,6 +66,13 @@ export default async function (t) {
   ok = layoutOk(v);
   t.expect(ok.inside && !ok.clash, `still no overlap with them (${ok.clash ?? 'ok'})`);
   await t.shot('02-hud-items');
+  await t.eval(()=>{const h=window.__voxelHeroes;for(const id of ['spell-reveal','spell-reflect','spell-quake','spell-freeze'])h.game.spells.learnSpell(id);h.game.inventory.selectItem('spell-freeze');h.game.vitals.refill();});
+  await t.step(.2);v=await view();ok=layoutOk(v);
+  t.expect(v.hud.widgets.some(w=>w.id==='magic')&&ok.inside&&!ok.clash,'learned spells show a magic reserve and cost without HUD overlap');
+  const magicBefore=await t.eval(()=>window.__voxelHeroes.state.magic);await t.shot('02a-spell-reserve');await t.tap('item');await t.step(.3);v=await view();
+  t.expect(await t.eval(m=>window.__voxelHeroes.state.magic===m-4,magicBefore),'the selected spell spends four visible magic units through actual item input');
+  t.expect(v.hud.widgets.some(w=>w.id==='magic'),'empty magic remains visible so the HUD does not jump when spent');await t.shot('02b-empty-magic');
+
 
   // ------------------------------------------------------------ the dialog
   await t.eval(() => {
@@ -105,11 +112,12 @@ export default async function (t) {
   t.expect(await t.eval(() => window.__done), 'and another closes it');
 
   // ------------------------------------------------------------ banner, toast, speech
+  await t.teleport('Mossbrook Square',10.5,10.4);await t.step(.3);
   const fx = await t.eval(() => {
     const h = window.__voxelHeroes;
     h.game.banner.showBanner('The Test Banner');
     h.game.toast.toast('A small toast');
-    const npc = h.entities.find((e) => e.bubble);
+    const npc = h.entities.find((e) => e.name === 'Hettie');
     npc?.bubble.emote('!', 9999);
     npc?.bubble.say('Good morning!');
     return { banner: h.game.banner.bannerView(), toast: h.game.toast.toastView(), npc: !!npc };

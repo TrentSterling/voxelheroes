@@ -31,6 +31,7 @@ export const options = {
   volume: 0.8,
   music: 0.7,
   sfx: 0.9,
+  npcVoices: true,
   muted: false,
 };
 

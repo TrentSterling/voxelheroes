@@ -152,28 +152,34 @@ const blob = (g, x, y, r, color) => {
   g.rect(x - r, y - r + 1, r * 2 + 1, r * 2 - 1, color);
 };
 
-function chartSize(g) {
+function chartSize(g,cell=CELL,maxHeight=g.h-100) {
   if (model.kind === 'overworld') {
     if (!model.cells.length) return [120, 40];
     const boxW = Math.min(260, g.w - 48);
-    const boxH = Math.min(160, g.h - 100);
+    const boxH = Math.max(1,Math.min(160,maxHeight));
     const scale = Math.min(boxW / model.spanX, boxH / model.spanZ);
     return [Math.max(40, Math.round(model.spanX * scale)), Math.max(30, Math.round(model.spanZ * scale)), scale];
   }
   let w = 60;
   let h = 8;
+  const columns=model.floors.length>1&&g.w>=350&&g.h<240;
+  if(columns){
+    w=Math.max(w,model.floors.reduce((sum,f)=>sum+Math.max(g.measure(f.label??''),f.cols*(cell+1)-1),0)+(model.floors.length-1)*16+12);
+    h+=Math.max(...model.floors.map(f=>(f.label?11:0)+f.rows*(cell+1)+6));
+  }
   for (const f of model.floors) {
-    w = Math.max(w, f.cols * (CELL + 1) - 1 + 12);
-    h += (f.label ? 11 : 0) + f.rows * (CELL + 1) + 6;
+    if(columns)continue;
+    w = Math.max(w,f.cols*(cell+1)-1+12,f.label?g.measure(f.label):0);
+    h += (f.label ? 11 : 0) + f.rows * (cell + 1) + 6;
   }
   if (model.boss.length) {
-    w = Math.max(w, model.boss.length * 15 + 12);
-    h += 11 + 13 + 6;
+    w = Math.max(w,model.boss.length*(cell+2)+12,g.measure('Boss chamber')+12);
+    h += 11 + cell + 6;
   }
-  return [w, h];
+  return [w,h,cell,columns];
 }
 
-function drawChart(g, x, y, w, h, scale) {
+function drawChart(g, x, y, w, h, scale,columns=false) {
   g.rect(x, y, w, h, CHART);
   frame(g, x - 1, y - 1, w + 2, h + 2, COLORS.line);
   if (model.kind === 'overworld') {
@@ -205,30 +211,37 @@ function drawChart(g, x, y, w, h, scale) {
     return;
   }
   let cy = y + 6;
-  for (const f of model.floors) {
-    const gw = f.cols * (CELL + 1) - 1;
-    const gx = x + Math.round((w - gw) / 2);
+  const cell=scale??CELL;
+  const widths=model.floors.map(f=>Math.max(g.measure(f.label??''),f.cols*(cell+1)-1));
+  let fx=x+Math.round((w-widths.reduce((a,b)=>a+b,0)-(widths.length-1)*16)/2);
+  const top=cy;
+  for (const [index,f] of model.floors.entries()) {
+    if(columns)cy=top;
+    const gw = f.cols * (cell + 1) - 1;
+    const gx = columns?fx+Math.round((widths[index]-gw)/2):x+Math.round((w-gw)/2);
     if (f.label) {
-      g.text(f.label, x + w / 2, cy, { align: 'center', color: COLORS.muted });
+      g.text(f.label,columns?fx+widths[index]/2:x+w/2,cy,{align:'center',color:COLORS.muted});
       cy += 11;
     }
     for (const r of f.rooms) {
-      const rx = gx + r.col * (CELL + 1);
-      const ry = cy + r.row * (CELL + 1);
-      g.rect(rx, ry, CELL, CELL, r.here ? COLORS.gold : r.boss ? '#6a2030' : SEEN);
-      frame(g, rx, ry, CELL, CELL, r.here ? '#ffe28a' : 'rgba(243, 236, 210, 0.15)');
+      const rx = gx + r.col * (cell + 1);
+      const ry = cy + r.row * (cell + 1);
+      g.rect(rx, ry, cell, cell, r.here ? COLORS.gold : r.boss ? '#6a2030' : SEEN);
+      frame(g, rx, ry, cell, cell, r.here ? '#ffe28a' : 'rgba(243, 236, 210, 0.15)');
     }
-    cy += f.rows * (CELL + 1) + 6;
+    cy += f.rows * (cell + 1) + 6;
+    if(columns)fx+=widths[index]+16;
   }
+  if(columns)cy=top+Math.max(...model.floors.map(f=>(f.label?11:0)+f.rows*(cell+1)+6));
   if (model.boss.length) {
     g.text('Boss chamber', x + w / 2, cy, { align: 'center', color: COLORS.muted });
     cy += 11;
-    const bw = model.boss.length * 15 - 2;
+    const bw = model.boss.length * (cell+2) - 2;
     let bx = x + Math.round((w - bw) / 2);
     for (const r of model.boss) {
-      g.rect(bx, cy, 13, 13, r.here ? COLORS.gold : '#6a2030');
-      frame(g, bx, cy, 13, 13, r.here ? '#ffe28a' : 'rgba(243, 236, 210, 0.15)');
-      bx += 15;
+      g.rect(bx, cy, cell, cell, r.here ? COLORS.gold : '#6a2030');
+      frame(g, bx, cy, cell, cell, r.here ? '#ffe28a' : 'rgba(243, 236, 210, 0.15)');
+      bx += cell+2;
     }
   }
 }
@@ -236,18 +249,27 @@ function drawChart(g, x, y, w, h, scale) {
 function drawMap(g) {
   g.rect(0, 0, g.w, g.h, 'rgba(8, 17, 13, 0.6)');
   g.hit('map-scrim', 0, 0, g.w, g.h, () => popMode(), 'default'); // a click outside the panel closes it
-  const [cw, ch, scale] = chartSize(g);
-  const hintLines = g.wrap(model.hint, Math.max(cw, 200));
-  const pw = Math.max(cw + 28, 170);
-  const ph = 14 + 18 + ch + 8 + hintLines.length * 11 + 8 + 17 + 12;
+  let cell=CELL,budget=Math.max(20,g.h-100);
+  const layout=()=>{
+    const [cw,ch,scale,columns]=chartSize(g,cell,budget);
+    const pw=Math.min(g.w-16,Math.max(cw+28,170,Math.min(300,g.measure(model.hint)+28),Math.min(300,g.measure(model.title,1,1)+28))),inner=pw-28;
+    const hintLines=g.wrap(model.hint,inner),titleLines=g.wrap(model.title,inner,1,1);
+    return{cw,ch,scale,columns,pw,hintLines,titleLines,ph:14+titleLines.length*11+7+ch+8+hintLines.length*11+8+17+12};
+  };
+  let box=layout();
+  while(box.ph>g.h-12&&(model.kind==='overworld'?budget>20:cell>4)){
+    if(model.kind==='overworld')budget--;else cell--;
+    box=layout();
+  }
+  const {cw,ch,scale,columns,pw,hintLines,titleLines,ph}=box;
   const px = Math.round((g.w - pw) / 2);
   const py = Math.max(6, Math.round((g.h - ph) / 2));
   g.panel(px, py, pw, ph, { accent: true });
   g.hit('map-panel', px, py, pw, ph, () => {}, 'default');
   let y = py + 12;
-  g.text(model.title, px + 14, y, { color: COLORS.gold, tracking: 1 });
-  y += 16;
-  drawChart(g, px + Math.round((pw - cw) / 2), y, cw, ch, scale);
+  for(const line of titleLines){g.text(line.text,px+14,y,{color:COLORS.gold,tracking:1});y+=11;}
+  y+=7;
+  drawChart(g,px+Math.round((pw-cw)/2),y,cw,ch,scale,columns);
   y += ch + 8;
   for (const line of hintLines) {
     g.text(line.text, g.w / 2, y, { align: 'center', color: COLORS.muted });

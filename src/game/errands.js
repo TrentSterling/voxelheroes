@@ -14,18 +14,26 @@
 // npc, who hands the reward over and closes the giver's errand), 'screen' (visit a screen key
 // while active), 'bush' (cut a bush tile on a screen while active), 'time' (be talked to inside
 // an hour window). reward.type: 'heart-piece' | 'coins' | 'bombs' | 'smith-discount' | 'keepsake'.
-import { defineState, state } from '../core/state.js';
+import { defineState, state, hasFlag, setFlag } from '../core/state.js';
 import { on } from '../core/events.js';
 import { getTile } from '../world/tiles.js';
-import { ammo, useAmmo } from '../items/inventory.js';
+import { ammo, useAmmo, hasItem } from '../items/inventory.js';
 import { grant } from '../systems/grants.js';
 import { hour } from './clock.js';
-import { addCoins, addHeartPiece } from './vitals.js';
+import { addCoins } from './vitals.js';
 import { talksWith, pendingHeartEvent } from './npc-talk.js';
 import { showDialog, ask } from '../ui/dialog.js';
 import { toast } from '../ui/toast.js';
+import { entities, spawn } from '../entities/manager.js';
+import { world } from '../world/world.js';
 
-defineState('errands', () => ({}));
+defineState('errands', () => ({}),{fromJSON(value){
+  const records=JSON.parse(JSON.stringify(value));
+  // Older saves paid Rook for cutting any bush. Offer the new adventure
+  // without removing that earlier reward or resetting anyone else's quest.
+  if(records.Rook&&records.Rook.quest!=='rook-dice')records.Rook={status:'none',found:false,quest:'rook-dice'};
+  return records;
+}});
 
 const ERRANDS = {
   Hettie: {
@@ -35,9 +43,9 @@ const ERRANDS = {
     reward: { type: 'heart-piece' },
   },
   'Old Tobin': {
-    ask: ['There is a stump behind my bench that has outlived its welcome.', 'Bring me a bomb and I will see to it. If you can spare one.'],
-    give: ['Hmph. About time something around here got blown up on purpose.', 'Here. Do not spend it all in one place.'],
-    need: { type: 'item', item: 'bombs', amount: 1 },
+    ask: ['Those roots beside me hide my old cellar. My wife\'s medallion is still down there.', 'Blast the stump, then bring it back. The cellar\'s bronze seal rings for clay, never steel; I left spare pots by the stairs.'],
+    give: ['Her medallion. I had almost forgotten the green in it.', 'That piece of heart was meant for the road. Keep it. And here, for making an old man remember.'],
+    need: { type: 'flag', flag: 'errand:tobin:keepsake' },
     reward: { type: 'coins', amount: 40 },
   },
   Rowan: {
@@ -48,16 +56,18 @@ const ERRANDS = {
     thanks: 'Word came back already? You are faster than the post.',
   },
   Nell: {
-    ask: ['I lost my locket out past the West Gate, somewhere on the crossing before the barrow.', 'Little gold thing, shaped like a leaf. Would you look, if you are headed that way?'],
+    ask: ['I lost my locket out past the West Gate, somewhere on the crossing before the barrow.', 'Little gold thing, shaped like a leaf. I caught my ribbon in the bushes west of the path. Would you look there?'],
     give: ['You found it! I thought it was gone for good.', 'Keep the ribbon. It matches your eyes, or it would, under that helmet.'],
-    need: { type: 'screen', key: 'ow-3-2:1,1' },
-    reward: { type: 'keepsake', name: 'A faded ribbon', line: 'Something to remember the day you found what was lost.' },
+    need: { type: 'search', key: 'ow-3-2:1,1', x: 2, z: 9 },
+    reward: { type: 'heart-piece' },
   },
   Rook: {
-    ask: ['Lost my lucky dice weeks ago, somewhere in the brush by this gate.', 'Cut through the bushes around here if you get a chance.'],
-    give: ['My dice! I have been rolling pebbles for weeks.', 'Here, take these. I have a spare bag of something louder anyway.'],
-    need: { type: 'bush', screen: 'v1:0,1' },
-    reward: { type: 'bombs', amount: 3 },
+    quest:'rook-dice',
+    ask: ['The bones in Briar Den stole my lucky dice. Its steps hide in the northwest brush at this gate.', 'Clear the hunter\'s bench and keep the bow. Two targets across the pit lower the bridge; my dice are in the vault beyond.'],
+    give: ['My dice! Those bones will have to roll pebbles now.', 'Keep the bow. This quiver holds thirty arrows, and I packed three bombs for your next adventure.'],
+    need: { type: 'flag', flag: 'errand:rook:dice' },
+    progress: () => !hasItem('bow') ? 'Find the hunter\'s bow in Briar Den' : !hasFlag('rook:bridge') ? 'Shoot both far-bank targets' : 'Recover the dice from the vault',
+    reward: { type: 'bundle', rewards: [{ type:'grant', id:'arrow-bag-1', label:'30-arrow quiver' }, { type:'bombs', amount:3 }] },
   },
   'Sister Anwe': {
     ask: ['I light a candle for the barrow\'s dead every evening.', 'Come back at dusk and sit with me a while, if you would.'],
@@ -80,8 +90,9 @@ function consume(item, amount) {
 function satisfied(def, rec) {
   const n = def.need;
   if (n.type === 'item') return count(n.item) >= n.amount;
-  if (n.type === 'screen' || n.type === 'bush') return !!rec.found;
+  if (n.type === 'screen' || n.type === 'bush' || n.type === 'search') return !!rec.found;
   if (n.type === 'time') return hour() >= n.from && hour() < n.to;
+  if (n.type === 'flag') return hasFlag(n.flag);
   return false; // 'deliver' resolves at the target, never at the giver
 }
 
@@ -91,14 +102,18 @@ function deliveryTargetEntry(npcName) {
 
 // ---------------------------------------------------------------- rewards
 function applyReward(name, reward) {
-  if (reward.type === 'heart-piece') {
-    addHeartPiece(1);
+  if (reward.type === 'bundle') {
+    for(const part of reward.rewards)applyReward(name,part);
+  } else if (reward.type === 'grant') {
+    grant(reward.id,1,{source:'npc'});
+  } else if (reward.type === 'heart-piece') {
+    grant('heart-piece', 1, { source: 'npc', fanfare: false });
     toast(`${name} gave you a piece of heart`, 2.4);
   } else if (reward.type === 'coins') {
     addCoins(reward.amount, 'errand');
     toast(`${name} gave you ${reward.amount} coins`, 2.2);
   } else if (reward.type === 'bombs') {
-    grant('bombs', reward.amount, { source: 'npc', fanfare: false });
+    grant('bombs', reward.amount, { source: 'npc', fanfare: false, startAmmo: reward.amount });
     toast(`${name} gave you ${reward.amount} bombs`, 2.2);
   } else if (reward.type === 'smith-discount') {
     state.errands._smithDiscount = (state.errands._smithDiscount ?? 0) + reward.amount;
@@ -128,30 +143,90 @@ on('room-enter', ({ screen }) => {
 });
 
 let bushHooked = false;
+function placeFind(name, need, screen) {
+  if (state.errands[name]?.status !== 'active' || state.errands[name]?.found || hasFlag(`errand:${name}:found`)) return;
+  if (screen.tiles[need.z]?.[need.x] === 'B') clearFindBush(need, screen);
+  if (entities.some(e => !e.removed && e.type === 'quest-locket' && e.giver === name)) return;
+  spawn('quest-locket', { x: screen.x0 + need.x + 0.5, z: screen.z0 + need.z + 0.5,
+    giver: name, life: Infinity, netId: `quest:${name}:locket`, spawnFlag: `errand:${name}:found` });
+}
+function clearFindBush(need, screen) {
+  // Regrowth must not bury the revealed object when the player comes back.
+  const tile = getTile(screen.tileset, 'B');
+  if (tile) {
+    world.setTile(screen.x0 + need.x, screen.z0 + need.z, tile.becomes ?? '.', { rebuild: false, reason: 'quest-find' });
+  }
+}
+on('room-enter', ({ screen }) => {
+  for (const [name, def] of Object.entries(ERRANDS)) {
+    if (def.need.type === 'search' && def.need.key === screen.key && hasFlag(`errand:${name}:revealed`)) placeFind(name, def.need, screen);
+  }
+});
 on('room-enter', () => {
   if (bushHooked) return;
+  const seen = new Set();
   for (const set of ['overworld', 'town']) {
     const def = getTile(set, 'B');
-    if (!def) continue;
+    if (!def || seen.has(def)) continue;
+    seen.add(def);
     const before = def.onSword;
     def.onSword = (ctx) => {
       before?.(ctx);
       for (const [name, edef] of Object.entries(ERRANDS)) {
-        if (edef.need.type !== 'bush' || edef.need.screen !== ctx.screen?.key) continue;
         const rec = state.errands[name];
-        if (rec?.status === 'active') rec.found = true;
+        if (rec?.status !== 'active') continue;
+        if (edef.need.type === 'bush' && edef.need.screen === ctx.screen?.key) rec.found = true;
+        const n = edef.need;
+        if (n.type === 'search' && n.key === ctx.screen?.key && n.x === ctx.x && n.z === ctx.z && ctx.world.tile(ctx.tx, ctx.tz) !== 'B') {
+          if (!hasFlag(`errand:${name}:revealed`) && !rec.found) toast('A gold leaf catches the light. Pick it up!', 2.8);
+          setFlag(`errand:${name}:revealed`); placeFind(name, n, ctx.screen);
+        }
       }
     };
     bushHooked = true;
   }
 });
 
+export function findErrandObject(name) {
+  const rec = state.errands[name];
+  if (rec?.status !== 'active' || !ERRANDS[name]) return false;
+  const first = !rec.found;
+  rec.found = true; setFlag(`errand:${name}:found`);
+  if (first) toast(`${name}'s locket found. Bring it back to Mossbrook.`, 3);
+  return true;
+}
+
+const NOTES = {
+  Hettie: ['Flowers for the Kettle', 'Mossbrook Square', 'Gather three wildflowers from the meadows, then bring them to Hettie.'],
+  'Old Tobin': ['Beneath the roots', 'Mossbrook Square', 'Blast the stump beside Tobin, enter his root cellar, and ring the bronze seal with a thrown pot. Take the medallion from the revealed chest, then return to him.'],
+  Rowan: ['A word for the guard', 'Mossbrook Square', 'Talk to Guard Oswin in Crownhold Courtyard, south of the village.'],
+  Nell: ['The lost gold leaf', 'Mossbrook Square', 'Search the bushes west of the path at Barrow Crossing. Pick up the gold locket and return to Nell.'],
+  Rook: ['The hunter\'s dice', 'West Gate / Briar Den', 'Cut the northwest stair-bush at West Gate. Clear the bench for a bow, shoot both far-bank targets, and recover Rook\'s dice from the vault.'],
+  'Sister Anwe': ['A candle at dusk', 'Chapel Green', 'Talk to Anwe at Chapel Green between 5:30 pm and 9:30 pm.'],
+};
+const rewardText = reward => reward.type==='bundle'?reward.rewards.map(rewardText).join(' + '):reward.type==='grant'?reward.label:reward.type === 'heart-piece' ? 'A piece of heart' : reward.type === 'smith-discount' ? `${reward.amount} coins off at the smith` : `${reward.amount} ${reward.type}`;
+
+// Derived from saved campaign state; the journal never completes a task itself.
+export function errandEntries() {
+  return Object.entries(ERRANDS).map(([giver, def]) => {
+    const rec = state.errands[giver], n = def.need, [title, where, detail] = NOTES[giver];
+    const status = rec?.status === 'done' ? 'done' : rec?.status === 'active' ? (satisfied(def, rec) ? 'ready' : 'active') : 'offer';
+    let progress = status === 'offer' ? `Talk to ${giver} to accept` : status === 'done' ? 'Completed' : status === 'ready' ? `Return to ${giver}` : 'In progress';
+    if (status === 'active' && n.type === 'item') progress = `${Math.min(count(n.item), n.amount)} / ${n.amount} ${n.item === 'wildflower' ? 'wildflowers' : n.item}`;
+    if (status === 'active' && n.type === 'deliver') progress = `Deliver to ${n.to}`;
+    if (status === 'active' && n.type === 'search') progress = hasFlag(`errand:${giver}:revealed`) ? 'Locket revealed; pick it up' : 'Search the crossing bushes';
+    if (status === 'active' && n.type === 'time') progress = 'Return at dusk';
+    if (status === 'active' && n.type === 'flag') progress = def.progress?.() ?? (hasFlag('village:tobin-cellar-open') ? 'Retrieve the cellar keepsake' : 'Blast the stump beside Tobin');
+    return { giver, title, where, detail, status, progress, reward: rewardText(def.reward) };
+  });
+}
+
 // ---------------------------------------------------------------- the conversation
 async function runOffer(npc, def) {
   const sp = { speaker: npc.name };
   const intro = talksWith(npc.name) === 0 && npc.lines ? (Array.isArray(npc.lines) ? npc.lines : [npc.lines]) : [];
   const pick = await ask([...intro, ...def.ask], ["I'll help", 'Not now'], sp);
-  if (pick === 0) state.errands[npc.name] = { status: 'active', found: false };
+  if (pick === 0) state.errands[npc.name] = { status: 'active', found: false, ...(def.quest?{quest:def.quest}:{}) };
   return true;
 }
 

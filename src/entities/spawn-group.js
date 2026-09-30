@@ -77,7 +77,7 @@ class SpawnGroup extends Entity {
 
   onAdd() {
     // x, z and r are the marker's own; everything left in `extra` goes to the enemies.
-    const { of = [], count = 1, minDist, rare = [], screen = currentScreen(), x, z, r, spawnIndex = 0, spawnFlag = null, ...extra } = this.opts;
+    const { of = [], count = 1, minDist, rare = [], screen = currentScreen(), x, z, r, netId, spawnIndex = 0, spawnFlag = null, ...extra } = this.opts;
     if (screen && isCleared(screenId(screen))) {
       this.remove();
       return;
@@ -99,7 +99,7 @@ class SpawnGroup extends Entity {
       const isRare = i < rares.length;
       const type = isRare ? rares[i] : types[Math.floor(random() * types.length)];
       const [tx, tz] = tiles[i];
-      const opts = { ...extra, x: tx + 0.5, z: tz + 0.5, spawnIndex: spawnIndex + i, spawnFlag, screen };
+      const opts = { ...extra, x: tx + 0.5, z: tz + 0.5, netId: netId ? `${netId}:member:${i}` : undefined, spawnIndex: spawnIndex + i, spawnFlag, screen };
       if (isRare) opts.rare = true;
       this.children.push(spawn(type, opts));
     }

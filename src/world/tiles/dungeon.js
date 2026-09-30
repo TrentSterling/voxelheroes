@@ -35,6 +35,7 @@ import { GOLD } from '../palette.js';
 import { BPT, FPT, registerRing, registerLayer, screenBox } from '../terrain.js';
 import { doorProp, chestProp, flameProp, spikeBallProp, pushBlockProp, potProp, unlockDoor, openChest, pushTile, breakPot } from '../tilekit.js';
 import { statue, brazier } from '../../models/props.js';
+import { liftPot } from '../../systems/pots.js';
 
 defineTileset('dungeon', { floor: '.' });
 
@@ -48,37 +49,38 @@ export const LAMP_BLOCK = 10; // block row of the sconce (its bottom 1.125 tiles
 // Fine floor colour at global fine voxel (X, Z): 1-voxel grout on the tile's north and west edges,
 // a lighter ring 3 voxels in with its corners knocked off, a darker centre, +-2% per 2 x 2 voxels.
 const mod16 = (v) => ((v % FPT) + FPT) % FPT;
-export function floorColor(X, Z) {
+export function floorColor(X, Z, palette = GOLD) {
   const lx = mod16(X);
   const lz = mod16(Z);
-  if (lx === 0 || lz === 0) return GOLD.grout;
+  if (lx === 0 || lz === 0) return palette.grout;
   const inR = (a) => a >= 3 && a <= 13;
   const edge = (a) => a === 3 || a === 13;
   const ring = ((edge(lx) && inR(lz)) || (edge(lz) && inR(lx))) && !(edge(lx) && edge(lz));
   const cornerIn = (lx === 4 || lx === 12) && (lz === 4 || lz === 12);
-  return shadeHex(ring || cornerIn ? GOLD.floorRing : GOLD.floor, 1 + (hash3(X >> 1, 0, Z >> 1, 3) - 0.5) * 0.04);
+  return shadeHex(ring || cornerIn ? palette.floorRing : palette.floor, 1 + (hash3(X >> 1, 0, Z >> 1, 3) - 0.5) * 0.04);
 }
 
 // The fine floor over rows za..zb (fine voxels, 0-16) of the tile: the top layer and one under it.
 export function fineFloor(ctx, za = 0, zb = FPT) {
   const { F, FX0, FZ0 } = ctx;
-  F.box(FX0, 0, FZ0 + za, FX0 + FPT, 1, FZ0 + zb, (X, Y, Z) => floorColor(X, Z));
-  F.box(FX0, -1, FZ0 + za, FX0 + FPT, 0, FZ0 + zb, GOLD.floorUnder);
+  const palette = ctx.owner?.def?.palette ?? ctx.owner?.area?.palette ?? GOLD;
+  F.box(FX0, 0, FZ0 + za, FX0 + FPT, 1, FZ0 + zb, (X, Y, Z) => floorColor(X, Z, palette));
+  F.box(FX0, -1, FZ0 + za, FX0 + FPT, 0, FZ0 + zb, palette.floorUnder);
 }
 
 // ---------------------------------------------------------------- walls
 // Wall face colour by height h (blocks above the floor, 0-15), position along the wall and depth
 // behind its inner face (the lab's wall pattern, art bible section 9).
-export function wallColor(along, h, depth = 0) {
-  if (h === WALL - 1) return depth < LEDGE ? GOLD.ledge : GOLD.south;
-  if (h === 6 || h === 12) return GOLD.trim;
-  if (h < 2) return GOLD.wallDark;
+export function wallColor(along, h, depth = 0, palette = GOLD) {
+  if (h === WALL - 1) return depth < LEDGE ? palette.ledge : palette.south;
+  if (h === 6 || h === 12) return palette.trim;
+  if (h < 2) return palette.wallDark;
   const a = ((along % 8) + 8) % 8;
   const zone = h < 6 ? 0 : h < 12 ? 1 : 2;
   const g = zone === 0 ? (a + 4) % 8 : a; // the lower slabs are offset half a panel
-  if (g === 0 || (zone === 0 && h === 3)) return GOLD.mortar;
+  if (g === 0 || (zone === 0 && h === 3)) return palette.mortar;
   const v = 1 + (hash3(Math.floor((along + (zone === 0 ? 4 : 0)) / 8), zone, 0, 9) - 0.5) * 0.1;
-  return shadeHex(GOLD.wall, g === 1 ? v * 1.07 : v); // a lighter left column bevels each panel
+  return shadeHex(palette.wall, g === 1 ? v * 1.07 : v); // a lighter left column bevels each panel
 }
 
 const setBack = (h, depth) => (h === 13 || h === 14) && depth === 0;
@@ -90,7 +92,7 @@ function wallBox(ctx, xa, za, xb, zb, along, depth, setback = true) {
     const h = Y - 1;
     const d = depth(X, Z);
     if (setback && setBack(h, d)) return null;
-    return wallColor(along(X, Z), h, d);
+    return wallColor(along(X, Z), h, d, ctx.owner?.def?.palette ?? ctx.owner?.area?.palette ?? GOLD);
   });
 }
 
@@ -348,6 +350,7 @@ registerTile('dungeon', 'L', {
 registerTile('dungeon', 'C', {
   name: 'chest',
   solid: true,
+  grapple: true,
   build: (ctx) => fineFloor(ctx),
   prop: chestProp,
   onPush: openChest,
@@ -387,11 +390,14 @@ registerTile('dungeon', '*', { name: 'spike-ball', solid: true, build: (ctx) => 
 // next time the room is entered.
 registerTile('dungeon', 'v', {
   name: 'pot',
+  prompt: 'Lift pot',
   solid: true,
   regrow: true,
   becomes: '.',
   build: (ctx) => fineFloor(ctx),
   prop: potProp,
+  onInteract: liftPot,
+  onShot: (ctx) => ctx.projectile?.source === 'pot' && breakPot(ctx),
   onSword: (ctx) => breakPot(ctx),
   onBomb: (ctx) => breakPot(ctx),
 });

@@ -12,6 +12,7 @@ registerShop({
   entries: [
     { id: 'heart', grant: 'heart', price: 5 },
     { id: 'magic', grant: 'magic', price: 10 },
+    { id: 'arrows', name: 'Arrows (10)', grant: 'arrows', amount: 10, price: 8, when: () => hasItem('bow') },
     { id: 'bombs', name: 'Bomb Bag', grant: 'bombs', price: 30, stock: 1 }, // the bag and 10 bombs (the items registry's grant fallback)
     { id: 'bomb-refill', name: 'Bombs (10)', grant: 'bombs', amount: TUNING.economy.bombRefill.amount, price: TUNING.economy.bombRefill.price, when: () => hasItem('bombs') },
     { id: 'key-red', grant: 'key-red', price: 1000, stock: 1 },

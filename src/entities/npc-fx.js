@@ -11,6 +11,8 @@ import * as THREE from 'three';
 import { camera, scene } from '../core/renderer.js';
 import { g as gfx, registerUiPart, requestUi, COLORS } from '../ui/canvas/gfx.js';
 import { disc } from '../ui/canvas/sprites.js';
+import { hudView } from '../ui/hud.js';
+import { world, heroScreen } from '../world/world.js';
 
 const EMOTE_COLOR = { '!': '#e0402f', '?': '#3a6fd8', '♥': '#e0407a', '♪': '#2e9a4a', '…': '#5a5a5a', '✦': '#d89a1a' };
 const live = new Set(); // bubbles with something to show
@@ -29,8 +31,9 @@ function inScene(o) {
 }
 
 export class Bubble {
-  constructor(holder, height = 1.55) {
+  constructor(holder, height = 1.55, owner = null) {
     this.holder = holder;
+    this.owner = owner;
     this.height = height;
     this.e = null; // { sym, t, life }
     this.b = null; // { text, t, life }
@@ -73,16 +76,6 @@ export class Bubble {
       return;
     }
     live.add(this);
-    // where the head is on screen (hidden when the speaker is, or behind the camera)
-    this.on = inScene(this.holder);
-    if (this.on) {
-      this.holder.getWorldPosition(_p);
-      _p.y += this.height;
-      _p.project(camera);
-      this.on = _p.z < 1;
-      this.sx = ((_p.x + 1) / 2) * gfx.w;
-      this.sy = ((1 - _p.y) / 2) * gfx.h;
-    }
   }
 
   dispose() {
@@ -95,10 +88,27 @@ export class Bubble {
 // 0 to 1 over the first 0.12 s, held, then out over the last 0.25 s.
 const fade = (st) => (st.t < 0.12 ? st.t / 0.12 : st.t > st.life - 0.25 ? (st.life - st.t) / 0.25 : 1);
 
-const drawable = (b) => b.on && inScene(b.holder);
+// Sleeping outdoor buckets retain their last projection. Always project with
+// the current camera, and never bring a head outside the view back in by clamping.
+const drawable = (b) => {
+  const here = heroScreen(), home = world.screens.get(b.owner?.homeKey);
+  b.on = inScene(b.holder) && (!home || home.area.id === here?.area.id);
+  if (!b.on) return false;
+  b.holder.getWorldPosition(_p);
+  _p.y += b.height;
+  _p.project(camera);
+  b.on = _p.z > -1 && _p.z < 1 && Math.abs(_p.x) <= 1 && Math.abs(_p.y) <= 1;
+  b.sx = ((_p.x + 1) / 2) * gfx.w;
+  b.sy = ((1 - _p.y) / 2) * gfx.h;
+  return b.on;
+};
 
 // A bubble nearing the top edge fades out before it runs into the HUD's name and goal lines.
-const clearOfHud = (top) => Math.max(0, Math.min(1, (top - 22) / 14));
+const clearOfHud = (top,left,right) => {
+  let bottom=22;
+  for(const widget of hudView().widgets)if(left<widget.x+widget.w&&right>widget.x)bottom=Math.max(bottom,widget.y+widget.h);
+  return Math.max(0,Math.min(1,(top-bottom)/14));
+};
 
 // How many bubbles are on show, for tests (a ghost is one whose speaker is gone).
 export const bubblesShown = () => [...live].filter(drawable).length;
@@ -111,24 +121,25 @@ registerUiPart({
   draw(g) {
     for (const b of live) {
       if (!drawable(b)) continue;
-      const x = Math.round(b.sx);
-      const y = Math.round(b.sy);
+      const x = Math.max(12,Math.min(g.w-12,Math.round(b.sx)));
+      const y = Math.max(40,Math.min(g.h-4,Math.round(b.sy)));
       if (b.e) {
         const k = fade(b.e);
         const d = 19;
         const rise = b.e.t < 0.12 ? Math.round(3 * (1 - k)) : 0;
-        g.alpha(Math.max(0, Math.min(1, k)) * clearOfHud(y - d - 1 + rise));
+        g.alpha(Math.max(0, Math.min(1, k)) * clearOfHud(y - d - 1 + rise,x-d/2,x+d/2));
         g.sprite(disc(d, 'rgba(255, 252, 240, 0.97)'), x - d / 2, y - d - 1 + rise);
         g.text(b.e.sym, x, y - d + 2 + rise, { size: 2, align: 'center', color: EMOTE_COLOR[b.e.sym] ?? '#222' });
       }
       if (b.b) {
         const k = fade(b.b);
-        const text = g.fit(b.b.text, 200);
+        const text = g.fit(b.b.text,Math.min(200,g.w-24));
         const w = g.measure(text) + 10;
+        const bx=Math.max(4+w/2,Math.min(g.w-4-w/2,x));
         const by = y + (b.e ? -22 : -2) - 13;
-        g.alpha(Math.max(0, Math.min(1, k)) * clearOfHud(by));
-        g.panel(x - w / 2, by, w, 13, { shadow: false, fill: 'rgba(20, 22, 20, 0.86)', line: 'rgba(243, 236, 210, 0.16)' });
-        g.text(text, x, by + 3, { align: 'center', color: COLORS.ink });
+        g.alpha(Math.max(0, Math.min(1, k)) * clearOfHud(by,bx-w/2,bx+w/2));
+        g.panel(bx - w / 2, by, w, 13, { shadow: false, fill: 'rgba(20, 22, 20, 0.86)', line: 'rgba(243, 236, 210, 0.16)' });
+        g.text(text, bx, by + 3, { align: 'center', color: COLORS.ink });
       }
     }
   },

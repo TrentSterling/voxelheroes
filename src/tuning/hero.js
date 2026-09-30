@@ -12,6 +12,8 @@ export const hero = {
   ledgePush: 0.2,
   ledgeHop: 0.35,
   interactRange: 1.0,
+  prize: { time: 1.0, height: 1.18, size: 1.0, yaw: 0.5, turn: 0.7, bob: 0.04,
+    top: 0.21, phoneTop: 0.24, phoneHeader: 200 },
 };
 
 export const sword = {
@@ -19,6 +21,7 @@ export const sword = {
   extend: 2 / 60,
   hold: 0.2, // was 0.3: the thrust rooted him long enough to feel stuck
   retract: 0.08,
+  inputBuffer: 0.12, // remember one early press until the blade can swing again
   smallLength: 1.25,
   smallHitWidth: 0.55, // was 0.35: a bare line whiffed constantly (fun audit)
   length: (L) => 2.5 + 0.7 * L, // tiles, full-life blade
@@ -35,6 +38,8 @@ export const sword = {
   freezePerLevel: 1.0, // seconds a freeze-special hit freezes, per level
   starTime: 3, // seconds of invulnerability from the star special
 };
+
+export const pots = { speed: 9, flightTime: 0.55, damage: 4, stun: 0.7, radius: 0.28 };
 
 export const guard = {
   speed: 0.5,

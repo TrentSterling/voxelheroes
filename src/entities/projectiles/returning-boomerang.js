@@ -1,3 +1,4 @@
+// Returning boomerang projectile. The filename avoids EasyPrivacy's /boomerang.js rule.
 // The boomerang in flight (gameplay spec 9.2; CONTRACTS 8.4, 8.6): out at
 // TUNING.items.boomerang.speed to `range` tiles, then back to the hero at
 // returnSpeed, through walls. It stuns what it hits for

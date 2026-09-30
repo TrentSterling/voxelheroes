@@ -21,8 +21,9 @@
 // enemy of a room that is remembered as cleared); it is then not announced.
 import { scene } from '../core/renderer.js';
 import { emit } from '../core/events.js';
-import { withScreen } from '../world/world.js';
+import { withScreen, currentScreen } from '../world/world.js';
 import { createEntity } from './registry.js';
+import { partyHooks } from '../multiplayer/adapters.js';
 
 export const entities = []; // the stage, sorted by priority
 const buckets = new Map(); // screen key -> { screen, list, awake }
@@ -47,7 +48,8 @@ function announce(e) {
 export function addEntity(e) {
   const b = target;
   insert(b ? b.list : entities, e);
-  e.homeKey ??= b?.screen.key ?? null;
+  e.homeKey ??= b?.screen.key ?? currentScreen()?.key ?? null;
+  partyHooks.added(e);
   if (e.object) scene.add(e.object);
   e.onAdd?.();
   if (!b) announce(e);
@@ -82,7 +84,7 @@ function run(list, dt) {
     const e = list[i];
     if (e.removed || e._frame === frameId) continue;
     e._frame = frameId;
-    e.update(dt);
+    partyHooks.drive(e, dt);
   }
 }
 

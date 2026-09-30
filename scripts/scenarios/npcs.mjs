@@ -164,7 +164,7 @@ export default async function (t) {
   // NPC leaves the live ring, however it leaves (reapBucket skips remove() and calls onRemove()
   // straight through the manager). Give Hettie a bubble, push her out of the ring, and check the
   // canvas does not keep drawing her bubbles.
-  await t.teleport('Mossbrook Square', 8, 4.5);
+  await t.teleport('Mossbrook Square', 10.5, 10.4);
   await t.step(0.2);
   const ghostBefore = await t.eval(async () => {
     const h = window.__voxelHeroes;

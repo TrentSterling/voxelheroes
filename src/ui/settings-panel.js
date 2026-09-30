@@ -22,6 +22,7 @@ const ROWS = [
   { key: 'volume', label: 'Volume', range: [0, 1, 0.05] },
   { key: 'music', label: 'Music', range: [0, 1, 0.05] },
   { key: 'sfx', label: 'Effects', range: [0, 1, 0.05] },
+  { key: 'npcVoices', label: 'NPC voices', options: [[true, 'On'], [false, 'Off']] },
 ];
 
 let open = false;
@@ -84,29 +85,32 @@ const ROW_H = 13;
 const COL_W = 176;
 const CTRL_W = 92;
 
-function drawRow(g, R, i, x, y) {
+function drawRow(g, R, i, x, y, columnWidth=COL_W,rowHeight=ROW_H) {
   const on = sel === i;
-  if (on) g.rect(x - 4, y - 2, COL_W + 4, ROW_H, 'rgba(243, 236, 210, 0.09)');
+  const stacked=columnWidth<156;
+  const controlWidth=stacked?Math.min(CTRL_W,columnWidth-8):CTRL_W;
+  if (on) g.rect(x - 4, y - 2, columnWidth + 4, rowHeight, 'rgba(243, 236, 210, 0.09)');
   if (on) g.text('▶', x - 3, y, { color: COLORS.gold });
   g.text(R.label, x + 6, y, { color: on ? COLORS.ink : COLORS.muted });
-  const cx = x + COL_W - CTRL_W - 2;
+  const cx = stacked?x+6:x+columnWidth-controlWidth-2;
+  y+=stacked?11:0;
   if (R.range) {
     const [lo, hi] = R.range;
     const f = (state.settings[R.key] - lo) / (hi - lo);
-    g.rect(cx, y + 1, CTRL_W, 5, '#1a2e26');
-    g.rect(cx + 1, y + 2, Math.round((CTRL_W - 2) * f), 3, COLORS.gold);
-    g.rect(cx + Math.round((CTRL_W - 3) * f), y - 1, 3, 9, COLORS.ink);
-    g.hit(`setting-${R.key}`, cx - 3, y - 3, CTRL_W + 6, ROW_H, null, 'ew-resize', (px) => {
-      setSetting(R.key, snap(lo + Math.min(1, Math.max(0, (px - cx) / CTRL_W)) * (hi - lo), R.range));
+    g.rect(cx, y + 1, controlWidth, 5, '#1a2e26');
+    g.rect(cx + 1, y + 2, Math.round((controlWidth - 2) * f), 3, COLORS.gold);
+    g.rect(cx + Math.round((controlWidth - 3) * f), y - 1, 3, 9, COLORS.ink);
+    g.hit(`setting-${R.key}`, cx - 3, y - 3, controlWidth + 6, ROW_H, null, 'ew-resize', (px) => {
+      setSetting(R.key, snap(lo + Math.min(1, Math.max(0, (px - cx) / controlWidth)) * (hi - lo), R.range));
       sel = i;
     });
   } else {
     const text = R.options[optionIndex(R)][1];
     g.text('<', cx, y, { color: COLORS.gold });
-    g.text('>', cx + CTRL_W - 5, y, { color: COLORS.gold });
-    g.text(text, cx + CTRL_W / 2, y, { align: 'center', color: COLORS.ink });
-    g.hit(`setting-${R.key}-prev`, cx - 3, y - 3, CTRL_W / 2 + 3, ROW_H, () => ((sel = i), nudge(R, -1)));
-    g.hit(`setting-${R.key}-next`, cx + CTRL_W / 2, y - 3, CTRL_W / 2 + 3, ROW_H, () => ((sel = i), nudge(R, 1)));
+    g.text('>', cx + controlWidth - 5, y, { color: COLORS.gold });
+    g.text(text, cx + controlWidth / 2, y, { align: 'center', color: COLORS.ink });
+    g.hit(`setting-${R.key}-prev`, cx - 3, y - 3, controlWidth / 2 + 3, ROW_H, () => ((sel = i), nudge(R, -1)));
+    g.hit(`setting-${R.key}-next`, cx + controlWidth / 2, y - 3, controlWidth / 2 + 3, ROW_H, () => ((sel = i), nudge(R, 1)));
   }
 }
 
@@ -114,22 +118,30 @@ function drawSettings(g) {
   g.rect(0, 0, g.w, g.h, 'rgba(8, 17, 13, 0.7)');
   g.hit('settings-scrim', 0, 0, g.w, g.h, () => closeSettings(), 'default');
   // as many columns as the view is short of rows
-  const avail = g.h - 16 - 22 - 30;
-  const perCol = Math.max(4, Math.min(ROWS.length, Math.floor(avail / ROW_H)));
-  const cols = Math.ceil(ROWS.length / perCol);
-  const pw = cols * COL_W + (cols - 1) * 14 + 28;
-  const ph = 14 + 20 + perCol * ROW_H + 10 + 17 + 14;
+  const maxCols=Math.max(1,Math.floor((g.w-30)/(COL_W+14)));
+  const columnWidth=Math.min(COL_W,g.w-44);
+  const rowHeight=columnWidth<156?24:ROW_H;
+  const perCol=Math.max(1,Math.min(ROWS.length,Math.floor((g.h-87)/rowHeight)));
+  const cols=Math.min(maxCols,Math.ceil(ROWS.length/perCol));
+  const pageSize=cols*perCol,pages=Math.ceil(ROWS.length/pageSize),page=Math.min(pages-1,Math.floor(sel/pageSize));
+  const pw = cols * columnWidth + (cols - 1) * 14 + 28;
+  const ph = 14 + 20 + perCol * rowHeight + 10 + 17 + 14;
   const px = Math.round((g.w - pw) / 2);
   const py = Math.max(6, Math.round((g.h - ph) / 2));
   g.panel(px, py, pw, ph, { accent: true });
   g.hit('settings-panel', px, py, pw, ph, () => {}, 'default');
   g.text('Settings', px + 14, py + 12, { color: COLORS.gold, tracking: 1 });
   const top = py + 14 + 20;
-  ROWS.forEach((R, i) => {
-    const c = Math.floor(i / perCol);
-    drawRow(g, R, i, px + 18 + c * (COL_W + 14), top + (i % perCol) * ROW_H);
+  ROWS.slice(page*pageSize,(page+1)*pageSize).forEach((R, local) => {
+    const c = Math.floor(local / perCol),i=page*pageSize+local;
+    drawRow(g,R,i,px+18+c*(columnWidth+14),top+(local%perCol)*rowHeight,columnWidth,rowHeight);
   });
-  const by = top + perCol * ROW_H + 10;
+  const by = top + perCol * rowHeight + 10;
+  if(pages>1){
+    g.button('settings-prev-page','<',px+12,by,()=>{sel=((page+pages-1)%pages)*pageSize;requestUi();});
+    g.text(`${page+1}/${pages}`,px+31,by+4,{color:COLORS.muted});
+    g.button('settings-next-page','>',px+52,by,()=>{sel=((page+1)%pages)*pageSize;requestUi();});
+  }
   const w = g.measure('Close') + 20;
   if (sel === ROWS.length) g.rect(px + pw - 12 - w - 3, by - 3, w + 6, 23, 'rgba(243, 236, 210, 0.16)');
   g.primary('settings-close', 'Close', px + pw - 12 - w, by, () => closeSettings());

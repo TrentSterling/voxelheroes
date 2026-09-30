@@ -65,6 +65,9 @@ export class Player extends Entity {
     this.facing = 'south';
     this.attackT = 0; // > 0 while the blade is out (extend, hold, retract)
     this.thrust = null;
+    this.attackBuffer = 0;
+    this.chargeArmed = false;
+    this.carrying = null;
     this.swingId = 0;
     this.swordAngle = 0;
     this.invT = 0; // invulnerable (blinking) while > 0
@@ -96,11 +99,31 @@ export class Player extends Entity {
     on('hero-pose', (e) => {
       const pose = e?.pose ?? null;
       this.posed = pose ? { pose, left: e.seconds ?? 1 } : null;
-      if (pose === 'cheer') this.cheer(e.seconds);
+      if (pose === 'cheer') {
+        this.cheer(e.seconds);
+        // NPC rewards can arrive in dialogue, which pauses player updates.
+        // Show the requested cel immediately instead of waiting for play.
+        this.hero.setPose('cheer');
+        this.hero.sway.rotation.z = 0;
+        this.guardShield.removeFromParent();
+      }
       else if (pose == null) this.cheerT = 0;
     });
     on('mode-change', ({ to }) => {
-      if (to !== 'play') this.stopDash();
+      if (to !== 'play') {
+        this.stopDash();
+        this.attackBuffer = 0;
+        this.charge = null;
+        this.chargeArmed = false;
+        endSwing(this);
+      }
+    });
+    on('player-hurt', () => { this.attackBuffer = 0; this.charge = null; this.chargeArmed = false; });
+    on('screen-leave', () => {
+      this.attackBuffer = 0;
+      this.charge = null;
+      this.chargeArmed = false;
+      endSwing(this);
     });
   }
 
@@ -149,7 +172,7 @@ export class Player extends Entity {
   }
 
   canDash() {
-    return BOOTS.includes(state.gear?.boots) && !this.dashing && this.stallT <= 0 && this.knockT <= 0;
+    return BOOTS.includes(state.gear?.boots) && !this.carrying && !this.dashing && this.stallT <= 0 && this.knockT <= 0;
   }
 
   // The dash (Sprint Boots) revs first: he runs in place kicking up dust for DASH_REV seconds, then
@@ -213,13 +236,23 @@ export class Player extends Entity {
     else this.updateFacing({ x: 0, z: 0 }, { dir: -1 });
 
     // ---- buttons
-    if (input.pressed('sword') && tryInteract(this)) input.consume('sword');
-    if (input.pressed('sword')) {
+    this.attackBuffer = Math.max(0, this.attackBuffer - dt);
+    if (input.pressed('sword') && !rooted && this.lockT <= 0 && this.knockT <= 0 && tryInteract(this)) {
+      this.attackBuffer = 0;
+      this.chargeArmed = false;
+      input.consume('sword');
+    }
+    if (input.pressed('sword') && !this.carrying && this.lockT <= 0 && this.knockT <= 0 && this.stallT <= 0 && !this.paralyzed()) {
       if (this.dashing) this.stopDash();
-      startSwing(this);
+      this.charge = null;
+      this.attackBuffer = TUNING.sword.inputBuffer;
+    }
+    if (this.attackBuffer > 0 && !this.carrying && this.lockT <= 0 && this.knockT <= 0 && this.stallT <= 0 && !this.paralyzed() && startSwing(this)) {
+      this.attackBuffer = 0;
+      this.chargeArmed = input.held('sword');
     }
     // the charged spin: the button still held once the thrust is over charges it; let go when ready
-    if (!this.charge && !this.thrust && !this.dashing && input.held('sword') && state.mode === 'play') this.charge = { t: 0, ready: false, fxT: 0 };
+    if (!this.charge && this.chargeArmed && !this.thrust && !this.dashing && !this.carrying && !swordStats().none && this.lockT <= 0 && this.knockT <= 0 && input.held('sword') && state.mode === 'play') this.charge = { t: 0, ready: false, fxT: 0 };
     if (this.charge) {
       const c = this.charge;
       if (this.knockT > 0 || this.dashing || state.mode !== 'play') this.charge = null;
@@ -253,7 +286,8 @@ export class Player extends Entity {
     if (input.pressed('guard') && !shield) toast('No shield yet: the king has one for you');
     if (input.pressed('dash') && !BOOTS.includes(state.gear?.boots)) toast('No boots yet: Tinker Wyll in Mossbrook makes them');
     // (locked input stops walking, the sword, items and the dash, not the guard)
-    const wantGuard = input.held('guard') && shield;
+    if (!input.held('sword')) this.chargeArmed = false;
+    const wantGuard = input.held('guard') && shield && !this.carrying;
     if (this.dashing && input.pressed('guard')) this.stopDash();
     if (this.dashing && state.settings?.dashHold && !input.held('dash')) this.stopDash();
     if (input.pressed('dash') && this.canDash() && !isRooted(this)) this.startDash();
@@ -450,7 +484,7 @@ export class Player extends Entity {
     let pose = step;
     const set = this.posed?.pose;
     if (state.mode === 'dead') pose = 'stand';
-    else if (set === 'cheer' || this.cheerT > 0) pose = 'cheer';
+    else if (this.carrying || set === 'cheer' || this.cheerT > 0) pose = 'cheer';
     else if (set === 'item' && !out) pose = 'item';
     else if (set === 'item' || set === 'swordOut') pose = 'swordOut';
     else if (out) pose = 'swordOut';

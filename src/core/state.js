@@ -33,6 +33,8 @@
 // installs that translation with setTileKeyCodec (world/world.js). Keep other
 // flags out of the '<name>:<number>,<number>' form.
 
+import { partyHooks } from '../multiplayer/adapters.js';
+
 export const SAVE_VERSION = 3;
 export const SAVE_MIGRATIONS = {
   // 1 -> 2 (M2 contracts): money is counted in coins; the M1 field was 'gems'.
@@ -231,5 +233,12 @@ defineState('tileEdits', () => ({}), {
 });
 
 export const hasFlag = (flag) => state.flags.has(flag);
-export const setFlag = (flag) => state.flags.add(flag);
-export const clearFlag = (flag) => state.flags.delete(flag);
+export const setFlag = (flag) => {
+  if (!state.flags.has(flag)) { state.flags.add(flag); partyHooks.flag(flag, true); }
+  return state.flags;
+};
+export const clearFlag = (flag) => {
+  const removed = state.flags.delete(flag);
+  if (removed) partyHooks.flag(flag, false);
+  return removed;
+};

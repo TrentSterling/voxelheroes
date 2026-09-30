@@ -59,6 +59,7 @@ const pushing = new Map();
 
 export function openKeyDoor(ctx, { flag = `door:${ctx.tx},${ctx.tz}`, twin = true, kind = 'small', push = TUNING.dungeon.keyPush } = {}) {
   const { world, tx, tz, def, ch, dt = 1 / 60 } = ctx;
+  if (world.tile(tx, tz) !== ch) return false;
   if (keyCount() <= 0) return false;
   const key = `${tx},${tz}`;
   const held = pushing.get(key);
@@ -71,8 +72,8 @@ export function openKeyDoor(ctx, { flag = `door:${ctx.tx},${ctx.tz}`, twin = tru
   world.setTile(tx, tz, to, opts);
   setFlag(flag);
   if (twin)
-    for (const dx of [-1, 1])
-      if (world.tile(tx + dx, tz) === ch && world.setTile(tx + dx, tz, to, opts)) setFlag(flag === `door:${tx},${tz}` ? `door:${tx + dx},${tz}` : flag);
+    for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]])
+      if (world.tile(tx + dx, tz + dz) === ch && world.setTile(tx + dx, tz + dz, to, opts)) setFlag(flag === `door:${tx},${tz}` ? `door:${tx + dx},${tz + dz}` : flag);
   useKey();
   sfx.door();
   burst(tx + 0.5, GROUND_Y + 0.6, tz + 0.5, [0x7a4a26, 0x5e371b, 0x3a3a44], 30, { speed: 3, size: 0.1, up: 4 });

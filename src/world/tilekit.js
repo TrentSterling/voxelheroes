@@ -32,6 +32,8 @@ import { rollDrop } from '../systems/drops.js';
 import { keyCount, useKey } from '../systems/keys.js';
 import { grant } from '../systems/grants.js';
 import { showBanner } from '../ui/banner.js';
+import { shatterPot } from '../systems/pot-fx.js';
+import { partyHooks } from '../multiplayer/adapters.js';
 
 const V = 1 / 16; // character voxel
 
@@ -152,10 +154,7 @@ export function breakPot(ctx) {
   const { world, tx, tz, def } = ctx;
   const cols = world.propAt(tx, tz)?.userData.colors ?? [0xb86a3a, 0x8a4a2a, 0xd08a50];
   if (!world.setTile(tx, tz, def.becomes ?? '.', { rebuild: false, reason: 'break' })) return false;
-  sfx.shatter?.() ?? sfx.cut();
-  burst(tx + 0.5, GROUND_Y + 0.35, tz + 0.5, cols, 36, { speed: 3.6, size: 0.11, up: 4.5 });
-  sparks(tx + 0.5, GROUND_Y + 0.3, tz + 0.5, [0xffffff, 0xf0d0a0], 8, { speed: 3, size: 0.05, up: 3, life: 0.3 });
-  rollDrop('pot', tx + 0.5, tz + 0.5);
+  shatterPot(tx + 0.5, tz + 0.5, 0.35, cols);
   return true;
 }
 
@@ -245,6 +244,8 @@ export const chestContents = (ctx) => ctx.screen.def.chests?.[`${ctx.x},${ctx.z}
 
 // onPush for chests: open once, fanfare, hand over the contents.
 export function openChest(ctx) {
+  const routed = partyHooks.chest(ctx);
+  if (routed !== null) return routed;
   const { world, tx, tz } = ctx;
   const flag = chestFlag(tx, tz);
   if (hasFlag(flag)) return false;

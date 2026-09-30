@@ -81,7 +81,7 @@ const checkSpots = (t, key, spots) =>
           // Neighbour screens are live now (streaming), so over ~1,700 spot checks their foes
           // can chip the hero down; this scenario checks framing, not survival.
           g.state.hp = g.state.maxHp;
-          g.player.invT = 0;
+          g.player.invT = 999; // neighbouring foes must not inject hit shake into framing probes
           g.update(1 / 60);
           if (g.screen() !== s || g.state.mode !== 'play') {
             if (lz < s.h - line - 1e-9) {

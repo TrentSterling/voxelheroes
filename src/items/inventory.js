@@ -51,12 +51,12 @@ export function setOnRing(id, on = true) {
   return true;
 }
 
-export function giveItem(id) {
+export function giveItem(id, { startAmmo } = {}) {
   const item = getItem(id);
   if (!item) return false;
   if (!hasItem(id)) {
     inv().owned.push(id);
-    if (item.ammo) addAmmo(item.ammo, item.startAmmo);
+    if (item.ammo) addAmmo(item.ammo, Number.isFinite(startAmmo) ? startAmmo : item.startAmmo);
     if (!inv().selected && !item.passive) inv().selected = id;
     emit('item-gained', { id });
   }
@@ -141,9 +141,9 @@ export function updateItems(dt, player) {
 
 // grant('bow') and grant('arrows', 10) for every registered item and ammo
 // counter. An owned item whose id is also an ammo counter gets ammo instead.
-setGrantFallback((id, amount) => {
+setGrantFallback((id, amount, ctx = {}) => {
   const item = getItem(id);
-  if (item && !hasItem(id)) return giveItem(id);
+  if (item && !hasItem(id)) return giveItem(id, { startAmmo: ctx.startAmmo });
   if (ammoKeys().includes(id)) {
     addAmmo(id, amount);
     return true;

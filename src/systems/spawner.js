@@ -30,14 +30,14 @@ function spawnMarkers(screen) {
   const oz = screen.z0;
   const out = [];
   let enemyIndex = 0; // staggers enemy appearances
-  for (const sp of screen.spawns) {
+  for (const [markerIndex, sp] of screen.spawns.entries()) {
     if (sp.flag && hasFlag(sp.flag)) continue;
     if (!hasEntityType(sp.type)) {
       if (!warned.has(sp.type)) console.warn(`spawn: no entity type "${sp.type}" (marker on ${screen.name}); skipped`);
       warned.add(sp.type);
       continue;
     }
-    const e = spawn(sp.type, { ...sp.opts, x: ox + sp.x + 0.5, z: oz + sp.z + 0.5, spawnIndex: enemyIndex, spawnFlag: sp.flag, screen });
+    const e = spawn(sp.type, { ...sp.opts, x: ox + sp.x + 0.5, z: oz + sp.z + 0.5, netId: `${screen.key}:marker:${markerIndex}`, spawnIndex: enemyIndex, spawnFlag: sp.flag, screen });
     out.push(e);
     if (e.kind === 'enemy') enemyIndex++;
   }

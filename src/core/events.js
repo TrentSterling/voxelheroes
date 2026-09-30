@@ -57,6 +57,8 @@ export const events = { on, once, off, emit, onAny };
 const E = (payload, from, to) => ({ payload, from, to });
 
 export const EVENTS = {
+  'audio-muted': E('{ muted }', 'core/audio.js setMuted', 'NPC speech cancellation'),
+  'party-bonk': E('{ from, swingId }', 'game/party.js friendly sword contact', 'UI, tests'),
   // ---- frame, modes, world (M1 and feat/world)
   'mode-change': E('{ from, to }', 'core/modes.js on every switch', 'anyone'),
   'screen-leave': E('{ screen }', 'world: transitions.js, before its entities are cleared', 'foes (despawn smoke), dungeon (reset puzzles)'),
@@ -75,6 +77,9 @@ export const EVENTS = {
   // ---- hero and the hero's vitals
   'sword-swing': E('{ player, stats }', 'hero: sword.js when a thrust starts', 'hero (a thrust ends a dash), audio'),
   'sword-hit': E('{ target, hit }', 'hero: sword.js when the blade connects', 'foes'),
+  'pot-lifted': E('{ tx, tz }', 'systems/pots.js after removing a pot from its tile', 'ui, audio'),
+  'pot-thrown': E('{ x, z, dir }', 'systems/pots.js when a carried pot becomes a projectile', 'ui, audio'),
+  'pot-broken': E('{ x, z, thrown }', 'entities/projectiles/thrown-pot.js when a throw shatters', 'ui, audio'),
   'blade-changed': E('{ full, stats }', 'hero: the blade grows (life full) or shrinks (life not full)', 'ui, audio'),
   'hero-hit': E("{ result: 'blocked' | 'hit', damage, kind, source, from: { x, z } | null }", 'hero.js receiveHit (every call that is not ignored)', 'ui, audio (the caller of receiveHit applies its own recoil on block)'),
   'player-hurt': E('{ amount, hp, fromX, fromZ, kind, source }', 'hero: combat.js hurtPlayer', 'ui, audio'),

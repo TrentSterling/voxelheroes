@@ -20,7 +20,7 @@ const tileOf = (t, key, x, z) =>
   }, [key, x, z]);
 
 export default async function defaultScenario(t) {
-  await t.track('screen-enter', 'room-enter', 'area-enter', 'enemy-killed', 'room-cleared', 'pickup', 'door-opened', 'chest-opened', 'warp', 'player-hurt');
+  await t.track('screen-enter', 'room-enter', 'area-enter', 'enemy-killed', 'room-cleared', 'pickup', 'door-opened', 'chest-opened', 'warp', 'player-hurt', 'life-changed');
   let s;
   const keyTile = await tileOf(t, 'crypt:0,0', 7, 5); // the small key in the Key Vault
   const doorTiles = [await tileOf(t, 'crypt:1,1', 7, 0), await tileOf(t, 'crypt:1,1', 8, 0)]; // the Pillar Hall's locked door
@@ -146,7 +146,8 @@ export default async function defaultScenario(t) {
   await t.hold('ArrowUp', 0.3);
   s = await t.state();
   t.expect(s.flags.includes(`chest:${chestTile}`), `walking into the chest opens it (chest:${chestTile})`);
-  t.expect(s.maxHp === 8 && s.hp === 8, 'the chest holds a heart container: 4 hearts, all full');
+  const container = (await t.events('life-changed')).find(e => e.reason === 'heart-container');
+  t.expect(s.maxHp === 8 && container?.hp === 8 && container.full, 'the chest holds a heart container: 4 hearts, refilled when claimed');
   const chests = await t.events('chest-opened');
   t.expect(chests.length === 1 && chests[0].contents === 'heart-container', "'chest-opened' reports the contents");
   await t.step(0.8);

@@ -297,7 +297,7 @@ registerArea({
         '10,5': { type: 'npc', name: 'Sister Anwe', palette: { tunic: 0xd8d0c0, tunicLight: 0xf0e8d8, cap: 0xd8d0c0, extras: [['hood', 0xe8e0d0]] }, lines: ['The graves here are quiet. The barrow is not.'] },
       },
       rows: [
-        'TTTTTTTTTTTTTTTT',
+        'TTT.......TTTTTT',
         'T....HHHHHH....T',
         'T....HHHHHH....T',
         'T....HHHhHH....T',
@@ -341,8 +341,8 @@ registerArea({
     },
     '0,1': {
       name: "West Gate",
-      // Rook's errand (Gnome Rook, game/errands.js need.type 'bush'): cut a bush on this screen.
-      // It had none to cut; this is the "brush by this gate" he means (fun audit item 2).
+      // Rook's stolen dice wait in the den beneath the northwest stair-bush.
+      warps: { j: { area: 'rook-den', screen: [0,2], x: 7.5, z: 9.5, yaw: Math.PI } },
       spawnsAt: {
         '12,8': { type: 'npc', name: 'Rook', palette: { tunic: 0x7a5a8a, tunicLight: 0x9a7aaa }, lines: ['West is Barrowfield. Take the road and keep south.'] },
       },
@@ -350,7 +350,7 @@ registerArea({
         'TTTTTTppppTTTTTT',
         'T.TT..pppp..HHHT',
         'T.T...pppp..HhHT',
-        'TBBB..pppp.....T',
+        'TBBK..pppp.....T',
         'T.f.f.pppp.....T',
         'TBB...pppp..,,.T',
         'pppppppppppppppp',
@@ -367,6 +367,7 @@ registerArea({
     },
     '1,1': {
       name: "Mossbrook Square",
+      warps: { y: { area: 'cellar-tobin', screen: [0, 0], x: 5.5, z: 8, yaw: 0 } },
       spawnsAt: {
         '5,4': { type: 'npc-shop', shop: 'v1-shop' },
         '10,4': { type: 'npc-smith' },
@@ -374,7 +375,7 @@ registerArea({
         '5,11': { type: 'npc-inn', inn: 'inn-1' },
         '10,11': { type: 'npc', name: 'Hettie', palette: { extras: ['straw-hat'] }, lines: ['Welcome to Mossbrook!', 'The inn lets you rest and wakes you there if you fall.'] },
         '2,8': { type: 'npc', name: 'Pip', personality: 'cheery', palette: { tunic: 0x4a9a5a, tunicLight: 0x6aba7a, hair: 0xd8a040, cap: 0xd05a3a, kid: true, extras: ['scarf'] }, lines: ['I am Pip! I can run faster than a slime. Probably.'] },
-        '13,9': { type: 'npc', name: 'Old Tobin', personality: 'grumpy', palette: { tunic: 0x5a5a6a, tunicLight: 0x7a7a8a, hair: 0xc8c8c8, cap: 0x3a3a44, extras: ['beard', ['hood', 0x6a4a34]] }, lines: ['Another adventurer. Wonderful.', 'Stay off my bench.'] },
+        '13,7': { type: 'npc', name: 'Old Tobin', personality: 'grumpy', palette: { tunic: 0x5a5a6a, tunicLight: 0x7a7a8a, hair: 0xc8c8c8, cap: 0x3a3a44, extras: ['beard', ['hood', 0x6a4a34]] }, lines: ['Another adventurer. Wonderful.', 'Stay off my bench.'] },
         '5,14': { type: 'npc', name: 'Nell', personality: 'gossip', palette: { tunic: 0xa04a7a, tunicLight: 0xc06a9a, hair: 0x3a2418, cap: 0xe8d8b0, extras: ['bun', ['scarf', 0x3a8a9a]] }, lines: ['Oh! You must be the one the king sent for!', 'Everyone is talking about you. Well, I am.'] },
         '12,14': { type: 'npc', name: 'Rowan', personality: 'worker', palette: { tunic: 0x7a5a3a, tunicLight: 0x9a7a5a, hair: 0x8a3a20, cap: 0x5a7a3a, extras: ['straw-hat'] }, lines: ['Mind the fence posts, I just set them.'] },
         '2,4': { type: 'npc', name: 'Tam', palette: { tunic: 0x4a7a4a, tunicLight: 0x6a9a6a }, lines: ['Cut the bushes! Sometimes there are coins under them.'] },
@@ -387,7 +388,7 @@ registerArea({
         'T..pp..pp..pp..T',
         'T..pppppppppp..T',
         'ppppppp~~ppppppp',
-        'pppppp~~~~pppppp',
+        'pppppp~~~~pppp%p',
         'pppppp~~~~pppppp',
         'ppppppp~~ppppppp',
         'T..pppppppppp..T',
@@ -407,10 +408,10 @@ registerArea({
         'T.~~~~~~~...HHHT',
         'T.~~~~~~~...HhHT',
         'T..~~~~~.......T',
-        'ppppppp........T',
-        'pppppppppppp...T',
-        '...........p...T',
-        '..,,,......p...T',
+        'ppppppp.........',
+        'pppppppppppppppp',
+        '...........ppppp',
+        '..,,,......p....',
         'T.,,,..v...p...T',
         'T..........p...T',
         'T.T........p...T',

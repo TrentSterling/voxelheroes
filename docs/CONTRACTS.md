@@ -1210,6 +1210,7 @@ browser, not per slot; defaults in `TUNING.options`.
 | `sway`, `cornerAssist`, `spinAssist`, `dashHold` | bool (true, true, false, false) | hero |
 | `autosave` | bool (false) | ui |
 | `volume`, `music`, `sfx` | 0-1 (0.8, 0.7, 0.9) | `core/audio.js` (wired) |
+| `npcVoices` | bool (true) | Focused NPC dialog uses installed English `speechSynthesis` voices. No model download. Cancels on page changes, mode changes and mute. |
 | `muted` | bool (false) | `core/audio.js` and the HUD Sound button (wired; N toggles) |
 
 ### 8.18 Effects: `game/effects.js` (contracts)

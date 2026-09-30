@@ -37,6 +37,8 @@ import { showBanner } from '../ui/banner.js';
 import { getItem } from '../items/registry.js';
 import { addKeys } from './keys.js';
 import * as vitals from '../game/vitals.js';
+import { partyHooks } from '../multiplayer/adapters.js';
+import { heartContainerModel, prizeMesh } from '../models/items/items.js';
 
 const grants = new Map(); // id -> { fn, meta }
 let fallback = null;
@@ -55,7 +57,7 @@ export function setGrantFallback(fn) {
 
 // ---------------------------------------------------------------- item gets
 const bannerPresenter = (get) => {
-  if (get.text) showBanner(get.text);
+  if (get.text) showBanner(get.text, { reward: !!get.model });
 };
 let presenter = bannerPresenter;
 
@@ -76,15 +78,19 @@ function announce(id, amount, meta, ctx) {
 // ---------------------------------------------------------------- granting
 export function grant(what, amount = 1, ctx = {}) {
   if (what && typeof what === 'object') return grant(what.grant, what.amount ?? 1, { ...ctx, ...what });
+  const routed = partyHooks.grantTo(what, amount, ctx);
+  if (routed !== null) return routed;
   const g = grants.get(what);
   if (g) {
     g.fn(amount, ctx);
+    partyHooks.granted(what, amount, ctx);
     if (g.meta.fanfare || ctx.fanfare === true) announce(what, amount, g.meta, ctx);
     return true;
   }
   const item = getItem(what);
   const isNew = !!item && !state.inventory?.owned?.includes(what);
   if (fallback && fallback(what, amount, ctx)) {
+    partyHooks.granted(what, amount, ctx);
     if (isNew && item.fanfare !== false) announce(what, amount, { name: item.name, text: item.getText, model: item.model ?? null }, ctx);
     return true;
   }
@@ -114,6 +120,7 @@ registerGrant('heart', (n) => vitals.heal(TUNING.pickups.heart * n, 'heart'), { 
 registerGrant('magic', (n) => vitals.restoreMagic(TUNING.pickups.magic * n, 'magic'), { name: 'Magic', kind: 'magic' });
 registerGrant('key', (n) => addKeys(n), { name: 'Small Key', kind: 'key' });
 registerGrant('heart-container', (n) => vitals.addMaxLife(vitals.UNITS_PER_HEART * n, { reason: 'heart-container' }), {
+  model: prizeMesh(heartContainerModel),
   name: 'Heart Container',
   fanfare: true,
   kind: 'life',

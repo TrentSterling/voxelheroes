@@ -1028,7 +1028,9 @@ export default async function contractsM2(t) {
   t.expect(r.flag, 'a boss kill sets boss:<dungeon id> (spec P1.5: boss:d1)');
   t.expect(r.complete && !r.twice && r.orbs === '1,2', `taking the orb completes the dungeon once (orbs ${r.orbs})`);
   const bossEvents = (await t.events('boss-defeated')).map((e) => `${e.id}:${e.refight}`).join(' ');
-  t.expect(bossEvents === 'probe-boss:false probe-boss:true' && (await last('dungeon-complete'))?.orb === 1, `boss and orb events (${bossEvents})`);
+  const orbEvents = await t.events('dungeon-complete');
+  t.expect(bossEvents === 'probe-boss:false probe-boss:true' && orbEvents.some(e => e.id === 'probe-d1' && e.orb === 1), `boss and first-orb events (${bossEvents})`);
+  t.expect(orbEvents.some(e => e.id === 'd2' && e.orb === 2), 'the second-orb grant completes the registered hive');
   t.expect(r.music === r.areaTrack && (await last('music-change'))?.id === r.areaTrack, `leaving the crypt plays the overworld's own track (${r.areaTrack ?? 'none yet: the music stops'})`);
 
   // ---------------------------------------------------------------- shops and inns

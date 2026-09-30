@@ -24,8 +24,9 @@ const stats = (id, extra = {}) => {
 
 // The cardinal nearest the hero.
 const towardHero = (e) => {
-  const dx = player.x - e.x;
-  const dz = player.z - e.z;
+  const target = e.targetHero() ?? player;
+  const dx = target.x - e.x;
+  const dz = target.z - e.z;
   return Math.abs(dx) > Math.abs(dz) ? { x: Math.sign(dx), z: 0 } : { x: 0, z: Math.sign(dz) || 1 };
 };
 

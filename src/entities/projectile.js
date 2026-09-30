@@ -56,6 +56,7 @@ import { currentRect } from '../game/places.js';
 import { Entity } from './entity.js';
 import { entities } from './manager.js';
 import { player } from './player.js';
+import { partyHooks } from '../multiplayer/adapters.js';
 
 export const SPARK = [0xffffff, 0xf1c232];
 export const DUST = [0xb4a894, 0x8a7e6c];
@@ -210,6 +211,7 @@ export class Projectile extends Entity {
   // The blade knocks enemy shots apart.
   onSword() {
     if (!this.deflectable) return false;
+    if (partyHooks.deflect(this)) return true;
     sfx.block();
     this.shatter(SPARK);
     return true;

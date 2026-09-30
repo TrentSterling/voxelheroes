@@ -37,7 +37,7 @@ function facingEntity(p) {
   return best;
 }
 
-const tileAhead = (p) => [Math.floor(p.x + Math.sin(p.yaw) * 0.55), Math.floor(p.z + Math.cos(p.yaw) * 0.55)];
+const tileAhead = (p) => [Math.floor(p.x + Math.sin(p.yaw) * (p.r + 0.35)), Math.floor(p.z + Math.cos(p.yaw) * (p.r + 0.35))];
 
 export function findInteraction(p) {
   const e = facingEntity(p);

@@ -1,6 +1,6 @@
 // Village errands (game/errands.js): a marker over anyone with a job to offer, accepting and
 // delivering it, and one that sends the hero to another screen before it can close.
-export const description = 'Errands: "!" to offer, accept, "?" while short, deliver for the reward (Hettie: 3 wildflowers -> a heart piece), and an errand needing another screen (Nell\'s locket at Barrow Crossing).';
+export const description = 'Errands: offer, accept, deliver flowers, physically find Nell\'s locket in a bush, save the find and return for a heart piece.';
 
 // One conversation: open it, answer every page and choice with the first option, let it settle.
 const TALK_SRC = `async (h, name) => {
@@ -79,8 +79,35 @@ export default async function (t) {
 
   await t.teleport('ow-3-2:1,1', 8, 8);
   await t.step(0.3);
-  const found = await t.eval(() => window.__voxelHeroes.state.errands?.Nell?.found ?? false);
-  t.expect(found, 'stepping onto Barrow Crossing marks the locket found, a screen away from Nell');
+  t.expect(!(await t.eval(() => window.__voxelHeroes.state.errands?.Nell?.found ?? false)), 'entering Barrow Crossing does not find the locket');
+  await t.eval(() => {
+    const h = window.__voxelHeroes, s = h.screen();
+    for (const e of [...h.entities]) if (e.kind === 'enemy') e.remove();
+    h.game.grants.grant('blade-start', 1, { fanfare: false }); h.game.swords.equipSword('blade-start'); h.player.invT = 999;
+    h.player.x = s.x0 + 2.5; h.player.z = s.z0 + 10.5;
+    h.game.hero.hero.setFacing('north');
+  });
+  await t.step(1.3);
+  await t.tap('sword'); await t.step(0.2);
+  const revealed = await t.eval(() => {
+    const h = window.__voxelHeroes;
+    return { item: h.entities.filter(e => e.type === 'quest-locket').length, found: h.state.errands.Nell.found,
+      reveal: h.state.flags.has('errand:Nell:revealed'), tile: h.world.tile(h.screen().x0 + 2, h.screen().z0 + 9), status: h.state.errands.Nell.status };
+  });
+  t.expect(revealed.item === 1 && revealed.reveal && !revealed.found, `a real sword cut reveals a collectible gold locket without completing the search (${JSON.stringify(revealed)})`);
+  await t.step(2.4);
+  await t.eval(async () => { const h = window.__voxelHeroes; h.player.x += 2; h.player.z -= 1; await h.tick(); h.player.hero.root.visible = true; });
+  await t.shot('errands-03-locket-revealed');
+  await t.teleport('ow-3-2:2,1', 8, 8); await t.step(0.2);
+  await t.teleport('ow-3-2:1,1', 8, 8); await t.step(0.3);
+  t.expect((await t.eval(() => window.__voxelHeroes.entities.filter(e => e.type === 'quest-locket').length)) === 1,
+    'leaving and returning preserves exactly one unclaimed locket');
+  await t.walkTo(2.5, 9.5, { allowHooks: true }); await t.step(0.3);
+  const found = await t.eval(() => ({ found: window.__voxelHeroes.state.errands.Nell.found,
+    items: window.__voxelHeroes.entities.filter(e => e.type === 'quest-locket').length }));
+  t.expect(found.found && found.items === 0, 'walking onto the gold locket finds it and removes the world object');
+  const saved = await t.save(); await t.load(saved);
+  t.expect(await t.eval(() => window.__voxelHeroes.state.errands.Nell.found), 'the physical find survives save and load');
 
   await t.teleport('v1:1,1', 5, 14);
   await t.step(0.3);
@@ -88,13 +115,15 @@ export default async function (t) {
     async (src) => {
       const h = window.__voxelHeroes;
       const talk = new Function(`return (${src})`)();
+      const hearts = h.state.heartPieces;
       await talk(h, 'Nell');
-      return { status: h.state.errands?.Nell?.status, mode: h.state.mode };
+      return { status: h.state.errands?.Nell?.status, mode: h.state.mode, hearts, after: h.state.heartPieces };
     },
     TALK_SRC
   );
   t.expect(nellDone.status === 'done', `an errand needing another screen completes back at Nell (${nellDone.status})`);
   t.expect(nellDone.mode === 'play', 'and closes back to play');
+  t.expect(nellDone.after === nellDone.hearts + 1, 'returning the locket pays one permanent heart piece');
   await t.shot('errands-03-nell-done');
 
   // Rowan's errand is a delivery to Guard Oswin at Crownhold, a second screen away: accepting it
@@ -133,11 +162,8 @@ export default async function (t) {
   t.expect(rowanDone.rowan === 'done', `delivering to Guard Oswin closes Rowan's errand (${rowanDone.rowan})`);
   t.expect(rowanDone.after > rowanDone.before, `and its smith discount is waiting (${rowanDone.before} -> ${rowanDone.after})`);
 
-  // Rook lives right at the West Gate (v1:0,1) and wants a bush there cut: every errand must be
-  // completable by a scripted player, so accept it, hunt the screen's own tiles for a "B", cut it
-  // and turn in. The content lane places the actual bush tiles at the West Gate separately from
-  // this lane, so a run before they land there tolerates their late arrival instead of failing:
-  // the offer/accept half of the errand is still proven every time.
+  // Rook offers a physical dice adventure at West Gate. Cutting ordinary
+  // brush cannot complete it; rook-den.mjs proves the full route and reward.
   await t.teleport('v1:0,1', 12, 9);
   await t.step(0.3);
   const rookOffer = await t.eval(async () => {
@@ -175,19 +201,8 @@ export default async function (t) {
       h.world.trigger(x, z, 'onSword', { player: h.player, hit: { source: 'sword' } });
     }, rookBush);
     const rookFound = await t.eval(() => window.__voxelHeroes.state.errands?.Rook?.found ?? false);
-    t.expect(rookFound, 'cutting the West Gate bush marks Rook\'s dice found');
-
-    const rookDone = await t.eval(
-      async (src) => {
-        const h = window.__voxelHeroes;
-        const talk = new Function(`return (${src})`)();
-        const before = h.state.inventory?.ammo?.bombs ?? 0;
-        await talk(h, 'Rook');
-        return { status: h.state.errands?.Rook?.status, before, after: h.state.inventory?.ammo?.bombs ?? 0 };
-      },
-      TALK_SRC
-    );
-    t.expect(rookDone.status === 'done', `turning in the dice completes Rook's errand (${rookDone.status})`);
-    t.expect(rookDone.after > rookDone.before, `and pays out bombs (${rookDone.before} -> ${rookDone.after})`);
+    t.expect(!rookFound, 'cutting an ordinary West Gate bush cannot pretend Rook\'s stolen dice were recovered');
+    t.expect(await t.eval(()=>window.__voxelHeroes.state.errands.Rook.status)==='active','the dice errand stays active until the actual den chest is collected');
+    t.note('The rook-den scenario verifies the real den route, dice chest and one-time quiver/bomb turn-in.');
   }
 }

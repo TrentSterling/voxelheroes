@@ -218,6 +218,12 @@ export function makeHero(material = getMaterial('character'), palette = {}) {
     return hero;
   };
   hero.pose = () => figure.pose;
+  hero.setPalette = (next) => {
+    const slots = heroSlots({ ...palette, ...next });
+    figure.poses = Object.fromEntries(HERO_POSES.map((p) => [p, heroModel(p, slots, { shield, extras: palette.extras })]));
+    figure.geometry = figure.poses[figure.pose].geometry;
+    return hero;
+  };
   hero.setSword = (mesh) => {
     if (hero.sword) swordPivot.remove(hero.sword);
     hero.sword = mesh;

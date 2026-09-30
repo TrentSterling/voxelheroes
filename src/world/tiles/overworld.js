@@ -23,6 +23,7 @@ import { TP, GROUND, PROP } from '../palette.js';
 import { bushProp, potProp, chestProp, cutPlant, breakPot, openChest, revealBurst, revealGlint } from '../tilekit.js';
 import { gravestone, signpost } from '../../models/props.js';
 import { showDialog } from '../../ui/dialog.js';
+import { liftPot } from '../../systems/pots.js';
 
 defineTileset('overworld', { floor: '.' });
 
@@ -50,8 +51,8 @@ const tone = (pal, a) => (a <= -1 ? pal[1] : a < 0 ? mixHex(pal[0], pal[1], -a) 
 
 // Top colour of a ground block of kind at global block (X, Z): base or accent, with +-1.5%
 // brightness jitter per block.
-export function surfaceColor(kind, X, Z) {
-  const pal = GROUND[kind] ?? GROUND.grass;
+export function surfaceColor(kind, X, Z, ground = GROUND) {
+  const pal = ground[kind] ?? GROUND[kind] ?? GROUND.grass;
   const a = ACCENTS[LAYOUT_OF[kind] ?? 'field'][(Z & 7) * 8 + (X & 7)];
   return shadeHex(tone(pal, a), 1 + (hash3(X, 1, Z, 4) - 0.5) * 0.03);
 }
@@ -114,7 +115,7 @@ export function land(ctx, { kind = ctx.def.ground ?? 'grass', level = ctx.level 
         T.set(X, 0, Z, TP.soil);
         for (let Y = 1; Y < top; Y++) T.set(X, Y, Z, cliffColor(X, Y, Z, 41 + ((Y - 1) >> 3)));
       }
-      T.set(X, top, Z, surfaceColor(blockKind(nb, ctx, lx, lz, kind, level), X, Z));
+      T.set(X, top, Z, surfaceColor(blockKind(nb, ctx, lx, lz, kind, level), X, Z, ctx.owner?.area?.groundPalette));
     }
   if (level > 0) cliffEdges(ctx, nb, level);
   return top;
@@ -161,6 +162,7 @@ function cliffEdges(ctx, nb, level) {
 // overhangs the tile by a block, so rows of trees merge into hedges. y0: first block above ground.
 export function tree(ctx, y0) {
   const { T, X0, Z0 } = ctx;
+  const foliage = ctx.owner?.area?.foliage ?? TP;
   const cx = X0 + 4;
   const cz = Z0 + 4;
   const trunkH = 3 + (hash3(ctx.tx, 0, ctx.tz, 7) > 0.7 ? 1 : 0);
@@ -176,7 +178,7 @@ export function tree(ctx, y0) {
           const X = cx + x;
           const Z = cz + z;
           const n = hash3(X, yy, Z, 61);
-          T.set(X, yy, Z, yy === y0 + trunkH ? TP.leafDark : n > 0.97 ? TP.leafSpeck : TP.leaf);
+          T.set(X, yy, Z, yy === y0 + trunkH ? foliage.leafDark : n > 0.97 ? foliage.leafSpeck : foliage.leaf);
         }
     y += h;
   }
@@ -415,16 +417,19 @@ function signText(ctx) {
 // Pots (gameplay spec: sword or bomb breaks it into cubes, 50% drop roll); back on the next visit.
 registerTile('overworld', 'v', {
   name: 'pot',
+  prompt: 'Lift pot',
   solid: true,
   regrow: true,
   becomes: '.',
   ground: 'grass',
   build: (ctx) => land(ctx),
   prop: potProp,
+  onInteract: liftPot,
+  onShot: (ctx) => ctx.projectile?.source === 'pot' && breakPot(ctx),
   onSword: (ctx) => breakPot(ctx),
   onBomb: (ctx) => breakPot(ctx),
 });
-registerTile('overworld', 'C', { name: 'chest', solid: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, onPush: openChest });
+registerTile('overworld', 'C', { name: 'chest', solid: true, grapple: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, onPush: openChest });
 
 // ---------------------------------------------------------------- secrets (fun audit: every
 // screen earns a find, ALttP-style). A cracked rock looks exactly like a plain one until a bomb

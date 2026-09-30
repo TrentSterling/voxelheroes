@@ -86,6 +86,10 @@ export const g = {
   measure,
   wrap,
   fit,
+  buttonMetrics(label,{primary=false,size=1,pad=primary?10:5,maxWidth=Infinity}={}){
+    const lines=wrap(String(label),Math.max(1,maxWidth-pad*2),size);
+    return{lines,w:Math.max(...lines.map(l=>measure(l.text,size)))+pad*2,h:CAP*size+(primary?10:6)+(lines.length-1)*LINE*size};
+  },
   alpha(a) {
     ctx.globalAlpha = Math.max(0, Math.min(1, a));
   },
@@ -126,26 +130,24 @@ export const g = {
   // Returns its width.
   button(id, label, x, y, onPress, opts = {}) {
     const { size = 1, pad = 5, on = false } = opts;
-    const w = measure(label, size) + pad * 2;
-    const h = CAP * size + 6;
+    const {w,h,lines}=g.buttonMetrics(label,{size,pad,maxWidth:opts.maxWidth});
     const hot = hover === id;
     const down = pressed === id;
     const py = y + (down ? 1 : 0);
     g.panel(x, py, w, h, { shadow: !down, fill: on ? 'rgba(241, 194, 50, 0.22)' : hot ? 'rgba(243, 236, 210, 0.16)' : COLORS.panel });
-    g.text(label, x + pad, py + 3, { size, color: hot || on ? COLORS.ink : COLORS.muted });
+    lines.forEach((line,i)=>g.text(line.text,x+pad,py+3+i*LINE*size,{size,color:hot||on?COLORS.ink:COLORS.muted}));
     g.hit(id, x - 3, y - 3, w + 6, h + 6, onPress); // a fingertip is bigger than the plate
     return w;
   },
   // The gold call-to-action button (a panel's main one). Returns its width.
-  primary(id, label, x, y, onPress) {
-    const w = measure(label) + 20;
-    const h = 17;
+  primary(id, label, x, y, onPress, opts={}) {
+    const {w,h,lines}=g.buttonMetrics(label,{primary:true,maxWidth:opts.maxWidth});
     const hot = hover === id;
     const gold = hot ? '#ffd95a' : COLORS.gold;
     g.rect(x + 1, y + h - 1, w - 2, 2, COLORS.goldDeep);
     g.rect(x, y + 1, w, h - 2, gold);
     g.rect(x + 1, y, w - 2, h, gold);
-    g.text(label, x + 10, y + 5, { color: '#1c1405' });
+    lines.forEach((line,i)=>g.text(line.text,x+10,y+5+i*LINE,{color:'#1c1405'}));
     g.hit(id, x - 3, y - 3, w + 6, h + 9, onPress);
     return w;
   },

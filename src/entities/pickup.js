@@ -14,8 +14,7 @@ import * as THREE from 'three';
 import { getMaterial } from '../core/materials.js';
 import { GROUND_Y } from '../core/constants.js';
 import { state } from '../core/state.js';
-import { emit } from '../core/events.js';
-import { pickupWasFull } from '../game/pickups.js';
+import { collectPickup } from '../game/pickups.js';
 import { Entity } from './entity.js';
 import { player } from './player.js';
 
@@ -46,10 +45,8 @@ export class Pickup extends Entity {
     this.mesh.visible = this.life > 2 || Math.floor(this.life * 8) % 2 === 0;
     const got = this.t > 0.25 && Math.hypot(this.x - player.x, this.z - player.z) < 0.6 && state.mode === 'play';
     if (got) {
-      const wasFull = pickupWasFull(this.type); // before collect() fills it
-      this.collect();
-      emit('pickup', { entity: this, type: this.type, wasFull });
+      collectPickup(this, { by: 'hero' });
     }
-    if (got || this.life <= 0) this.remove();
+    if (this.life <= 0) this.remove();
   }
 }

@@ -29,6 +29,7 @@ import { getTile, tilesetFloor, isSolidDef } from './tiles.js';
 import { areaScreenSize, areaCorner, areaStart } from './areas.js';
 import { screenKey, tileKey } from './grid.js';
 import { edgeReport } from './links.js';
+import { partyHooks } from '../multiplayer/adapters.js';
 
 // The spatial index: square cells of CELL tiles, each listing the screens
 // that overlap it.
@@ -651,9 +652,12 @@ export class World {
   // point itself if it is clear, else the nearest clear tile centre. Clear:
   // nothing solid under the body and no onEnter hook (warp, pit) under its
   // centre. null if the screen has no such spot.
-  freeSpot(screen, x = screen.w / 2, z = screen.h / 2, r = 0.3) {
+  freeSpot(screen, x = screen.w / 2, z = screen.h / 2, r = 0.3, { body = null, occupied = () => false } = {}) {
     const clear = (lx, lz) =>
-      !this.blocked(screen.x0 + lx, screen.z0 + lz, r) && !getTile(screen.tileset, screen.tiles[Math.floor(lz)]?.[Math.floor(lx)])?.onEnter;
+      !this.blocked(screen.x0 + lx, screen.z0 + lz, r, body) &&
+      !occupied(screen.x0 + lx, screen.z0 + lz) &&
+      !getTile(screen.tileset, screen.tiles[Math.floor(lz)]?.[Math.floor(lx)])?.onEnter &&
+      !getTile(screen.tileset, screen.tiles[Math.floor(lz)]?.[Math.floor(lx)])?.hazard;
     if (x >= 0 && x < screen.w && z >= 0 && z < screen.h && clear(x, z)) return { x, z };
     let best = null;
     for (let tz = 0; tz < screen.h; tz++)
@@ -691,6 +695,8 @@ export class World {
     const def = getTile(at.screen.tileset, ch);
     const fn = def?.[hook];
     if (!fn) return undefined;
+    const routed = partyHooks.trigger({ screen: at.screen, tx, tz, hook, extra });
+    if (routed !== null) return routed;
     return fn.call(def, { world: this, screen: at.screen, area: at.screen.area, tx, tz, x: at.lx, z: at.lz, ch, def, ...extra });
   }
 
@@ -711,12 +717,14 @@ export class World {
       for (const s of marginScreens(this, screen, tx, tz)) this.dirty.add(s);
     }
     if (persist) state.tileEdits[tileKey(tx, tz)] = ch;
+    partyHooks.tile({ tx, tz, to: ch, screen: screen.key, persist, rebuild, reason });
     emit('tile-changed', { tx, tz, from, to: ch, screen, reason });
     return true;
   }
 
   // Tiles marked `regrow` (bushes) come back each time a screen is entered.
   regrow(screen) {
+    if (!partyHooks.regrow(screen)) return;
     for (let z = 0; z < screen.h; z++)
       for (let x = 0; x < screen.w; x++) {
         const base = screen.base[z][x];

@@ -79,6 +79,7 @@ import {
 import { world, currentScreen, WALL_INSET } from '../world/world.js';
 import { DIRS } from '../world/grid.js';
 import { player } from '../entities/player.js';
+import { entities } from '../entities/manager.js';
 import { showBanner } from '../ui/banner.js';
 import { setAreaLabel } from '../ui/hud.js';
 import { setFade } from '../ui/overlay.js';
@@ -185,6 +186,17 @@ export function enterScreen(via = 'teleport') {
   setAreaLabel(screen.name);
   screen.area.onScreenEnter?.(screen);
   screen.def.onEnter?.(screen);
+  // Regrowth, saved tile edits and arriving NPCs must all be in place before checking the body.
+  // A saved position on a broken pot used to become a solid pot again under the hero on load.
+  const occupied = (x, z) => entities.some((e) => !e.removed && e.solid && e !== player && Math.hypot(e.x - x, e.z - z) < e.r + player.r);
+  if (world.blocked(player.x, player.z, player.r, player) || occupied(player.x, player.z)) {
+    const safe = world.freeSpot(screen, player.x - screen.x0, player.z - screen.z0, player.r, { body: player, occupied });
+    if (!safe) throw new Error(`No clear arrival position in ${screen.key}`);
+    player.x = screen.x0 + safe.x;
+    player.z = screen.z0 + safe.z;
+    player.resetTileTracking();
+    snapCamera(subjectFor(player, screen, CAMERA_PRESETS[presetNameFor(screen)]));
+  }
   emit('screen-enter', { screen });
   emit('room-enter', { area: screen.area, screen, via });
 }

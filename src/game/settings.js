@@ -55,6 +55,7 @@ export const SETTINGS = {
   volume: { ...range(0, 1), by: 'contracts: core/audio.js master level' },
   music: { ...range(0, 1), by: 'contracts: core/audio.js music level' },
   sfx: { ...range(0, 1), by: 'contracts: core/audio.js effects level' },
+  npcVoices: { ...bool, by: 'game/npc-voices.js installed voices during focused NPC conversations' },
   muted: { ...bool, by: 'contracts: core/audio.js (N key, the HUD Sound button)' },
 };
 

@@ -29,6 +29,7 @@ import { openSettings } from './ui/settings-panel.js';
 import { initLoadCard } from './ui/loadcard.js';
 import { installTestHook } from './debug/testhook.js';
 import { initCheats } from './debug/cheats.js';
+import { tickParty, initPartyInvite } from './game/party.js';
 
 mountRenderer(document.getElementById('game'));
 initCamera();
@@ -78,6 +79,7 @@ function update(dt) {
   if (input.pressed('mute')) toggleMuteUi();
   if (input.pressed('settings') && state.mode === 'play') openSettings();
   updateMode(dt);
+  tickParty(dt);
   tickClock(dt);
   updateParticles(dt);
   updateCritters(dt);
@@ -145,3 +147,4 @@ try {
 }
 if (hot?.ready) hot.ready(start);
 else start(hot?.data ?? {});
+initPartyInvite();

@@ -58,4 +58,6 @@ export function currentPrompts() {
 
 // Talk / Check / Open on A when something answers it; the item on B.
 registerPrompt({ id: 'interact', order: 10, action: 'sword', label: () => findInteraction(player)?.label ?? null });
-registerPrompt({ id: 'item', order: 50, action: 'item', label: () => selectedItem()?.name ?? null });
+registerPrompt({ id: 'throw-pot', order: 0, action: 'sword', when: () => !!player.carrying, label: 'Throw pot' });
+registerPrompt({ id: 'sword', action: 'sword', when: () => !!state.swords?.equipped, label: 'Sword' });
+registerPrompt({ id: 'item', order: 50, action: 'item', when: () => !player.carrying, label: () => selectedItem()?.name ?? null });

@@ -81,8 +81,9 @@ export function wander(e, dt, bounds, speed = e.speed, { turnChance = 0 } = {}) 
 // The hero within tol of this enemy's row or column, within range: the
 // cardinal toward him, else null.
 export function aligned(e, reach = Infinity, tol = TUNING.enemy.alignTol) {
-  const dx = player.x - e.x;
-  const dz = player.z - e.z;
+  const target = e.targetHero?.() ?? player;
+  const dx = target.x - e.x;
+  const dz = target.z - e.z;
   if (Math.abs(dz) <= tol && Math.abs(dx) <= reach) return { x: Math.sign(dx) || 1, z: 0 };
   if (Math.abs(dx) <= tol && Math.abs(dz) <= reach) return { x: 0, z: Math.sign(dz) || 1 };
   return null;
@@ -128,7 +129,7 @@ export function flier(e, dt, bounds, speed = e.speed, { toward = 0 } = {}) {
   s.t -= dt;
   if (s.t <= 0) {
     s.t = A().flierTurn;
-    if (toward && random() < toward) s.a = Math.atan2(player.x - e.x, player.z - e.z) + (random() - 0.5);
+    if (toward && random() < toward) { const target = e.targetHero?.() ?? player; s.a = Math.atan2(target.x - e.x, target.z - e.z) + (random() - 0.5); }
     else s.a += (random() - 0.5) * Math.PI;
   }
   const dx = Math.sin(s.a) * speed * dt;
@@ -181,7 +182,8 @@ export function shoot(e, dt, { reach = 7, fire, stop = TUNING.enemy.tells.shoote
     return false;
   }
   if (s.cool > 0) return false;
-  const dir = needAligned ? aligned(e, reach) : { x: player.x - e.x, z: player.z - e.z };
+  const target = e.targetHero?.() ?? player;
+  const dir = needAligned ? aligned(e, reach) : { x: target.x - e.x, z: target.z - e.z };
   if (!dir) return false;
   s.dir = dir;
   faceDir(e, dir);

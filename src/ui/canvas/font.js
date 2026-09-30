@@ -211,9 +211,12 @@ export function wrap(text, maxW, size = 1, tracking = 0) {
 
 // Trim to fit maxW, ending in "..." when it was cut.
 export function fit(text, maxW, size = 1, tracking = 0) {
+  text=String(text);
+  if(maxW<=0)return '';
   if (measure(text, size, tracking) <= maxW) return text;
+  if(measure('...',size,tracking)>maxW){let dots='...';while(dots&&measure(dots,size,tracking)>maxW)dots=dots.slice(1);return dots;}
   let s = text;
-  while (s.length > 1 && measure(`${s}...`, size, tracking) > maxW) s = s.slice(0, -1);
+  while (s.length && measure(`${s}...`, size, tracking) > maxW) s = s.slice(0, -1);
   return `${s.trimEnd()}...`;
 }
 

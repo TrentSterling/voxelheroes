@@ -34,6 +34,7 @@ export const TUNING = {
   worldMap: U.worldMap,
   hero: H.hero,
   sword: H.sword,
+  pots: H.pots,
   guard: H.guard,
   dash: H.dash,
   damage: H.damage,

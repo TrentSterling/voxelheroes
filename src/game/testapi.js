@@ -36,6 +36,7 @@ import * as dialog from '../ui/dialog.js';
 import * as objective from '../game/objective.js';
 import * as banner from '../ui/banner.js';
 import * as npcFx from '../entities/npc-fx.js';
+import * as npcVoices from './npc-voices.js';
 import * as mapScreen from '../ui/screens/map.js';
 import * as settingsPanel from '../ui/settings-panel.js';
 import * as toast from '../ui/toast.js';
@@ -59,11 +60,18 @@ import * as bestiary from './bestiary.js';
 import * as music from './music.js';
 import * as cards from './cards.js';
 import * as prompts from './prompts.js';
+import * as pots from '../systems/pots.js';
+import * as promptHud from '../ui/hud/prompts.js';
 import * as pickups from './pickups.js';
 import * as menus from './menus.js';
 import * as clears from './clears.js';
+import * as party from './party.js';
+import * as partyUi from '../ui/screens/party.js';
+import * as journal from '../ui/screens/journal.js';
+import * as errands from './errands.js';
 
 export const gameApi = {
+  npcVoices,
   version: 1,
   tuning,
   events,
@@ -96,9 +104,15 @@ export const gameApi = {
   music,
   cards,
   prompts,
+  pots,
+  promptHud,
   pickups,
   menus,
   clears,
+  party,
+  partyUi,
+  journal,
+  errands,
   entity,
   registry,
   tileActions,

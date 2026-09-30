@@ -26,7 +26,7 @@ import { startCameraTween, stepCameraTween, cameraPreset } from '../../core/came
 import { showBanner } from '../../ui/banner.js';
 import { toast } from '../../ui/toast.js';
 import { burst, smoke, sparks } from '../../systems/particles.js';
-import { currentScreen } from '../../world/world.js';
+import { world, currentScreen } from '../../world/world.js';
 import * as M from '../../models/foes/foes.js';
 import { bossDefeated, defeatBoss, getDungeon } from '../../game/dungeons.js';
 import { dropCoins } from '../../game/pickups.js';
@@ -357,14 +357,20 @@ class Serpent extends Enemy {
     burst(x, GROUND_Y + 0.6, z, this.colors, 60, { speed: 4.5, size: 0.14, up: 6, life: 1.4 });
     let pay = { heartContainer: !this.refight, coins: TUNING.economy.bossPay[0] };
     if (this.dungeon && getDungeon(this.dungeon)) pay = defeatBoss(this.dungeon, { refight: this.refight });
+    // The serpent crosses props while pursuing the hero. Its prize must land where the hero fits,
+    // even when the final hit caught it over a statue or brazier.
+    const screen = currentScreen();
+    const safe = world.freeSpot(screen, x - screen.x0, z - screen.z0, player.r, { body: player });
+    const rewardX = safe ? screen.x0 + safe.x : player.x;
+    const rewardZ = safe ? screen.z0 + safe.z : player.z;
     if (pay.heartContainer) {
-      if (hasEntityType('heart-container')) spawn('heart-container', { x, z });
+      if (hasEntityType('heart-container')) spawn('heart-container', { x: rewardX, z: rewardZ });
       else grant('heart-container', 1, { source: 'boss' });
     }
     // Reward pacing (fun audit item 5): most of bossPay now lives in D1's own chests
     // (world/areas/d1.js), reachable mid-dungeon; the arena keeps a smaller shower.
     const coins = Math.min(pay.coins, S().coinCap);
-    if (coins > 0) dropCoins(x, z, coins);
+    if (coins > 0) dropCoins(rewardX, rewardZ, coins);
   }
 }
 registerEntity('boss-serpent', (opts) => new Serpent(opts));
@@ -373,17 +379,17 @@ registerEntity('boss-serpent', (opts) => new Serpent(opts));
 // 'boss-intro' (spec 6.6): the camera pushes in for bossIntro.in s with the
 // name card and the companion's hint, then eases back for bossIntro.out s.
 let intro = null;
-function startBossIntro(boss) {
+export function startBossIntro(boss, card = { id: 'boss-serpent', name: SERPENT_NAME, title: SERPENT_TITLE, hint: SERPENT_HINT }) {
   if (state.mode !== 'play') return;
-  intro = { boss, t: 0, stage: 0, back: cameraPreset() };
+  intro = { boss, card, t: 0, stage: 0, back: cameraPreset() };
   pushMode('boss-intro');
 }
 
 registerMode('boss-intro', {
   enter() {
     const b = intro?.boss;
-    emit('boss-intro', { id: 'boss-serpent', name: SERPENT_NAME, title: SERPENT_TITLE, dungeon: b?.dungeon ?? null, hint: SERPENT_HINT });
-    showBanner(`${SERPENT_NAME}, ${SERPENT_TITLE}`);
+    emit('boss-intro', { ...intro.card, dungeon: b?.dungeon ?? null });
+    showBanner(`${intro.card.name}, ${intro.card.title}`);
     const C = TUNING.camera.bossIntro;
     startCameraTween(new THREE.Vector3(b?.x ?? player.x, 0, b?.z ?? player.z), C.in, { preset: 'boss-intro' });
   },
@@ -396,11 +402,12 @@ registerMode('boss-intro', {
       startCameraTween(new THREE.Vector3(player.x, 0, player.z), C.out, { preset: intro.back ?? 'boss' });
       return;
     }
+    const hint = intro.card.hint;
     intro = null;
     popMode();
     // the fight's one rule, on screen, not just in the bestiary (fun audit: SERPENT_HINT used to
     // reach only there). toast() only shows in 'play', which popMode() has just switched back to.
-    toast(SERPENT_HINT, 4.5);
+    toast(hint, 4.5);
   },
 });
 

@@ -34,6 +34,10 @@ class King extends CharmNpc {
   }
   async talk() {
     const sp = { speaker: this.name };
+    if (hasFlag('campaign:complete')) {
+      setFlag('overworld:celebrated');
+      return showDialog(['{hero}, the four lights shine again. The hollow crown has fallen.', 'You brought dawn back to the coast, the watch, the hive and our valley. Mossbrook will remember.', 'Your adventure is complete. Stay a while, help your friends, and explore whatever you left behind.'], sp);
+    }
     if (!state.swords.equipped || !state.swords.owned?.length) {
       await showDialog(['{hero}! Thank the stars you came.', 'The old barrow west of Mossbrook has broken open, and worse things walk out of it every night.', 'Take this blade and this shield. They were my father\'s.'], sp);
       grant('blade-start', 1, { source: 'npc' });
@@ -112,19 +116,22 @@ registerEntity('npc-inventor', (opts) => new Inventor(opts));
 // A spell nobody has registered yet (the items stream's) is not granted.
 class Sage extends CharmNpc {
   constructor(opts) {
-    super(opts, { rig: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0, extras: [['hood', 0xe8e0f0], 'beard'] }), name: 'Sage Oriel', schedule: 'always' });
+    super(opts, { rig: look({ tunic: 0xe8e0f0, tunicLight: 0xffffff, cap: 0xa0a0c0, hair: 0xd0d0d0, extras: [['hood', 0xe8e0f0], 'beard'] }), name: opts.name ?? 'Sage Oriel', schedule: 'always' });
     this.spell = opts.spell ?? null;
     this.flag = opts.flag ?? `overworld:sage:${this.spell}`;
+    this.grantLines = opts.grantLines ?? null;
+    this.afterLines = opts.afterLines ?? null;
   }
   async talk() {
     const sp = { speaker: this.name };
     if (this.spell && !hasFlag(this.flag) && hasGrant(this.spell)) {
-      await showDialog(['You broke the warden\'s coils. Then you are ready for this.', 'Hold still, and listen.'], sp);
+      await showDialog(this.grantLines ?? ['You broke the warden\'s coils. Then you are ready for this.', 'Hold still, and listen.'], sp);
+      if (hasFlag(this.flag)) return showDialog(this.afterLines ?? 'You already know this spell.', sp);
       grant(this.spell, 1, { source: 'npc' });
       setFlag(this.flag);
-      return showDialog('Some things are only hidden. Now you can see them.', sp);
+      return showDialog(this.afterLines ?? ['Some things are only hidden. Now you can see them.', 'Whisperwood lies north of Mossbrook. Find its carved stone: north, west, east, north leads to the amber hive.'], sp);
     }
-    return showDialog(['Take the orb, {hero}. Three more wait in the far corners of the land.', 'The stairs behind you lead back to the light.'], sp);
+    return showDialog(this.afterLines ?? ['Take the orb, {hero}. Three more wait in the far corners of the land.', 'The stairs behind you lead back to the light.'], sp);
   }
 }
 registerEntity('npc-sage', (opts) => new Sage(opts));

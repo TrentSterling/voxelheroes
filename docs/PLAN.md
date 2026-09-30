@@ -54,6 +54,37 @@ Trent chose a smaller world (spec Q25, 2026-09-28): fewer, smaller areas and dun
 
 The gameplay spec's build order (its section 13, phases P0 to P5) decides what comes first inside these milestones.
 
+M4 now has its second-dungeon stretch: three forest screens, five repeating
+woodland forks, fifteen Rootglass Hive rooms and the Amber Queen arena. Bombs,
+breaches, three keys, the optional red magic vault, portal, second orb and
+rematch are implemented. The Sunreach route and twenty-two-room, two-floor
+Buried Watch add grapple crossings, blue vault, powder bag, the colossus,
+third orb and Quake. Brineglass Coast and the twenty-five-room, two-floor
+Brineglass Temple add the fire wand, paired torch gates, meltable ice, magic
+shield vault, thirty-bomb bag, Nacre, fourth orb and Freeze. The hive sage
+also teaches Reflect. The Fourfold Tower adds an invulnerable two-minute first
+reflection, three memory floors with independent keys/maps/puzzles/rematches,
+rest wells, Truesight, the Bastion Shield and Dawn Blade. The final keeper grows
+from three to five bodies; personal Truesight reveals its vulnerable body.
+The Hollow Crown uses storm, marked lightning and charged-shot patterns. The
+ending returns to Mossbrook and saves victory, with King Aldric's homecoming.
+This route is implemented and is undergoing full regression and co-op checks.
+Broader village quest variety and the rest of M4's catalogue remain to audit;
+the existence of an ending does not by itself complete that milestone.
+
+Village errands now include Tobin's physical root cellar and Rook's three-room
+Briar Den. Rook's route earns the Hunter Bow, combines two arrow targets into
+a bridge crossing, guards the stolen dice behind a shielded enemy, and returns
+a permanent quiver plus bombs. These routes replace automatic visit and bush
+objectives with places, tools and physical treasure; other village errands and
+the remaining M4 catalogue still need their own audit.
+
+The item-get cheer now presents existing native prize models for tools, quest
+keepsakes and heart containers. A brief local camera adjustment keeps them below
+the phone HUD, and reward captions sit apart from the model. Missing model
+metadata still falls back to the existing banner; the remaining reward catalogue
+needs its own art audit rather than substituting a generic prize.
+
 ## Architecture contracts
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the map of the code: the registries (tiles, areas, entities, items, modes, HUD widgets, grants, drops, save fields), the event bus, the test hook `window.__voxelHeroes` and the play-test harness.

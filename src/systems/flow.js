@@ -89,6 +89,9 @@ function standUp() {
   player.hero.root.rotation.set(0, 0, 0);
   player.hero.root.position.y = GROUND_Y;
   player.knockT = 0;
+  player.lockT = 0;
+  player.stallT = 0;
+  player.kx = player.kz = 0;
 }
 
 // Title -> play, or game over -> play with full health at the entrance of

@@ -46,8 +46,10 @@ import { TUNING } from '../core/tuning.js';
 import { world } from '../world/world.js';
 import { entities } from '../entities/manager.js';
 import { registerPlayHook } from '../systems/flow.js';
+import { partyHooks } from '../multiplayer/adapters.js';
+import { effectActive } from './effects.js';
 
-export const SOURCES = ['sword', 'beam', 'spin', 'dash', 'arrow', 'bomb', 'boomerang', 'grapple', 'fire', 'book', 'quake', 'freeze', 'reflect', 'hazard', 'enemy'];
+export const SOURCES = ['sword', 'beam', 'spin', 'dash', 'arrow', 'bomb', 'boomerang', 'grapple', 'fire', 'book', 'quake', 'freeze', 'reflect', 'hazard', 'enemy', 'pot'];
 export const HIT_RESULTS = ['hit', 'killed', 'immune', 'blocked', 'ignored'];
 // 'enemy-hit' also reports 'frozen' for freezeAt.
 export const EVENT_RESULTS = [...HIT_RESULTS.filter((r) => r !== 'ignored'), 'frozen'];
@@ -66,6 +68,9 @@ function m1Speed(tiles, seconds) {
 export const isFrozen = (e) => (e?.frozenT ?? 0) > 0;
 
 export function dealDamage(target, opts = {}) {
+  opts = { ...opts, truesight: opts.truesight ?? effectActive('truesight') };
+  const routed = partyHooks.damage(target, opts);
+  if (routed) return routed;
   const { amount = 1, source = 'sword', from = null, freeze = 0, swingId, by = 'hero', crit = false } = opts;
   const out = (result, damage = 0, hit = null) => {
     if (result !== 'ignored') emit('enemy-hit', { entity: target, hit, result, damage });
@@ -88,6 +93,7 @@ export function dealDamage(target, opts = {}) {
     freeze,
     tiles,
     crit,
+    truesight: !!opts.truesight,
   };
   if (target.canBeHit && !target.canBeHit(hit)) return { result: 'ignored', damage: 0 };
   if (target.invulnerable || target.immune?.includes(source)) {
@@ -139,6 +145,7 @@ export function freezeAt(x, z, radius = TUNING.spells.freeze.radius, seconds = T
   for (const e of [...entities]) {
     if (e.removed || e.kind !== 'enemy' || e.boss || e.immune?.includes('freeze') || e.invulnerable) continue;
     if (Math.hypot(e.x - x, e.z - z) > radius + (e.r ?? 0)) continue;
+    if (partyHooks.freeze(e, seconds)) { out.push(e); continue; }
     e.frozenT = Math.max(e.frozenT ?? 0, seconds);
     out.push(e);
     emit('enemy-hit', { entity: e, hit: { damage: 0, source: 'freeze', freeze: seconds, fromX: x, fromZ: z }, result: 'frozen', damage: 0 });

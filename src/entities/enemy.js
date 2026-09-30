@@ -174,7 +174,8 @@ export class Enemy extends Entity {
     }
 
     const bounds = currentScreen(); // enemies stay on their screen (also while the hero is in a follow change's dead band, past its edge)
-    const toP = { x: player.x - this.x, z: player.z - this.z };
+    const target = this.targetHero() ?? player;
+    const toP = { x: target.x - this.x, z: target.z - this.z };
     const dist = Math.hypot(toP.x, toP.z);
 
     if (this.knockT > 1e-9) {
@@ -211,7 +212,7 @@ export class Enemy extends Entity {
       this.flashT -= rawDt;
       this.mat.emissive.setHex(this.flashT > 0 ? 0xffffff : 0x000000);
     }
-    if (dist < (this.r + player.r) * TUNING.enemy.contactReach) this.touchHero();
+    if (Math.hypot(player.x - this.x, player.z - this.z) < (this.r + player.r) * TUNING.enemy.contactReach) this.touchHero();
   }
 
   // Contact damage (CONTRACTS 8.5): through the hero's receiveHit; a guard

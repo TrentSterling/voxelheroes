@@ -18,7 +18,8 @@
 //
 // Regions (each is a row that flows from its side; the centre is a stack):
 //   vitals    top left, first row     hearts
-//   counters  top left, second row    coins, keys
+//   magic     top left, below life    magic reserve
+//   counters  top left, below magic   coins, keys
 //   center    top centre, stacked     the area name, the Next: line
 //   system    top right, first row    the Settings and Sound buttons
 //   slots     top right, second row   the item on B, the clock
@@ -34,7 +35,8 @@ import { overlayVisible, fadeLevel } from './overlay.js';
 
 export const REGIONS = {
   vitals: { name: 'vitals', side: 'left', row: 0 },
-  counters: { name: 'counters', side: 'left', row: 1 },
+  magic: { name: 'magic', side: 'left', row: 1 },
+  counters: { name: 'counters', side: 'left', row: 2 },
   center: { name: 'center', side: 'center', row: 0 },
   system: { name: 'system', side: 'right', row: 0 },
   slots: { name: 'slots', side: 'right', row: 1 },
@@ -119,7 +121,7 @@ function layout(g, s) {
     const sz = w.measure(g, s, maxW);
     return sz ? { w, sw: sz[0], sh: sz[1] } : null;
   };
-  const rows = { left: [[], []], right: [[], []] };
+  const rows = { left: [[], [], []], right: [[], [], []] };
   const { t: top, l: leftEdge, r: rightEdge } = g.safe;
   for (const w of list) {
     const r = REGIONS[w.region];
@@ -151,7 +153,8 @@ function layout(g, s) {
   const room = g.w - 2 * (M + Math.max(rowW0.left + leftEdge, rowW0.right + rightEdge) + GAP);
   let maxW = room;
   if (maxW < 110) {
-    cy = Math.max(colH.left, colH.right) + ROW_GAP + 2;
+    // Party and Journal shortcuts occupy the right side through row 64.
+    cy = Math.max(colH.left, colH.right, top+64) + ROW_GAP + 2;
     maxW = g.w - 2 * M - leftEdge - rightEdge;
   }
   for (const w of list) {
@@ -268,11 +271,11 @@ registerHudWidget({
   order: 10,
   key: () => areaLabel,
   measure: (g, s, maxW) => {
-    const t = g.fit(areaLabel.toUpperCase(), maxW, 1, 1);
+    const t = g.fit(areaLabel.toUpperCase(), maxW-2, 1, 1);
     return [g.measure(t, 1, 1) + 2, 9];
   },
   draw(g, s, x, y, w) {
-    g.text(g.fit(areaLabel.toUpperCase(), w, 1, 1), x + 1, y + 1, { color: COLORS.muted, tracking: 1, ...OUTLINE });
+    g.text(g.fit(areaLabel.toUpperCase(), w-2, 1, 1), x + 1, y + 1, { color: COLORS.muted, tracking: 1, ...OUTLINE });
   },
 });
 

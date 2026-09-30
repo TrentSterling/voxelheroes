@@ -21,6 +21,8 @@ import { random } from '../core/random.js';
 import { TUNING } from '../core/tuning.js';
 import { state } from '../core/state.js';
 import { spawn } from '../entities/manager.js';
+import { world } from '../world/world.js';
+import { partyHooks } from '../multiplayer/adapters.js';
 
 export const COIN_TYPES = { 100: 'coin-100', 10: 'coin-10', 1: 'coin-1' };
 
@@ -33,9 +35,12 @@ export function pickupWasFull(type) {
 
 export function collectPickup(e, { by = 'blade' } = {}) {
   if (!e || e.removed || e.kind !== 'pickup') return false;
+  if (e.canCollect && !e.canCollect(by)) return false;
+  const routed = partyHooks.pickup(e, by);
+  if (routed !== null) return routed;
   const wasFull = pickupWasFull(e.type);
   e.collect();
-  emit('pickup', { entity: e, type: e.type, by, wasFull });
+  emit('pickup', { entity: e, type: e.type, ...(by === 'hero' ? {} : { by }), wasFull });
   e.remove();
   return true;
 }
@@ -55,9 +60,12 @@ export function coinPieces(amount) {
 // Spawn coins worth `amount` in a ring around (x, z). Returns the entities.
 export function dropCoins(x, z, amount, { spread = 1.2, life = TUNING.pickups.bossDropLife } = {}) {
   const pieces = coinPieces(amount);
+  const screen = world.locate(Math.floor(x), Math.floor(z))?.screen;
   return pieces.map((type, i) => {
     const a = (i / Math.max(1, pieces.length)) * Math.PI * 2 + random() * 0.5;
     const r = spread * (0.35 + 0.65 * random());
-    return spawn(type, { x: x + Math.sin(a) * r, z: z + Math.cos(a) * r, life });
+    const px = x + Math.sin(a) * r, pz = z + Math.cos(a) * r;
+    const safe = screen && world.freeSpot(screen, px - screen.x0, pz - screen.z0, 0.4);
+    return spawn(type, { x: safe ? screen.x0 + safe.x : x, z: safe ? screen.z0 + safe.z : z, life });
   });
 }

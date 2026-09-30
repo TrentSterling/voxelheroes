@@ -148,7 +148,14 @@ export async function launch({
   pageUrl.searchParams.set('manual', '1');
   pageUrl.searchParams.set('seed', String(seed));
   await page.goto(pageUrl.href);
-  await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { timeout: 30000 });
+  try {
+    await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { timeout: 30000 });
+  } catch (error) {
+    await context.close();
+    if (!sharedBrowser) await browser.close();
+    await server?.close();
+    throw new Error(`Game failed to boot: ${errors.join('\n') || error.message}`);
+  }
   await page.addScriptTag({ content: readFileSync(BOT, 'utf8') });
 
   mkdirSync(out, { recursive: true });

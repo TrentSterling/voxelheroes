@@ -57,7 +57,12 @@ export function leaveStage(screen) {
 // markers spawn afresh when he arrives.
 export function dropStage(screen) {
   clearScreenEntities();
-  if (screen) populated.delete(screen.key);
+  if (screen) {
+    // A fresh arrival may already have a streamed bucket from building ahead.
+    // Reap it as well as the stage before spawning the new screen's markers.
+    reapBucket(screen);
+    populated.delete(screen.key);
+  }
 }
 
 // The hero arrives on `screen`: its bucket comes onto the stage, or, if its markers have not

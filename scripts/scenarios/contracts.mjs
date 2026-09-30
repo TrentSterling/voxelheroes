@@ -235,7 +235,7 @@ export default async function contracts(t) {
     const row = h.game.hud.hudView().widgets.filter((w) => w.region === 'counters').sort((a, b) => a.x - b.x);
     return { widgets: row.map((w) => w.id).join(',') };
   });
-  t.expect(order.widgets === 'coins,probe-counter,keys', `HUD widgets sit by order in their region (${order.widgets})`);
+  t.expect(order.widgets === 'coins,probe-counter,item-slot,keys', `HUD widgets sit by order in their region (${order.widgets})`);
   await t.shot('03-hud-order');
 
   // ---------------------------------------------------------------- drop odds

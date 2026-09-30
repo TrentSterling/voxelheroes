@@ -188,8 +188,11 @@ export default async function d1(t) {
   t.note(`Bone Pit: ${f.kills} kills by the blade`);
   await t.eval(() => window.__d1.killAll());
   await t.step(0.3);
-  r = await t.eval(() => ({ open: !window.__d1.solid(0, 5), key: window.__d1.of('key').length }));
-  t.expect(r.open && r.key === 1 && (await t.events('shutters-opened')).length >= 1, 'clearing it opens the shutters and drops a small key');
+  r = await t.eval(() => ({ open: !window.__d1.solid(0, 5), key: window.__d1.of('key').length,
+    keys: window.__d1.keys(), dropped: window.__d1.flags().includes('dungeon:d1:key:J-5'),
+    taken: window.__d1.flags().includes('dungeon:d1:keytaken:J-5') }));
+  t.expect(r.open && r.dropped && ((r.key === 1 && r.keys === 0) || (r.key === 0 && r.keys === 1 && r.taken)) &&
+    (await t.events('shutters-opened')).length >= 1, 'clearing it opens the shutters and drops exactly one small key, waiting or already collected');
   await t.walkTo(8, 6);
   await t.step(0.3);
   t.expect((await t.eval(() => window.__d1.keys())) === 1, 'small key 1 of 4');

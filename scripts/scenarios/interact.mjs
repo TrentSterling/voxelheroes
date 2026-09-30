@@ -1,10 +1,10 @@
 // Nothing the player can see is dead. (1) An audit of every tile placed in every area: a tile with a
 // prop (a separate model: pot, bush, chest, sign, statue...) must answer at least one verb (sword,
-// bomb, push, talk/check, step, shot, fire), be marked decor, or be driven by room logic. (2) Pots, by hand: the sword breaks
+// bomb, push, talk/check, step, shot, fire, grapple), be marked decor, or be driven by room logic. (2) Pots, by hand: the sword breaks
 // one (the tile clears, a drop may fall), a bomb breaks one, and they are back on the next visit.
 export const description = 'Interactables: every placed prop answers a verb (audit of all areas); pots break to the sword and to bombs and come back.';
 
-const VERBS = ['onSword', 'onBomb', 'onPush', 'onInteract', 'onEnter', 'onShot', 'onFire', 'onLift'];
+const VERBS = ['onSword', 'onBomb', 'onPush', 'onInteract', 'onEnter', 'onShot', 'onFire', 'onFreeze', 'onLift'];
 // Things the spec makes interactive even when they are built into the terrain (no separate prop).
 const SPEC_INTERACTIVE = ['sign', 'statue', 'pit', 'pot', 'bush', 'chest', 'push-block', 'locked-door', 'tablet', 'switch', 'crystal', 'cracked-wall', 'stairs'];
 
@@ -31,7 +31,7 @@ export default async function (t) {
         seen.add(key);
         const def = h.world.tileDef(s, ch);
         if (!def || (!def.prop && !SPEC.some((n) => def.name?.startsWith(n))) || def.decor || def.driven) continue;
-        if (!VERBS.some((v) => typeof def[v] === 'function') && !def.hazard) dead.set(key, `${def.name ?? '?'} (${s.area.id} ${s.key})`);
+        if (!VERBS.some((v) => typeof def[v] === 'function') && !def.hazard && def.grapple !== true) dead.set(key, `${def.name ?? '?'} (${s.area.id} ${s.key})`);
       }
     }
     return { kinds: seen.size, dead: [...dead.entries()].map(([k, v]) => `${k} ${v}`) };
@@ -46,15 +46,15 @@ export default async function (t) {
       if (s.area.rooms) continue;
       for (let z = 1; z < s.h - 1; z++) for (let x = 1; x < s.w - 1; x++) {
         if (s.tiles[z][x] !== 'v') continue;
-        // an open tile south of it to stand on, facing north
-        if (!h.world.isSolid(s.x0 + x, s.z0 + z + 1)) return { key: s.key, x, z };
+        // Stand outside lift range so A tests a sword strike, rather than lifting the pot.
+        if (!h.world.isSolid(s.x0 + x, s.z0 + z + 1) && !h.world.isSolid(s.x0 + x, s.z0 + z + 2)) return { key: s.key, x, z };
       }
     }
     return null;
   });
   t.expect(!!at, `a pot to test (${JSON.stringify(at)})`);
   if (!at) return;
-  await t.teleport(at.key, at.x + 0.5, at.z + 1.5, { yaw: Math.PI });
+  await t.teleport(at.key, at.x + 0.5, at.z + 2.5, { yaw: Math.PI });
   await t.step(0.2);
   const r = await t.eval(async (at) => {
     const h = window.__voxelHeroes;
@@ -66,6 +66,7 @@ export default async function (t) {
     h.input.tap('sword');
     for (let i = 0; i < 30; i++) await h.tick();
     out.afterSword = tile();
+    out.carrying = !!h.player.carrying;
     out.drops = h.entities.filter((e) => e.kind === 'pickup').length - pick0;
     // a bomb on the pot (a real explosion event at its centre)
     h.world.setTile(s.x0 + at.x, s.z0 + at.z, 'v', { rebuild: false });
@@ -77,7 +78,7 @@ export default async function (t) {
     out.afterRegrow = tile();
     return out;
   }, at);
-  t.expect(r.before === 'v' && r.afterSword !== 'v', `the sword breaks a pot (${r.before} -> ${r.afterSword}, ${r.drops} drop)`);
+  t.expect(r.before === 'v' && r.afterSword !== 'v' && !r.carrying, `the sword breaks a pot (${r.before} -> ${r.afterSword}, ${r.drops} drop)`);
   t.expect(r.afterBomb !== 'v', `a bomb breaks a pot (${r.afterBomb})`);
   t.expect(r.afterRegrow === 'v', 'pots are back on the next visit');
   await t.shot('interact-01-pot');

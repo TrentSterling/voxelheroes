@@ -27,11 +27,14 @@
 //   onInteract(player)  optional: A pressed while facing it (NPCs, signs)
 //   remove()       take it out of the world (safe at any time)
 //   markDone()     never spawn this map marker again (keys, one-off enemies)
-import { state } from '../core/state.js';
+import { setFlag } from '../core/state.js';
 import { removeEntity } from './manager.js';
+import { partyHooks } from '../multiplayer/adapters.js';
 
 export class Entity {
   constructor(opts = {}) {
+    this.spawnOptions = opts;
+    this.netId = opts.netId ?? null;
     this.type = null; // set by the registry
     this.kind = 'thing';
     this.priority = 30;
@@ -48,6 +51,8 @@ export class Entity {
     this.spawnFlag = opts.spawnFlag ?? null;
   }
 
+  targetHero() { return partyHooks.target(this); }
+
   update(_dt) {}
 
   canBeHit(_hit) {
@@ -63,7 +68,7 @@ export class Entity {
   }
 
   markDone() {
-    if (this.spawnFlag) state.flags.add(this.spawnFlag);
+    if (this.spawnFlag) setFlag(this.spawnFlag);
   }
 
   remove() {

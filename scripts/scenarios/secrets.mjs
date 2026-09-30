@@ -190,16 +190,15 @@ export default async function (t) {
   t.expect(firstTrip.road.foes && firstTrip.road.find, `Castle Road has foes and a find (${JSON.stringify(firstTrip.road)})`);
   t.expect(firstTrip.courtyard.foes && firstTrip.courtyard.find, `Crownhold Courtyard has foes and a find (${JSON.stringify(firstTrip.courtyard)})`);
 
-  // ---------------------------------------------------------------- 10) Rook's errand (fun audit
-  // item 2): West Gate had no bush tiles at all, so "cut through the bushes around here" could
-  // never be satisfied. It needs at least 5 real 'B' bush tiles.
+  // West Gate keeps ordinary brush and the hidden den stair-bush. The full
+  // dice quest is exercised by rook-den.mjs rather than counting bush cuts.
   const westGateBushes = await t.eval(() => {
     const h = window.__voxelHeroes;
     const s = h.world.screen('v1:0,1');
-    return s.tiles.flat().filter((ch) => ch === 'B').length;
+    return s.tiles.flat().filter((ch) => ch === 'B' || ch === 'K').length;
   });
   t.note(`West Gate has ${westGateBushes} bush tiles (was 0)`);
-  t.expect(westGateBushes >= 5, `West Gate has at least 5 bush tiles for Rook's errand (found ${westGateBushes})`);
+  t.expect(westGateBushes >= 5, `West Gate retains ordinary brush and the den entrance (found ${westGateBushes})`);
 
   // ---------------------------------------------------------------- 11) reward pacing (fun audit
   // item 5): most of boss-serpent's coin drop moved into D1's own chests (world/areas/d1.js, the

@@ -63,6 +63,7 @@ import { burst, smoke } from '../systems/particles.js';
 import { registerPlayHook } from '../systems/flow.js';
 import { registerGrant } from '../systems/grants.js';
 import { tryInteract } from '../systems/interact.js';
+import { showItemPrize } from '../systems/item-prize.js';
 import * as vitals from './vitals.js';
 import { damageMultiplier, isOneHit } from './progress.js';
 import { spotHere, goToSpot, respawnSpot, roomEntry, currentRect } from './places.js';
@@ -177,7 +178,8 @@ function stepPull(dt) {
   const bx = p.fromX - player.x;
   const bz = p.fromZ - player.z;
   const back = Math.hypot(bx, bz);
-  for (let t = 0; t <= back && world.blocked(player.x, player.z, player.r, player); t += 1 / 16) {
+  const unsafe = () => world.blocked(player.x, player.z, player.r, player) || world.tileDefAt(Math.floor(player.x), Math.floor(player.z))?.hazard;
+  for (let t = 0; t <= back && unsafe(); t += 1 / 16) {
     player.x += (bx / (back || 1)) / 16;
     player.z += (bz / (back || 1)) / 16;
   }
@@ -413,9 +415,11 @@ on('item-used', () => {
 });
 
 // An item get holds the prize overhead in the cheer pose (gameplay spec 12.2).
-const CHEER_TIME = 1.0;
-on('item-get', () => {
-  if (state.mode === 'play' || state.mode === 'dialog') hero.cheer(CHEER_TIME);
+on('item-get', (get) => {
+  if (state.mode === 'play' || state.mode === 'dialog') {
+    hero.cheer(TUNING.hero.prize.time);
+    showItemPrize(get);
+  }
 });
 
 // ---------------------------------------------------------------- the kit
@@ -477,6 +481,7 @@ on('pickup', ({ type, wasFull }) => {
 
 // Hazards under his centre (CONTRACTS 11). Tile owners set the fields.
 player.hazardHandler = (def, tx, tz) => {
+  if (pulling?.overLow) return null;
   const D = TUNING.damage;
   switch (def.hazard) {
     case 'pit': {
@@ -522,8 +527,8 @@ registerPlayHook({
   order: 1,
   update() {
     if (player.lockT > 0 || pulling) for (const a of ['sword', 'item', 'dash']) input.consume(a);
-    if (!state.swords.equipped && input.pressed('sword')) {
-      tryInteract(player);
+    if (!state.swords.equipped && !player.carrying && input.pressed('sword')) {
+      if (player.knockT <= 0 && player.stallT <= 0 && !player.paralyzed()) tryInteract(player);
       input.consume('sword');
     }
     if (pulling) {

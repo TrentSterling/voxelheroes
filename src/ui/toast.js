@@ -46,9 +46,11 @@ registerUiPart({
     if (!live(g.now)) return;
     const a = Math.min(1, (g.now - cur.t0) / FADE, (cur.until + FADE - g.now) / FADE);
     g.alpha(a);
-    const w = g.measure(cur.text) + 16;
-    const h = 15;
-    g.panel((g.w - w) / 2, g.h - 36 - g.safe.b - h, w, h, { shadow: false });
-    g.text(cur.text, g.w / 2, g.h - 36 - g.safe.b - h + 4, { align: 'center', color: COLORS.ink });
+    const lines = g.wrap(cur.text, Math.max(24, g.w - g.safe.l - g.safe.r - 32));
+    const w = Math.max(...lines.map(line => g.measure(line.text))) + 16;
+    const h = 4 + lines.length * 11;
+    const y = g.h - 36 - g.safe.b - h;
+    g.panel((g.w - w) / 2, y, w, h, { shadow: false });
+    lines.forEach((line, i) => g.text(line.text, g.w / 2, y + 4 + i * 11, { align: 'center', color: COLORS.ink }));
   },
 });

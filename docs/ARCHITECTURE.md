@@ -32,6 +32,88 @@ Contents: [Module map](#module-map) ·
 
 ## Module map
 
+Co-op is coordinated by `game/party.js` with Trystero 0.25.4's object action API.
+`multiplayer/adapters.js` holds offline defaults so engine systems can route
+shared actions without importing the transport. `multiplayer/actors.js` encodes
+actor fields, model transforms and multipart references; `multiplayer/friends.js`
+creates solid remote heroes. `ui/screens/party.js` provides the canvas party UI.
+Personal visual cues run after both replica ticks and snapshot transforms.
+Truesight stays local to its caster; damage requests carry that caster's sight
+state so a guest can identify and strike the shared keeper independently.
+
+Members publish personal poses and their own projectiles. The oldest active
+member in an occupied screen simulates its enemies, NPCs and pickups. A living
+owner remains eligible during a boss introduction so a second-stage boss can
+reach the replicas before any ownership change. Other
+members render replicas and send damage, pickup claims and tile interactions to
+that owner. Room snapshots include tiles and actor state and are cached by all
+members; screen entry restores the existing room. Departures elect another
+owner without restarting its entities. Shared flags, keys, grants and quest
+milestones replicate as reliable events. Sword bonks apply local knockback on
+the receiving hero and leave life untouched; other player weapons also leave
+friendly life untouched. Friends remain global entities whose visibility and
+solidity follow their area and screen.
+
+While a hero is in the `warp` or `scroll` mode, its destination markers have
+not arrived yet. `captureRooms()` skips that current room until entry finishes,
+so an empty transition snapshot cannot replace its new enemies on `screen-enter`.
+
+The host admits guests and sends the campaign save plus cached room snapshots.
+A guest loads that campaign in Mossbrook, preserving its own profile name. The
+pre-party save is backed up in localStorage. After leaving, the current campaign
+continues as ordinary solo play. No networking work runs until a party is
+created or joined. A URL hash `#party=CODE` joins an invite automatically.
+
+`world/areas/tower.js` and `dungeons/tower.js` register the trial, three memory
+floors and final approach, each with its own key group. Rematches give no repeat
+heart containers. `entities/bosses/crown.js` owns the reflections, their linked
+parts, replenishing wisps and the two final stages. The mask-broken marker lets
+save/load resume at the king without replaying the keeper. `campaign:complete`
+is shared; the ending mode runs only for a hero in the final arena, allowing a
+separated friend to keep exploring. `ui/screens/ending.js` returns to the town
+and saves after arrival. Its mode fields remain transient.
+
+`scripts/multiplayer-test.mjs` verifies real Firefox/Chromium RTC peers with a
+local test signaling relay. `scripts/browser-smoke.mjs` verifies both startup
+under EasyPrivacy's boomerang filename rule and the party menu's real controls.
+`scripts/build-review.mjs` combines saved screenshots and test receipts into the
+review slideshow.
+
+`entities/dungeon-enemies/d1.js` implements guard wind-ups, committed lunges and
+recovery windows. Its warden adds a frontal shield check through `guards(hit)`;
+model poses, floor cues and `ai.melee` travel in ordinary room snapshots.
+`models/foes/barrow-guard.js` builds the blade poses and armored variant.
+
+`game/errands.js` owns saved task progress and derives journal entries. Nell's
+search reveals the registered `pickups/quest-locket.js` entity through a real
+bush cut. A persistent reveal flag restores the unclaimed object after a room
+reload; the pickup claim sets the found flag. `ui/screens/journal.js` is a
+canvas mode opened with L, Back/View or its play button. It reads campaign
+state and pauses local gameplay while the player reviews tasks.
+
+Tobin's stump and pot-seal cellar are in `world/areas/village-quests.js` and
+`world/tiles/village-quests.js`; the keepsake grant is in `systems/village-quests.js`.
+Rook's three-room bow adventure is in `world/areas/rook-den.js`,
+`world/tiles/rook-den.js` and `systems/rook-den.js`. `items/bow.js` consumes the
+personal `arrows` counter and spawns a swept `projectiles/hero-arrow.js`. Only
+that arrow source lights the two targets. Permanent target, bridge, treasure
+and quiver state shares through ordinary party hooks. Rook's saved quest tag
+reoffers the new route to older saves that completed his former bush errand.
+
+`game/npc-voices.js` uses installed local English `speechSynthesis` voices for
+focused named-NPC dialogue. `ui/dialog.js` speaks the visible screenful, stops
+on advance or close, and preserves complete reading without speech support.
+Settings, mute and the effects volume control playback; no model or remote
+speech service is downloaded.
+
+`systems/item-prize.js` consumes the model factory already carried by item-get
+events through the hero API. It creates one personal scene instance above the
+hero, with camera headroom and a separate caption. Play time expires it; dialogue
+and pause retain it. Room changes, reset, death and replacement remove it without
+disposing the model kit's cached assets. Quiet shared grants emit no item-get.
+The new `item-prizes` scenario checks the real bow chest plus explicit lifecycle
+fixtures, projected HUD clearance, and restoration of the measured room camera.
+
 ```
 index.html              overlay panel, touch controls (markup only)
 src/
@@ -81,7 +163,7 @@ src/
     player.js           the hero (one instance, `player`)
     enemies/            slime.js, spitter.js
     npcs/               npc.js (the generic 'npc': a townsperson with lines from the spawn table)
-    projectiles/        rock-shot.js
+    projectiles/        rock-shot.js, thrown-pot.js (swept flight, damage, landing and shatter)
     pickups/            heart.js, gem.js (gem, gem5), key.js
   models/               voxel models at 1/16 tile: hero.js (+ sword), characters.js, pickups.js, props.js, icons.js
     kit.js, palette.js  model cache, PoseMesh, contact shadows; the character palette (see Kits and models)
@@ -92,6 +174,8 @@ src/
     grants.js           GRANT REGISTRY: grant('heart-container'), registerGrant
     keys.js             small keys per dungeon (keyGroup)
     interact.js         A talks before it swings (onInteract on entities and tiles)
+    pots.js             A lifts / throws; held model, input gating and cleanup on hurt or reset
+    pot-fx.js           shared clay shatter and loot placement on clear floor
     physics.js          moveBody: circle vs solid tiles and solid entities (bumpsEntity) inside a bounds rect; clearDistance
     blast.js            'explosion' -> onBomb(explosion) on every entity it covers
     particles.js        voxel bursts (instanced cubes)
@@ -106,6 +190,7 @@ src/
     canvas/             the in-canvas UI: gfx.js (layer, hit regions), font.js (pixel font), sprites.js
     hud.js              HUD WIDGET REGISTRY (regions, order) + hearts, coins, keys, area, clock, buttons
     hud/item-slot.js    B item slot (hidden while the inventory is empty)
+    hud/prompts.js      contextual action labels in canvas; promptView() for tests
     dialog.js           showDialog(lines, opts) -> Promise, 'dialog' mode, drawn in canvas
     screens/            title.js, pause.js ('paused'), gameover.js ('dead')
   debug/testhook.js     window.__voxelHeroes
@@ -768,6 +853,10 @@ and ammo pickups can all say `grant('bombs', 5)`. Capacity is the largest
 `maxAmmo` among the items using a counter; make it a function to upgrade it
 from a save field: `defineState('bombBag', () => 1)` plus
 `maxAmmo: (s) => 10 * s.bombBag`.
+
+An explicit `grant(id, n, {startAmmo:n})` overrides the starter allocation
+only when the item is first acquired. Rook uses this to give exactly three
+bombs on first ownership; ordinary bomb chests keep their default starter ammo.
 
 ### Modes: `src/core/modes.js`
 
@@ -1562,6 +1651,9 @@ node scripts/playtest.mjs --scenario areas         # slides and area-to-area fad
 node scripts/playtest.mjs --scenario camera        # A-D, dungeon, interior at 1280 x 720 and 390 x 844: all of the hero model in frame
 node scripts/playtest.mjs --scenario contracts     # every extension point and review fix, one check each
 node scripts/playtest.mjs --scenario contracts-m2  # the M2 contracts, on probe content
+node scripts/playtest.mjs --scenario pots          # lift / throw, bronze seal, carry transitions, safe save/load
+node scripts/playtest.mjs --scenario responsiveness # buffered sword input, hit locks, charged spin
+node scripts/playtest.mjs --scenario rewards       # boss prizes land clear of solid scenery and can be collected
 node scripts/playtest.mjs --scenario all --no-build
 node scripts/playtest.mjs --list
 ```
@@ -1731,3 +1823,21 @@ changes:
   an angle difference, not with `===`.
 - The screen-name banner times out in real time (a CSS animation and a
   timer), so in slow headless runs it can appear in several screenshots.
+
+
+## Fourth dungeon and fire
+
+`world/areas/coast.js` joins Sunreach Post Islands to seven coastal screens.
+`world/areas/d4.js` owns twenty-five rooms on two floors and Undertow Court;
+`dungeons/d4.js` registers its map, key group and fourth orb. `tiles/fire.js`
+handles wand-only ice, paired torch rewards, Freeze-to-ice walls and burning
+dead trees. Persistent mutations and `onFire` route through the room owner.
+
+`entities/bosses/tide-beast.js` keeps Nacre's 105 body HP separate from four
+regrowing five-HP tentacles. Its AI alternates banks, previews the next surface,
+emits tier-three ink, and dives after positive damage. Tentacle withdrawal
+retains the actor and its head reference during room ownership changes. Native
+voxel models and child transforms replicate through the existing actor codec.
+
+The four sages grant Reveal, Reflect, Quake and Freeze. Each learned spell
+adds one maximum magic; Freeze costs four for heroes without focus.

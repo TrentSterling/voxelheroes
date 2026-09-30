@@ -39,9 +39,11 @@
 import * as THREE from 'three';
 import { GROUND_Y } from '../../core/constants.js';
 import { state, hasFlag, setFlag } from '../../core/state.js';
+import { partyHooks } from '../../multiplayer/adapters.js';
 import { on, emit } from '../../core/events.js';
 import { sfx } from '../../core/audio.js';
 import { TUNING } from '../../core/tuning.js';
+import { grant } from '../../systems/grants.js';
 import { registerTile } from '../tiles.js';
 import { fineFloor, buildWall } from './dungeon.js';
 import { BPT } from '../terrain.js';
@@ -59,13 +61,15 @@ import { world, currentScreen } from '../world.js';
 import { dungeonOfArea, roomLabel, hasBossKey, useColorKey, openPortal, bossDefeated } from '../../game/dungeons.js';
 import { showDialog } from '../../ui/dialog.js';
 import { showBanner } from '../../ui/banner.js';
+import { toast } from '../../ui/toast.js';
 
 // ---------------------------------------------------------------- where a tile is
 const dungeonOf = (ctx) => dungeonOfArea(ctx.screen?.area?.id ?? ctx.area?.id);
 const dungeonId = (ctx) => dungeonOf(ctx)?.id ?? ctx.screen?.area?.id ?? 'none';
 export const roomOf = (screen) => {
   const d = dungeonOfArea(screen.area.id);
-  return (d && screen.area.id === d.areas[0] ? roomLabel([screen.lx, screen.ly], d.canvas).room : null) ?? `${screen.lx},${screen.ly}`;
+  const label = d && screen.area.id === d.areas[0] ? roomLabel([screen.lx, screen.ly], d.canvas) : null;
+  return label?.room ? (label.floor > 0 ? `F${label.floor + 1}:${label.room}` : label.room) : `${screen.lx},${screen.ly}`;
 };
 const sideOf = (ctx) => (ctx.z === 0 ? 'n' : ctx.z === ctx.screen.h - 1 ? 's' : ctx.x === 0 ? 'w' : ctx.x === ctx.screen.w - 1 ? 'e' : 'c');
 export const roomFlag = (screen, what) => `dungeon:${dungeonOfArea(screen.area.id)?.id ?? screen.area.id}:${what}:${roomOf(screen)}`;
@@ -207,26 +211,26 @@ registerTile('dungeon', 'B', {
   },
 });
 
-registerTile('dungeon', 'r', {
-  name: 'red-lock',
+for (const [ch, color] of [['r', 'red'], ['V', 'blue']]) registerTile('dungeon', ch, {
+  name: `${color}-lock`,
   solid: true,
   doorway: true,
   becomes: '.',
   build: (ctx) => fineFloor(ctx),
-  prop: leafProp((right) => colorDoorModel('red', right)),
+  prop: leafProp((right) => colorDoorModel(color, right)),
   onPush(ctx) {
     if (!pushed(ctx, TUNING.dungeon.keyPush)) return false;
-    if (!useColorKey('red')) {
-      showBanner('A red lock. It wants a red key.');
+    if (!useColorKey(color)) {
+      showBanner(`A ${color} lock. It wants a ${color} key.`);
       return false;
     }
     const flag = `dungeon:${dungeonId(ctx)}:door:${roomOf(ctx.screen)}:${sideOf(ctx)}`;
     const opts = { rebuild: false, persist: true, reason: 'unlock' };
     world.setTile(ctx.tx, ctx.tz, '.', opts);
-    for (const dx of [-1, 1, 0]) for (const dz of dx ? [0] : [-1, 1]) if (world.tile(ctx.tx + dx, ctx.tz + dz) === 'r') world.setTile(ctx.tx + dx, ctx.tz + dz, '.', opts);
+    for (const dx of [-1, 1, 0]) for (const dz of dx ? [0] : [-1, 1]) if (world.tile(ctx.tx + dx, ctx.tz + dz) === ch) world.setTile(ctx.tx + dx, ctx.tz + dz, '.', opts);
     setFlag(flag);
     sfx.door();
-    emit('door-opened', { tx: ctx.tx, tz: ctx.tz, kind: 'red', flag, room: roomOf(ctx.screen), side: sideOf(ctx) });
+    emit('door-opened', { tx: ctx.tx, tz: ctx.tz, kind: color, flag, room: roomOf(ctx.screen), side: sideOf(ctx) });
     return true;
   },
 });
@@ -297,6 +301,7 @@ export function pressWallSwitch(screen, tx, tz) {
   setFlag(flag);
   sfx.pickup?.();
   if (spec.opens === 'key') dropKey(screen, 'switch');
+  else if (['key-red', 'key-blue', 'key-green'].includes(spec.opens)) grant(spec.opens, 1, { source: 'switch', fanfare: false });
   else openEventShutters(screen);
   emit('secret-found', { kind: 'switches', tx, tz });
 }
@@ -355,6 +360,7 @@ function solvePuzzle(screen) {
 
 // Unsolved blocks go back where they were when the hero leaves (spec 6.4).
 on('screen-leave', ({ screen } = {}) => {
+  if (screen && partyHooks.preserveRoom(screen)) return;
   if (!screen?.def || hasFlag(roomFlag(screen, 'puzzle'))) return;
   screen.tiles.forEach((row, z) =>
     row.forEach((ch, x) => {
@@ -429,6 +435,7 @@ registerTile('dungeon', 'Z', {
 registerTile('dungeon', 'c', {
   name: 'chest-2',
   solid: true,
+  grapple: true,
   build: (ctx) => fineFloor(ctx),
   prop: chestProp,
   onPush: (ctx) => openChest(ctx),
@@ -517,6 +524,7 @@ on('room-enter', ({ screen } = {}) => {
   lockIn.t = -1;
   if (!s?.def || !s.area?.rooms) return;
   if (tilesOf(s, 'H').length && enemiesLeft() > 0) lockIn.t = TUNING.dungeon.shutterDelay;
+  if (s.def.encounterHint && enemiesLeft() > 0) toast(s.def.encounterHint, 4);
   // a room whose chest showed stays that way
   if (s.def.clear === 'chest' && hasFlag(roomFlag(s, 'cleared'))) showChests(s);
   if (hasFlag(roomFlag(s, 'key')) && !hasFlag(roomFlag(s, 'keytaken'))) placeKey(s);
@@ -524,7 +532,7 @@ on('room-enter', ({ screen } = {}) => {
 on('screen-leave', () => {
   lockIn.shut = false;
   lockIn.t = -1;
-  lit.clear();
+  if (!partyHooks.preserveRoom(currentScreen())) lit.clear();
 });
 
 registerPlayHook({
@@ -542,7 +550,7 @@ registerPlayHook({
       }
     }
     // wall switches go dark after their window
-    const win = TUNING.dungeon.wallSwitch ?? 5;
+    const win = currentScreen()?.def?.switches?.window ?? TUNING.dungeon.wallSwitch ?? 5;
     for (const [k, t] of lit) if (state.time - t > win) lit.delete(k);
   },
 });
