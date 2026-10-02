@@ -26,6 +26,7 @@ testWalk('scripts/lib');testFiles.push('scripts/playtest.mjs','scripts/test-audi
 testFiles.push('scripts/barrow-path-coop-test.mjs','scripts/barrow-path-touch-test.mjs');
 testFiles.push('scripts/coilmaw-coop-test.mjs','scripts/coilmaw-touch-test.mjs','scripts/coilmaw-native-phone-test.mjs');
 testFiles.push('scripts/gauntlet.mjs','scripts/reward-shield-coop-test.mjs','scripts/reward-shield-touch-test.mjs','scripts/opening-coop-test.mjs','scripts/opening-touch-test.mjs');
+testFiles.push('scripts/forest-hud-layout-test.mjs','scripts/test-silent-output.mjs','scripts/verify-silent-browser.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -34,7 +35,7 @@ if(previous){
  if(previous.source?.sha256!==report.source.sha256)throw Error('Game source changed; run a fresh gauntlet instead of reusing results.');
  // Scenario-only runs never execute the RTC, layout or voice stage drivers.
  // Their edits do not invalidate gameplay measured through unchanged helpers.
- const scenarioOnly=report.scenariosOnly&&previous.stages.every(s=>s.name==='test-audio-policy');
+ const scenarioOnly=report.scenariosOnly&&previous.stages.every(s=>['test-audio-policy','test-silent-output'].includes(s.name));
  const helpers=testFiles.filter(f=>!f.replaceAll('\\','/').startsWith('scripts/scenarios/')
    && (scenarioOnly ? f.replaceAll('\\','/').startsWith('scripts/lib/')||['scripts/playtest.mjs','scripts/test-audio-policy.mjs'].includes(f)
      : !['scripts/browser-smoke.mjs','scripts/npc-voice-smoke.mjs','scripts/era-coop-test.mjs','scripts/multiplayer-test.mjs'].includes(f)));
@@ -89,6 +90,8 @@ async function stage(name,file,extra=[]){
 try{
   await stage('test-audio-policy','test-audio-policy.mjs');
   if(!report.stages.at(-1).ok)throw Error('Test browser output must be muted before starting the gauntlet.');
+  await stage('test-silent-output','test-silent-output.mjs');
+  if(!report.stages.at(-1).ok)throw Error('Test output isolation contracts must pass before starting the gauntlet.');
   if(!value('url')){await buildGame();server=await startServer();}
   report.url=value('url')??server.url;save();
   browser=await chromium.launch({headless:true,args:CHROMIUM_ARGS});
@@ -136,6 +139,7 @@ try{
     await stage('town-chests-touch','town-chests-touch-test.mjs');
     await stage('hive-coop','hive-coop-test.mjs');
     await stage('hive-layout','hive-layout-test.mjs');
+    await stage('forest-hud-layout','forest-hud-layout-test.mjs');
     await stage('watch-coop','watch-coop-test.mjs');
     await stage('watch-layout','watch-layout-test.mjs');
     if(!quick)await stage('multiplayer','multiplayer-test.mjs',['--no-build','--local-ice']);

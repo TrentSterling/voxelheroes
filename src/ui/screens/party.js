@@ -5,11 +5,13 @@ import { registerMode, pushMode, popMode } from '../../core/modes.js';
 import { createParty, joinParty, leaveParty, partyView, inviteLink } from '../../game/party.js';
 import { registerUiPart, requestUi, COLORS } from '../canvas/gfx.js';
 import { hideOverlay } from '../overlay.js';
-import { partyShortcutLayout } from '../shortcuts.js';
+import { partyShortcutLayout, setPartyShortcutReader } from '../shortcuts.js';
 import * as THREE from 'three';
 import { camera } from '../../core/renderer.js';
 import { partyFriends } from '../../game/party.js';
 import { GROUND_Y } from '../../core/constants.js';
+
+setPartyShortcutReader(partyView);
 
 let open = false, value = '', notice = '', busy = false, field = null;
 let rosterPage=0;

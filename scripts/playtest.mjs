@@ -34,6 +34,7 @@ import { createServer } from 'node:net';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { installSilentOutput } from './lib/silent-output.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCENARIOS = join(ROOT, 'scripts', 'scenarios');
@@ -131,6 +132,7 @@ export async function launch({
   const { chromium } = sharedBrowser ? {} : await loadPlaywright();
   const browser = sharedBrowser ?? (await chromium.launch({ headless: !headed, args: CHROMIUM_ARGS }));
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+  await installSilentOutput(context);
   await context.route(FONT_HOSTS, (route) => route.abort());
   const page = await context.newPage();
 
@@ -157,6 +159,12 @@ export async function launch({
     throw new Error(`Game failed to boot: ${errors.join('\n') || error.message}`);
   }
   await page.addScriptTag({ content: readFileSync(BOT, 'utf8') });
+  if (await page.evaluate(() => window.__testAudioOutputGuard?.version) !== 1) {
+    await context.close();
+    if (!sharedBrowser) await browser.close();
+    await server?.close();
+    throw new Error('Browser output isolation was not installed; refusing to send game inputs.');
+  }
 
   mkdirSync(out, { recursive: true });
   const shots = [];

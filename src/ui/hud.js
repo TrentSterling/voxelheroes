@@ -32,6 +32,7 @@ import { openSettings } from './settings-panel.js';
 import { registerUiPart, requestUi, COLORS } from './canvas/gfx.js';
 import * as sprites from './canvas/sprites.js';
 import { overlayVisible, fadeLevel } from './overlay.js';
+import { playShortcutBounds } from './shortcuts.js';
 
 export const REGIONS = {
   vitals: { name: 'vitals', side: 'left', row: 0 },
@@ -151,36 +152,50 @@ function layout(g, s) {
     });
     colH[side] = y - ROW_GAP;
   }
+  const reserved = [
+    ...out.map(p => ({ x: p.x, y: p.y, w: p.sw, h: p.sh, side: REGIONS[p.w.region].side })),
+    ...playShortcutBounds(g).map(p => ({ ...p, side: 'right' })),
+  ];
+  const belowSides = Math.max(colH.left, colH.right, ...reserved.map(p => p.y + p.h)) + ROW_GAP + 2;
+  const fullWidth = g.w - 2 * M - leftEdge - rightEdge;
   // The centre stack sits between the two sides; where they leave it too little room (a phone held
   // upright) it drops below them instead.
   let cy = M + top;
   const room = g.w - 2 * (M + Math.max(rowW0.left + leftEdge, rowW0.right + rightEdge) + GAP);
   let maxW = room;
   if (maxW < 110) {
-    // Party and Journal shortcuts occupy the right side through row 64.
-    cy = Math.max(colH.left, colH.right, top+64) + ROW_GAP + 2;
-    maxW = g.w - 2 * M - leftEdge - rightEdge;
+    cy = belowSides;
+    maxW = fullWidth;
   }
   for (const w of list) {
     if (REGIONS[w.region].side !== 'center') continue;
     let it = sized(w, maxW);
     if (!it) continue;
-    // Lower rows can be wider than Settings and life. The clock, equipped
-    // item and counters must also leave room for the centre row at its y.
-    let available = maxW;
-    for (const side of out.filter(p => REGIONS[p.w.region].side !== 'center')) {
-      if (side.y >= cy + it.sh || side.y + side.sh <= cy) continue;
-      available = Math.min(available, REGIONS[side.w.region].side === 'left'
-        ? g.w - 2 * (side.x + side.sw + GAP)
-        : 2 * (side.x - GAP) - g.w);
+    // A narrower objective can gain a line and meet a lower shortcut. Measure
+    // again until its entire height fits, then keep it inside that free span.
+    let width = maxW, left = M + leftEdge, right = g.w - M - rightEdge;
+    for (let pass = 0; pass <= reserved.length; pass++) {
+      left = M + leftEdge; right = g.w - M - rightEdge;
+      for (const side of reserved) {
+        if (side.y >= cy + it.sh || side.y + side.h <= cy) continue;
+        if (side.side === 'left') left = Math.max(left, side.x + side.w + GAP);
+        else right = Math.min(right, side.x - GAP);
+      }
+      const available = Math.min(width, right - left);
+      if (available < 44) {
+        cy = Math.max(cy, belowSides);
+        left = M + leftEdge; right = g.w - M - rightEdge;
+        it = sized(w, fullWidth);
+        break;
+      }
+      if (available === width) break;
+      width = available;
+      it = sized(w, width);
+      if (!it) break;
     }
-    if (available < 44) {
-      cy = Math.max(cy, colH.left, colH.right, top + 64) + ROW_GAP + 2;
-      available = g.w - 2 * M - leftEdge - rightEdge;
-    }
-    it = sized(w, available);
     if (!it) continue;
-    out.push({ ...it, x: Math.round((g.w - it.sw) / 2), y: cy });
+    const center = (g.w + leftEdge - rightEdge) / 2;
+    out.push({ ...it, x: Math.max(left, Math.min(Math.round(center - it.sw / 2), right - it.sw)), y: cy });
     cy += it.sh + ROW_GAP;
   }
   return out;
