@@ -207,6 +207,23 @@ export function currentStep() {
   const local = localEraStep(screen);
   if (local) return local;
   const story = STEPS.find((s) => !s.done()) ?? null;
+  if (story?.id === 'meet-king') {
+    const routes = {
+      'v1:1,1': ['Follow the south road from Mossbrook Square to King Aldric at Crownhold.', 'South to King Aldric.'],
+      'v1:1,2': ['Keep south along Mossbrook Lane. King Aldric waits beyond the castle road.', 'South along the castle road.'],
+      'ow-4-3:1,0': ['Follow the paved road south through Crownhold\'s open gate to King Aldric.', 'South through the castle gate.'],
+      'ow-4-3:1,1': ['Speak with King Aldric beside the four-hour mosaic for your sword and shield.', 'Talk to King Aldric: sword and shield.'],
+    };
+    const route = routes[screen?.key];
+    if (route) return {...story, text:route[0], short:route[1]};
+  }
+  if (story?.id === 'enter-d1') {
+    if (screen?.key === 'ow-4-3:1,1' || screen?.key === 'ow-4-3:1,0' || screen?.key === 'v1:1,2') return {...story, text:'Return north to Mossbrook Square, then follow the west road to Barrowfield.', short:'North to Mossbrook; then west.'};
+    if (screen?.key === 'v1:1,1' && !state.gear.boots) return {...story, text:'Tinker Wyll gives Sprint Boots at the northeast corner of the square. Then head west to Barrowfield.', short:'Wyll northeast: Sprint Boots; then west.'};
+    if (screen?.key === 'v1:0,1' || screen?.key === 'ow-3-2:2,1') return {...story,text:'Follow the road west to Barrow Crossing, then turn south to the Old Barrow.',short:'West to the crossing; then south.'};
+    if (screen?.key === 'ow-3-2:1,1') return {...story,text:'The Old Barrow is south of this crossing. Face the drawn bow with your shield, or step out of its line.',short:'South to the Old Barrow.'};
+    if (screen?.key === 'ow-3-2:1,2') return {...story,text:'Clear the approach, drink from the spring west of the path, then enter the northern barrow door.',short:'Clear approach; spring; northern door.'};
+  }
   if (story?.id === 'tower-trial') return { ...story, ...clockGoal() };
   if (story?.id === 'tide-key') {
     if (!hasMap('d4')) return { id: 'tide-map', text: 'Earn a patrol key west of the entrance. The map waits north of that room.' };

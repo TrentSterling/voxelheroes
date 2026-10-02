@@ -6,6 +6,13 @@ Sword, boots and other fanfare rewards now show native voxel items above the
 hero's raised hands. Guard moves one carried shield forward, including on
 co-op friends. See [reward and shield verification](docs/REWARD-SHIELD.md).
 
+The opening road now leads safely to King Aldric, then through three authored
+combat pairs to the barrow. Room-specific directions point out Wyll's boots
+and a recovery spring beside the dungeon. The king's starter sword and shield
+are usable by friends exploring separately. Riverstone, limestone, a brass-edged
+runner and the four-hour mosaic add quick town paving variety. See
+[opening route and verification](docs/OPENING-ROAD.md).
+
 The opening era chapter, **The Bell That Rang Tomorrow**, starts with Mira beside
 the copper hourgate in Mossbrook Square. Take a sword, visit the First Bloom and
 the Silent Year, and repair the past to grow a future garden. Friends can split

@@ -214,7 +214,7 @@
   // The hero walks up to the nearest one, turns to face it and swings. If
   // health drops to `heal` half-hearts or less it is topped up (counted in
   // `heals`), so a long fight cannot end the test by accident.
-  async function fight({ seconds = 60, heal = 2, reach = 1.15, maxKills = Infinity } = {}) {
+  async function fight({ seconds = 60, heal = 2, reach = 1.15, maxKills = Infinity, guard = false } = {}) {
     const g = hook();
     const from = screenKey();
     let t = 0;
@@ -223,6 +223,12 @@
     let kills = 0;
     let path = null;
     let planT = 0;
+    let pathGoal = null;
+    let guardHeld = false;
+    const holdGuard = (want) => {
+      if (want === guardHeld) return;
+      g.input[want ? 'down' : 'up']('guard'); guardHeld = want;
+    };
     const off = g.events.on('enemy-killed', () => kills++);
     const result = (ok, reason) => ({ ok, reason, t, kills, swings, heals, left: g.entities.filter((e) => e.kind === 'enemy').length });
     try {
@@ -254,20 +260,28 @@
           }
         }
         if (!e) {
+          holdGuard(false);
           g.input.setStick(0, 0);
         } else {
           const dx = e.x - p.x;
           const dz = e.z - p.z;
           const d = Math.hypot(dx, dz);
+          // Guard strafes with a fixed facing. Release it to turn, then hold
+          // once facing the threat; sword input naturally lowers it to strike.
+          holdGuard(guard && Math.abs(angleDiff(Math.atan2(dx, dz), p.yaw)) <= 0.3);
           if (d > reach) {
             planT -= DT;
-            if (!path || planT <= 0) {
-              const el = local(e);
-              path = planTo([Math.floor(el.x), Math.floor(el.z)], {}) ?? [];
+            const el = local(e);
+            const goal = [Math.floor(el.x), Math.floor(el.z)];
+            // Retain a route to a stationary foe. Rebuilding it every 0.3 s
+            // prepends the current tile centre again, so a slow guarding hero
+            // reverses before reaching the next centre and never advances.
+            if (!path || (planT <= 0 && (!pathGoal || goal[0] !== pathGoal[0] || goal[1] !== pathGoal[1]))) {
+              path = planTo(goal, {}) ?? [];
+              pathGoal = goal;
               planT = 0.3;
             }
             while (path.length && Math.hypot(path[0][0] - local(p).x, path[0][1] - local(p).z) < 0.12) path.shift();
-            const el = local(e);
             if (path.length > 1) steer(path[0][0], path[0][1], false);
             else steer(el.x, el.z, false);
           } else {
@@ -289,6 +303,7 @@
       }
       return result(false, 'timeout');
     } finally {
+      holdGuard(false);
       off();
       g.input.setStick(0, 0);
     }

@@ -11,6 +11,32 @@ import { land } from './overworld.js';
 
 defineTileset('town', { parent: 'overworld', floor: '.' });
 
+// Native paving keeps the road, village lane and royal audience distinct.
+// These are ordinary walkable floors, without interaction or collision hooks.
+for (const [ch, name] of [[':', 'limestone-paving'], [';', 'riverstone-cobbles'], ['a', 'royal-runner'], ['o', 'four-hour-mosaic']]) {
+  registerTile('town', ch, { name, ground: 'path', pushableFloor: true, build(ctx) {
+    const top = land(ctx, {kind:'path'}), {T,X0:x,Z0:z} = ctx;
+    for (let dz=0;dz<8;dz++) for (let dx=0;dx<8;dx++) {
+      let color;
+      if (ch === ':') {
+        const joint = dz%4===0 || (dx+(Math.floor(dz/4)%2)*2)%4===0;
+        color = joint ? 0x787d82 : (Math.floor((dx+dz)/4)%2 ? 0xc5c8b5 : 0xb6bda8);
+      } else if (ch === ';') {
+        const joint = dz%3===0 || (dx+(Math.floor(dz/3)%2))%3===0;
+        color = joint ? 0x78847c : (Math.floor(dx/3)+Math.floor(dz/3))%2 ? 0xb2b9a2 : 0x9eaa97;
+      } else if (ch === 'a') {
+        const edge = (ctx.tileAt(-1,0)!=='a' && dx<2) || (ctx.tileAt(1,0)!=='a' && dx>5);
+        color = edge ? 0xdbaf69 : (dx+dz)%7===0 ? 0xba5663 : 0x853e54;
+      } else {
+        const ax=Math.abs(dx-3.5), az=Math.abs(dz-3.5), diamond=ax+az;
+        color = diamond>5 ? 0xbac2ad : diamond>3.5 || diamond<1.5 ? 0xd9ae62
+          : dx<4 ? (dz<4 ? 0x72a99b : 0xbc6373) : (dz<4 ? 0x7585b3 : 0xc9a46f);
+      }
+      T.set(x+dx,top,z+dz,shadeHex(color,1+(hash3(x+dx,top,z+dz,37)-.5)*.025));
+    }
+  } });
+}
+
 const PLASTER = 0xe6d8b8;
 const TIMBER = 0x7a5230;
 const BASE = 0x8e8a80;

@@ -84,7 +84,12 @@ export function registerSword(def) {
   const full = { name: def.id, description: '', order: 100, icon: '', model: null, source: '', ...def, base, max, price, budget, special: def.special ?? null };
   full.model ??= rewardModel(def.id, 'sword');
   swords.set(def.id, full);
-  registerGrant(def.id, () => giveSword(def.id), { name: full.name, fanfare: true, kind: 'sword', model: full.model });
+  registerGrant(def.id, () => {
+    giveSword(def.id);
+    // An unarmed friend receiving a shared blade needs it ready to use.
+    // Later rewards leave the player's existing weapon choice in place.
+    if (!state.swords.equipped) equipSword(def.id);
+  }, { name: full.name, fanfare: true, kind: 'sword', model: full.model });
   return full;
 }
 

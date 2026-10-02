@@ -2,6 +2,15 @@
 
 Goal: an original real-time voxel co-op adventure (Three.js, Vite, vanilla JS). On September 30, 2026 Trent changed the creative direction: retain real-time combat, but use Chrono Trigger as the reference for expressive color, memorable characters, linked eras, personal stakes and authored encounters. This supersedes the older requirement to follow 3D Dot Game Heroes closely. Characters, models, dialogue and music remain original.
 
+The opening now has safe unarmed travel to King Aldric, four town paving
+materials, directions for each road screen, three authored combat pairs and
+a reusable recovery spring before the barrow. The first bow teaches the
+starter guard and can lose its loaded shot to sword or boomerang interruption.
+The king's shared kit is immediately usable by an independently exploring
+friend. Native routes, local RTC and small-screen touch/text checks are
+documented in `OPENING-ROAD.md`; this remains an iteration within the larger
+adventure goal.
+
 The Last Departure now connects two optional station screens south of the
 Copperwalk. Meet Tern on his first day, repair a signal across eras, fight a
 Waiting Bell Courier with committed three-note warnings, and choose to call it
@@ -255,7 +264,7 @@ abilities and deeper changes to the four old dungeons remain future work.
 - Every milestone ends with a Playwright play-test that drives the real build and saves screenshots to `/mnt/project-files/voxel-heroes-shots/<milestone>/`. The playable artifact is republished after each milestone.
 - Headless Chromium renders slowly, so tests step the simulation at fixed 1/60 s ticks through `window.__voxelHeroes` rather than waiting in real time.
 - Work happens in a local git repo. Parallel features use separate branches and worktrees, and an integration pass merges them. In M2 each stream works on `feat/m2-<stream>`, keeps one scenario in `scripts/scenarios/<stream>.mjs` and saves its screenshots under `/mnt/project-files/voxel-heroes-shots/m2/<stream>/`.
-- Trent puts the code on GitHub himself; each milestone ships a source zip and the playable link.
+- Each milestone keeps a source ZIP, the playable HTML and screenshot receipts locally. Pushes authorized by Trent publish main through the repository GitHub Pages workflow.
 
 
 ### Clockfair and borrowed-hour story pass (2026-10-01)

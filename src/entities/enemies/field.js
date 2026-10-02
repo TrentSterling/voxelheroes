@@ -136,13 +136,20 @@ registerEntity('stump', (opts) => new Stump(opts));
 class Archer extends Enemy {
   constructor(opts) {
     super(opts, { ...stats('archer', { drops: 'pack-b' }), poses: { idle: M.archerModel(0), draw: M.archerModel(1) } });
+    this.arrowTier = opts.arrowTier ?? 2;
+    this.shotTell = opts.shotTell ?? TUNING.enemy.tells.shooterStop;
+  }
+  onHurt() {
+    if(this.ai.shoot) { this.ai.shoot.dir=null; this.ai.shoot.cool=this.shotTell; }
+    this.ai.tellT=0; this.mesh.position.x=0; this.mesh.setPose('idle');
   }
   think(dt, { bounds }) {
     const s = R('archer');
     const holding = shoot(this, dt, {
       reach: s.sight,
+      stop: this.shotTell,
       fire: (dir) => {
-        spawn('archer-arrow', { x: this.x + dir.x * 0.5, z: this.z + dir.z * 0.5, dir, speed: s.arrowSpeed, damage: s.arrowDamage });
+        spawn('archer-arrow', { x: this.x + dir.x * 0.5, z: this.z + dir.z * 0.5, dir, speed: s.arrowSpeed, damage: s.arrowDamage, tier: this.arrowTier });
         sfx.shoot();
       },
     });

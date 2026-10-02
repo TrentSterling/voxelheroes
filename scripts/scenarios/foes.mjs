@@ -93,7 +93,7 @@ export default async function foes(t) {
     h.give('boomerang');
     out.owned = g.inventory.hasItem('boomerang');
     out.selected = g.inventory.selectedItem()?.id;
-    await h.step(1.1); // the item get's cheer
+    await h.step(H.T.hero.prize.time + 0.1); // let the native visible reward finish
     H.place(3.5, 8.5, 'east');
     await h.tick();
     h.input.tap('item');
@@ -187,7 +187,7 @@ export default async function foes(t) {
     const out = {};
     h.give('bombs');
     g.inventory.selectItem('bombs');
-    await h.step(1.1);
+    await h.step(H.T.hero.prize.time + 0.1);
     out.ammo0 = g.inventory.ammo('bombs');
     out.cap = g.inventory.maxAmmo('bombs');
     H.place(4.5, 8.5, 'east');
@@ -694,8 +694,9 @@ export default async function foes(t) {
   await t.shot('foes-boss');
 
   // ---------------------------------------------------------------- overworld teeth (fun audit
-  // item 3): basic foes no longer die to one starting-blade hit, Barrow Crossing and The Old
-  // Barrow have real ambushes instead of open ground. Run last (own teleport, own dungeon reuse)
+  // item 3): basic foes need two starting-blade hits. The opening road now
+  // teaches the starter guard with one authored bow and a close-range partner,
+  // followed by two guards on the barrow approach. Run last (own teleport, own dungeon reuse)
   // so it never shifts the gameplay random stream or shared event counts the boss tests above
   // read from a fixed tick count.
   r = await t.eval(async () => {
@@ -712,15 +713,15 @@ export default async function foes(t) {
     const r2 = g.damage.dealDamage(blob, { amount: 3, source: 'sword', swingId: 'bt2', from: H.p });
     const afterTwo = { result: r2.result, dead: blob.removed };
     const crossing = h.world.screen('ow-3-2:1,1');
-    const archers = crossing.spawns.filter((s) => s.type === 'group' && (s.opts.of ?? []).includes('archer'));
+    const archers = crossing.spawns.filter((s) => s.type === 'archer');
     const barrow = h.world.screen('ow-3-2:1,2');
-    const ambush = barrow.spawns.filter((s) => s.type === 'group');
-    return { hp0, afterOne, afterTwo, archers: archers.map((a) => ({ of: a.opts.of, count: a.opts.count })), ambushCount: ambush.length };
+    const ambush = barrow.spawns.filter((s) => ['stump','blob'].includes(s.type));
+    return { hp0, afterOne, afterTwo, archers: archers.map((a) => ({ tier:a.opts.arrowTier,tell:a.opts.shotTell,crowned:a.opts.crowned })), crossingFoes:crossing.spawns.filter(s=>['archer','blob'].includes(s.type)).length, ambush:ambush.map(s=>s.type).sort() };
   });
   t.expect(r.hp0 === 4 && r.afterOne.result === 'hit' && r.afterOne.alive && r.afterOne.hp === 1, `a basic blob (hp ${r.hp0}) survives one starting-blade hit (3 dmg) with ${r.afterOne.hp} hp left`);
   t.expect(r.afterTwo.result === 'killed' && r.afterTwo.dead, 'a basic blob needs 2 starting-blade hits');
-  t.expect(r.archers.length === 1 && r.archers[0].of.join() === 'archer' && r.archers[0].count.join() === '2,2', `Barrow Crossing ambushes with an archer pair (${JSON.stringify(r.archers)})`);
-  t.expect(r.ambushCount > 0, `The Old Barrow's doorstep is no longer empty (${r.ambushCount} spawn group(s))`);
+  t.expect(r.crossingFoes===2&&r.archers.length===1&&r.archers[0].tier===1&&r.archers[0].tell===.8&&r.archers[0].crowned===false, `Barrow Crossing teaches the starter guard with one readable bow and a blob (${JSON.stringify(r.archers)})`);
+  t.expect(r.ambush.join() === 'blob,stump', `The Old Barrow's doorstep has two authored guards (${r.ambush})`);
 
   // The serpent's one rule reaches the screen, not just the bestiary (fun audit item 4): a toast
   // once the intro's camera returns control, and the tail pulses/sparks while it can be hurt.

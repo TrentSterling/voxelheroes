@@ -42,7 +42,9 @@ class King extends CharmNpc {
       await showDialog(['{hero}! Mira says the town bell has rung thirteen times. She was counting the hours we have, and the one we lost.', 'Our city clock borrowed its light from four temples. Now the barrow is awake and its keeper will not let the first hour go.', 'My father promised those lights would always find their way home. I thought it was only a story for children.', 'Take his blade and this shield. Bring back the hour of return, and find out who is keeping tomorrow from us.'], sp);
       grant('blade-start', 1, { source: 'npc' });
       if (!state.swords.equipped) equipSword('blade-start');
-      if ((state.gear.shield ?? 0) < 1) state.gear.shield = 1;
+      // Use the normal grant so friends receive the kit too. Keep it quiet:
+      // the blade remains the item held up during the king's follow-up.
+      if ((state.gear.shield ?? 0) < 1) grant('shield-1', 1, { source: 'npc', fanfare: false });
       setFlag('overworld:talked:king');
       await showDialog(['Go north through Mossbrook, then west, then south to the barrow.', 'Find what sleeps at its heart.'], sp);
       return;

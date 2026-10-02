@@ -1,6 +1,7 @@
 // Repeatable acceptance run. Every case gets a fresh context and its own receipts.
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync,statSync,cpSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { spawn,execFileSync } from 'node:child_process';
 import { chromium, firefox } from 'playwright';
@@ -17,10 +18,12 @@ const sourceWalk=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true}))
 sourceWalk('src');if(existsSync('public/voices'))sourceWalk('public/voices');sourceFiles.push('index.html','package.json','package-lock.json');sourceFiles.sort();
 const sourceHash=createHash('sha256');for(const file of sourceFiles){sourceHash.update(file.replaceAll('\\','/')+'\0');sourceHash.update(readFileSync(file));}
 report.source={gitHead:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8',windowsHide:true}).trim(),sha256:sourceHash.digest('hex'),files:sourceFiles.length};
+const portableFile=value('url')?.startsWith('file:')?fileURLToPath(value('url')):null;
+if(portableFile)report.artifact={file:portableFile,sha256:createHash('sha256').update(readFileSync(portableFile)).digest('hex')};
 const testFiles=listScenarios().map(name=>`scripts/scenarios/${name}.mjs`);
 const testWalk=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true})){const file=join(dir,entry.name);if(entry.isDirectory())testWalk(file);else testFiles.push(file);}};
 testWalk('scripts/lib');testFiles.push('scripts/playtest.mjs','scripts/test-audio-policy.mjs','scripts/browser-smoke.mjs','scripts/npc-voice-smoke.mjs','scripts/voice-bank-audit.mjs','scripts/voice-inventory.mjs','scripts/era-coop-test.mjs','scripts/companion-coop-test.mjs','scripts/barrow-coop-test.mjs','scripts/hive-coop-test.mjs','scripts/watch-coop-test.mjs','scripts/watch-layout-test.mjs','scripts/brineglass-coop-test.mjs','scripts/brineglass-layout-test.mjs','scripts/mara-coop-test.mjs','scripts/mara-layout-test.mjs','scripts/departure-coop-test.mjs','scripts/departure-layout-test.mjs','scripts/clock-coop-test.mjs','scripts/clock-layout-test.mjs','scripts/fair-coop-test.mjs','scripts/fair-layout-test.mjs','scripts/stone-eye-coop-test.mjs','scripts/stone-eye-touch-test.mjs','scripts/pollinator-coop-test.mjs','scripts/pollinator-touch-test.mjs','scripts/town-chests-coop-test.mjs','scripts/town-chests-touch-test.mjs','scripts/multiplayer-test.mjs');
-testFiles.push('scripts/reward-shield-coop-test.mjs','scripts/reward-shield-touch-test.mjs');
+testFiles.push('scripts/gauntlet.mjs','scripts/reward-shield-coop-test.mjs','scripts/reward-shield-touch-test.mjs','scripts/opening-coop-test.mjs','scripts/opening-touch-test.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -44,7 +47,8 @@ const unchanged=file=>previous?.testSources?previous.testSources[file]===report.
 async function run(name,seed,engine='chromium'){
   const id=`${engine}-${seed}-${name}`, dir=join(out,id);let timer;
   const prior=previous?.cases.find(c=>c.id===id&&c.ok);
-  if(prior&&unchanged(`scripts/scenarios/${name}.mjs`)){
+  const dependencies=name==='first-road'?['opening']:[];
+  if(prior&&unchanged(`scripts/scenarios/${name}.mjs`)&&dependencies.every(dep=>unchanged(`scripts/scenarios/${dep}.mjs`))){
     cpSync(join(resolve(value('resume')),id),dir,{recursive:true});report.cases.push({...prior,reusedFrom:resumeFile});save();console.log(`REUSE ${id}: identical game source and unchanged passing test`);return;
   }
   const active=engine==='firefox'?fox:browser;
@@ -65,7 +69,7 @@ async function run(name,seed,engine='chromium'){
 async function stage(name,file,extra=[]){
   const dir=join(out,name);mkdirSync(dir,{recursive:true});console.log(`RUN ${name}`);
   const prior=previous?.stages.find(s=>s.name===name&&s.ok);
-  if(prior&&unchanged(`scripts/${file}`)){
+  if(name!=='test-audio-policy'&&prior&&unchanged(`scripts/${file}`)){
     cpSync(join(resolve(value('resume')),name),dir,{recursive:true});report.stages.push({...prior,reusedFrom:resumeFile});save();console.log(`REUSE ${name}: identical game source and unchanged passing test`);return;
   }
   const started=Date.now(),log=[];
@@ -86,7 +90,7 @@ try{
   if(!value('url')){await buildGame();server=await startServer();}
   report.url=value('url')??server.url;save();
   browser=await chromium.launch({headless:true,args:CHROMIUM_ARGS});
-  const critical=['clockfair','campaign-story','tower-clock','hero','reward-shield','stone-eye','pollinator','town-chests','pots','eras','era-workshop','departure','companion','tern','mara','party-travel','party-camera','hit-feedback','barrow-echo','hive-pressure','hive-retry','watch-combat','watch-route','brineglass-combat','brineglass-route','world-audit','soak','voices'];
+  const critical=['opening','first-road','road-bow','clockfair','campaign-story','tower-clock','hero','reward-shield','stone-eye','pollinator','town-chests','pots','eras','era-workshop','departure','companion','tern','mara','party-travel','party-camera','hit-feedback','barrow-echo','hive-pressure','hive-retry','watch-combat','watch-route','brineglass-combat','brineglass-route','world-audit','soak','voices'];
   const names=value('cases')?.split(',')??(quick?[...critical,'guidance'].filter(n=>listScenarios().includes(n)):listScenarios());
   const unknown=names.filter(name=>!listScenarios().includes(name));
   if(unknown.length)throw Error(`Unknown scenarios: ${unknown.join(', ')}. Use scripts/playtest.mjs --list.`);
@@ -101,6 +105,8 @@ try{
   }
   if(!args.includes('--scenarios-only')){
     await stage('browser-startup','browser-smoke.mjs',['--local-signaling']);
+    await stage('opening-coop','opening-coop-test.mjs');
+    await stage('opening-touch','opening-touch-test.mjs');
     await stage('reward-shield-coop','reward-shield-coop-test.mjs');
     await stage('reward-shield-touch','reward-shield-touch-test.mjs');
     await stage('recorded-voices','npc-voice-smoke.mjs');
@@ -131,6 +137,14 @@ try{
 }catch(error){report.fatal={message:error.message,stack:error.stack};}
 finally{
   await browser?.close();await fox?.close();await server?.close();
+  // A long run is acceptance only for the exact source captured at its start.
+  sourceFiles.length=0;sourceWalk('src');if(existsSync('public/voices'))sourceWalk('public/voices');sourceFiles.push('index.html','package.json','package-lock.json');sourceFiles.sort();
+  const finalSourceHash=createHash('sha256');for(const file of sourceFiles){finalSourceHash.update(file.replaceAll('\\','/')+'\0');finalSourceHash.update(readFileSync(file));}
+  const changedTests=Object.entries(report.testSources).filter(([file,hash])=>!existsSync(file)||createHash('sha256').update(readFileSync(file)).digest('hex')!==hash).map(([file])=>file);
+  report.integrity={endSourceSha256:finalSourceHash.digest('hex'),changedTests};
+  report.integrity.sourceUnchanged=report.integrity.endSourceSha256===report.source.sha256;
+  if(portableFile){report.integrity.artifactUnchanged=createHash('sha256').update(readFileSync(portableFile)).digest('hex')===report.artifact.sha256;if(!report.integrity.artifactUnchanged)report.fatal={message:'Portable HTML changed during this run; rerun from an unchanged artifact.'};}
+  if(!report.integrity.sourceUnchanged||changedTests.length)report.fatal={message:'Game or captured test source changed during this run; rerun from an unchanged checkpoint.'};
   const walk=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true})){const file=join(dir,entry.name);if(entry.isDirectory())walk(file);else if(/\.(png|jpg)$/i.test(file))report.receipts.push({file:relative(out,file).replaceAll('\\','/'),sha256:createHash('sha256').update(readFileSync(file)).digest('hex')});}};
   walk(out);report.completedUtc=new Date().toISOString();
   report.passed=report.cases.filter(c=>c.ok).length+report.stages.filter(c=>c.ok).length;
