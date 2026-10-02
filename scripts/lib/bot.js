@@ -214,7 +214,7 @@
   // The hero walks up to the nearest one, turns to face it and swings. If
   // health drops to `heal` half-hearts or less it is topped up (counted in
   // `heals`), so a long fight cannot end the test by accident.
-  async function fight({ seconds = 60, heal = 2, reach = 1.4, maxKills = Infinity, guard = false, tool = false } = {}) {
+  async function fight({ seconds = 60, heal = 2, reach = 1.4, maxKills = Infinity, guard = false, tool = false, clearObstacles = false } = {}) {
     const g = hook();
     const from = screenKey();
     let t = 0;
@@ -288,7 +288,7 @@
             // A flier over a pit has no floor route. Wait on safe ground
             // instead of walking directly into the pit to chase it.
             if (path === null && e.flying) g.input.setStick(0, 0);
-            else if (path?.length > 1) steer(path[0][0], path[0][1], false);
+            else if (path?.length > (clearObstacles ? 0 : 1)) steer(path[0][0], path[0][1], false);
             else steer(el.x, el.z, false);
           } else {
             path = null;
@@ -298,21 +298,44 @@
             const vertical=Math.abs(dz)>=Math.abs(dx), lateral=vertical?dx:dz;
             const aim=vertical?(dz>0?0:Math.PI):(dx>0?Math.PI/2:-Math.PI/2);
             const diff=angleDiff(aim,p.yaw);
-            if (Math.abs(lateral)>.24 && p.attackT<=0) {
+            // The new route uses a conservative part of the real blade
+            // width plus enemy radius, rather than a centreline-only hit.
+            const lateralReach=clearObstacles?Math.max(.24,(e.r+g.game.tuning.TUNING.sword.minHitWidth/2)*.9):.24;
+            if (Math.abs(lateral)>lateralReach && p.attackT<=0) {
               holdGuard(false);
-              g.input.setStick(vertical?Math.sign(dx):0,vertical?0:Math.sign(dz));
+              const mx=vertical?Math.sign(dx):0,mz=vertical?0:Math.sign(dz);
+              if (!clearObstacles || !g.world.blocked(p.x+mx*p.speed*DT,p.z+mz*p.speed*DT,p.r,p)) g.input.setStick(mx,mz);
+              else {
+                // Clear a real bush or pot that blocks the attack lane. A
+                // sideways lineup must not keep pushing into the same prop.
+                const facing=Math.atan2(mx,mz),aimed=Math.abs(angleDiff(facing,p.yaw))<.3;
+                const def=g.world.tileDefAt(Math.floor(p.x+mx*(p.r+.35)),Math.floor(p.z+mz*(p.r+.35)));
+                if (def?.onSword && def.regrow) {
+                  g.input.setStick(aimed?0:mx,aimed?0:mz);
+                  if (aimed && p.attackT<=0) {holdGuard(guard);g.input.tap('sword');swings++;}
+                } else {
+                  // Back into free floor, then approach by the existing BFS.
+                  // Only ordinary stick input; avoid hazards and passages.
+                  const dirs=[[1,0],[-1,0],[0,1],[0,-1]].filter(([x,z])=>{
+                    const nx=p.x+x*p.speed*DT,nz=p.z+z*p.speed*DT,def=g.world.tileDefAt(Math.floor(nx),Math.floor(nz));
+                    return !g.world.blocked(nx,nz,p.r,p)&&!def?.hazard&&!def?.onEnter;
+                  }).sort(([ax,az],[bx,bz])=>Math.hypot(p.x+bx*.2-e.x,p.z+bz*.2-e.z)-Math.hypot(p.x+ax*.2-e.x,p.z+az*.2-e.z));
+                  g.input.setStick(...(dirs[0]??[0,0]));
+                }
+              }
             } else if (Math.abs(diff) > 0.3 && p.attackT <= 0) {
               holdGuard(false);
               g.input.setStick(vertical?0:Math.sign(dx),vertical?Math.sign(dz):0);
             } else {
               g.input.setStick(0, 0);
               if (p.attackT <= 0) {
+                if (clearObstacles) holdGuard(guard);
                 g.input.tap('sword');
                 swings++;
               }
             }
           }
-          if (tool && toolWait===0 && d>reach && d<=5.5 && p.attackT<=0 && !p.carrying && Math.abs(angleDiff(Math.atan2(dx,dz),p.yaw))<.3) {
+          if (tool && (!clearObstacles || !e.flying || !g.world.blocked(e.x,e.z,p.r,p)) && toolWait===0 && d>reach && d<=5.5 && p.attackT<=0 && !p.carrying && Math.abs(angleDiff(Math.atan2(dx,dz),p.yaw))<.3) {
             g.input.tap('item'); toolWait=.5;
           }
         }

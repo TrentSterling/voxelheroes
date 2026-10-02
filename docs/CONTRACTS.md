@@ -783,6 +783,10 @@ Override `onHitWall`, `onHitHero`, `onHitEnemy` (return false to fly on),
   (times `rareHardMultiplier` in hard mode), and a hit replaces one member of
   the group and gets `rare: true`. `rare` stays with the group; other fields
   (`variant`, `crowned: false` where a crown makes no sense) go to each enemy.
+  Placement tests the constructed body against scenery and screen bounds
+  before adding or announcing it. An inset wall can overlap a nearby floor
+  centre; a rejected candidate is replaced by an unused floor that fits the
+  actual radius. A group with no fitting candidate skips that member.
 - **Cleared screens and rooms** (`game/clears.js`, contracts; spec 5.5, 6.5):
 
   ```js
@@ -1090,6 +1094,10 @@ Conversation state is flags with the stream's prefix (`overworld:talked:smith`).
   spec 5.6), measured from his centre to the entity's edge
   (`systems/interact.js`). NPCs use that range; only something reached
   across a table (a counter) sets its own `interactRange`.
+  An armed hero holding Guard commits A to the sword, so nearby conversation
+  and tile interactions cannot consume a combat strike. The action prompt
+  follows the same rule. Release Guard to deliberately talk or inspect; an
+  unarmed hero can still talk while holding the button.
 - **The sage.** Overworld registers `npc-sage`, which takes `{ spell, flag }`
   from its marker, grants the spell once with `{ source: 'npc' }`, sets
   `flag` (default `overworld:sage:<spell>`) and afterwards only talks. The

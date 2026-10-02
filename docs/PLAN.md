@@ -11,6 +11,13 @@ stairs. See `BARROW-PATH.md` and `COILMAW.md` for mechanics and the distinction
 between native playthroughs and isolated fixtures. The later temples and
 larger era campaign still need more work.
 
+The road after the first clocklight now has a native route to the Rootglass
+bomb cache. Guard plus sword stays in combat beside an NPC, and random group
+bodies clear room wall insets before they are announced to the party. See
+`NURSERY-CONTROLS.md` for controls, fresh playthrough scope and isolated
+fixtures. The Amber Queen, fuller forest tile variety and later campaign work
+remain in the larger adventure goal.
+
 The opening now has safe unarmed travel to King Aldric, four town paving
 materials, directions for each road screen, three authored combat pairs and
 a reusable recovery spring before the barrow. The first bow teaches the

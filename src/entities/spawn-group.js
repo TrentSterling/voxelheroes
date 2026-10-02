@@ -38,8 +38,8 @@ import { difficulty } from '../game/progress.js';
 import { isCleared } from '../game/clears.js';
 import { Entity } from './entity.js';
 import { player } from './player.js';
-import { spawn } from './manager.js';
-import { registerEntity, hasEntityType } from './registry.js';
+import { addEntity } from './manager.js';
+import { createEntity, registerEntity, hasEntityType } from './registry.js';
 
 const warned = new Set();
 
@@ -101,7 +101,21 @@ class SpawnGroup extends Entity {
       const [tx, tz] = tiles[i];
       const opts = { ...extra, x: tx + 0.5, z: tz + 0.5, netId: netId ? `${netId}:member:${i}` : undefined, spawnIndex: spawnIndex + i, spawnFlag, screen };
       if (isRare) opts.rare = true;
-      this.children.push(spawn(type, opts));
+      const child = createEntity(type, opts);
+      // A floor centre can still overlap a room wall's inset or a nearby
+      // obstacle. Test the actual body before announcing it to the party.
+      const fits = ([x, z]) => x + .5 - child.r >= screen.x0 && x + .5 + child.r <= screen.x1 &&
+        z + .5 - child.r >= screen.z0 && z + .5 + child.r <= screen.z1 &&
+        !world.blocked(x + .5, z + .5, child.r, child);
+      if (!fits(tiles[i])) {
+        const safe = tiles.findIndex((tile, index) => index > i && fits(tile));
+        if (safe < 0) { child.remove(); continue; }
+        [tiles[i], tiles[safe]] = [tiles[safe], tiles[i]];
+        child.x = opts.x = tiles[i][0] + .5;
+        child.z = opts.z = tiles[i][1] + .5;
+        if (child.object) { child.object.position.x = child.x; child.object.position.z = child.z; }
+      }
+      this.children.push(addEntity(child));
     }
     this.remove();
   }

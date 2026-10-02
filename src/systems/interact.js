@@ -1,6 +1,7 @@
 // The A button talks before it swings: if something in front of the hero
 // answers onInteract (an NPC, a sign tile, a shop counter), the press is used
 // up and the sword stays sheathed.
+// An armed hero holding Guard commits A to combat instead of conversation.
 //
 //   findInteraction(player) -> { entity, label } | { tx, tz, def, label } | null
 //       what A would talk to or check now, without doing it (the prompt bar
@@ -15,6 +16,10 @@
 import { TUNING } from '../core/tuning.js';
 import { world } from '../world/world.js';
 import { entities } from '../entities/manager.js';
+import { input } from '../core/input.js';
+import { state } from '../core/state.js';
+
+const combatIntent = () => input.held('guard') && !!state.swords?.equipped;
 
 // The nearest entity with onInteract roughly in front of the hero, in reach.
 function facingEntity(p) {
@@ -44,6 +49,7 @@ function facingEntity(p) {
 const tileAhead = (p) => [Math.floor(p.x + Math.sin(p.yaw) * (p.r + 0.35)), Math.floor(p.z + Math.cos(p.yaw) * (p.r + 0.35))];
 
 export function findInteraction(p) {
+  if (combatIntent()) return null;
   const e = facingEntity(p);
   if (e) return { entity: e, label: e.prompt ?? 'Talk' };
   const [tx, tz] = tileAhead(p);
@@ -52,6 +58,7 @@ export function findInteraction(p) {
 }
 
 export function tryInteract(p) {
+  if (combatIntent()) return false;
   const best = facingEntity(p);
   if (best && best.onInteract(p) !== false) return true;
   const [tx, tz] = tileAhead(p);
