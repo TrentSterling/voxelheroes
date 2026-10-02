@@ -8,7 +8,7 @@ import { COLORS } from '../canvas/gfx.js';
 const label = () => trackedQuestId() ? 'Quest: ' : 'Next: ';
 const lines = (g, width) => {
   const text = label() + objectiveHudText();
-  if (!trackedQuestId() || g.h < 200) return [{ text: g.fit(text, width) }];
+  if (trackedQuestId() && g.h < 200) return [{ text: g.fit(text, width) }];
   const wrapped = g.wrap(text, width);
   return wrapped.length > 2 ? [wrapped[0], { text: g.fit(wrapped.slice(1).map(line => line.text).join(' '), width) }] : wrapped;
 };

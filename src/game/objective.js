@@ -133,7 +133,7 @@ function questStep(id, screen) {
   if (id === 'barrow-echo') {
     if (screen?.key !== 'd1:2,4') return goal(id, 'find', 'Find Crossed Bones in the Old Barrow, beyond Dark Hall and Blade Gallery.', 'Old Barrow: find Crossed Bones.');
     if (entry.status === 'ready') return goal(id, 'chest', 'Open the eastern memory chest in Crossed Bones.', 'Open the eastern memory chest.');
-    return goal(id, 'bell', entry.detail, hasFlag('dungeon:d1:echo-cleared') ? 'Throw a pot at the copper bell.' : 'Pot the bell; defeat both waves.');
+    return goal(id, 'bell', entry.detail, hasFlag('dungeon:d1:echo-cleared') ? 'Throw a pot at the copper bell.' : 'Clay bell; both waves.');
   }
   if (id === 'fourfold-clock') {
     if (screen?.area.id !== 'tower-trial') return goal(id, 'find', entry.detail, 'Four lights: tower east of Pilgrim Strand.');
@@ -197,6 +197,46 @@ const BARROW_STEPS = {
   eyes: { id: 'big-key', text: 'Light all four eyes in one window to reach the big key.' },
 };
 
+function barrowStep(screen) {
+  const key=screen?.key, route=(step,text,short) => ({...BARROW_STEPS[step],text,short});
+  if (!hasMap('d1')) {
+    if (key==='d1:3,8') return route('map','Defeat the bats and open the map chest on the northern copper runner.','Bats; north map chest.');
+    if (key==='d1:4,9') return route('map','Collect the battle key, then go west and north to Map Hall.','Battle key; west, north.');
+    return {...BARROW_STEPS.map,short:'North: map chest.'};
+  }
+  if (!hasItem('boomerang')) {
+    if (key==='d1:2,8' && !hasFlag('dungeon:d1:puzzle:I-3')) return route('keys','Push the block east along copper to the statue, then stand below it and push north onto the plate.','Copper: east, then north.');
+    if (!hasFlag('dungeon:d1:door:I-4:n')) {
+      if (key==='d1:2,8' && hasFlag('dungeon:d1:keytaken:I-3')) return route('keys','Return east to Map Hall. Use one of your earned small keys at its north door.','East; north key door.');
+      if (key==='d1:3,8' && hasFlag('dungeon:d1:keytaken:I-3')) return route('keys','Use an earned small key at the north door, then follow Pit Walk east.','North lock; bridge east.');
+      if (key==='d1:3,8' && hasFlag('dungeon:d1:keytaken:J-5')) return route('keys','A second key waits west in Block Hall. Then use a key at Map Hall\'s north door.','West block key; north lock.');
+      return {...BARROW_STEPS.keys,short:'East battle; west block.'};
+    }
+    if (key==='d1:3,7') return route('tool','Follow the pale bridge east to Gazer Walk, then north to the guarded boomerang.','Bridge east; then north.');
+    if (key==='d1:4,7') return route('tool','Sidestep the coral shots. The boomerang waits in the room north of Gazer Walk.','Sidestep; north to tool.');
+    if (key==='d1:4,6') return route('tool','Defeat the shielded guardians. Open the central boomerang chest, then rest at the western hourstone.','Guardians; chest; rest.');
+    return {...BARROW_STEPS.tool,short:'Bridge east; north to tool.'};
+  }
+  if (!hasFlag('dungeon:d1:keytaken:G-4')) {
+    if (key==='d1:4,6') return route('eye','Rest at the western hourstone. Go south, west, then north to Eye Hall.','Rest; south, west, north.');
+    if (key==='d1:4,7') return route('eye','The boomerang interrupts the gazers. Go west across Pit Walk, then north to Eye Hall.','Boomerang; west, north.');
+    if (key==='d1:3,7') return route('eye','Follow the pale bridge north to Eye Hall.','Bridge north to Eye Hall.');
+    if (key==='d1:3,6') return route('eye','Throw the boomerang north at the stone eye to the right of the key door. Collect the key in the west.','Boomerang at north eye.');
+    return {...BARROW_STEPS.eye,short:'Eye Hall: boomerang eye.'};
+  }
+  if (!hasFlag('dungeon:d1:keytaken:E-3')) {
+    if (key==='d1:3,6') return route('bones','Rest at the western hourstone, then use a small key at the west door. Cross Dark Hall and go north through Blade Gallery.','Rest; west lock; north twice.');
+    if (key==='d1:2,6') return route('bones','Follow the copper trail north to Blade Gallery, then north again to Crossed Bones.','Copper path north twice.');
+    if (key==='d1:2,5') return route('bones','Keep to the repaired center path, clear of the corner blades. Crossed Bones lies north.','Center path; bell north.');
+    if (key==='d1:2,4') return route('bones','Throw clay at the northern copper bell to interrupt it. Defeat both waves and collect the battle key.','Clay bell; both waves.');
+    return {...BARROW_STEPS.bones,short:'Dark Hall north to bell.'};
+  }
+  if (key==='d1:2,4') return route('eyes','Take the fourth key east to Hall of Eyes. Light all four eyes with quick, close boomerang throws.','East: four timed eyes.');
+  if (key==='d1:3,4') return route('eyes','Stand close to the north wall. Throw at each copper-marked eye before the five-second lights fade.','Close throws: 4 eyes in 5s.');
+  if (key==='d1:4,4') return route('eyes','Open the central chest for the boss key. Return west, then unlock the north door.','Boss key; west, then north.');
+  return {...BARROW_STEPS.eyes,short:'Four eye throws in 5s.'};
+}
+
 const OPEN_GOAL = 'Hunt for heart pieces, see what the smith can do with your coins, or help villagers with their errands.';
 
 // The first step not yet done, or null once every step is (the open goal).
@@ -247,13 +287,9 @@ export function currentStep() {
     if (!hasItem('bombs')) return { id: 'hive-bombs', text: 'Open the first lock north of the map. The powder cache is west.' };
     return story;
   }
+  if (story?.id==='beat-boss' && screen?.key==='d1:3,3') return {...story,text:'Rest at the western hourstone, then unlock the northern boss door. Its coil guard yields only at the tail.',short:'Hourstone; north to serpent.'};
   if (story?.id !== 'big-key') return story;
-  if (!hasMap('d1')) return BARROW_STEPS.map;
-  if (!hasFlag('dungeon:d1:door:I-4:n') && !hasItem('boomerang')) return BARROW_STEPS.keys;
-  if (!hasItem('boomerang')) return BARROW_STEPS.tool;
-  if (!hasFlag('dungeon:d1:keytaken:G-4')) return BARROW_STEPS.eye;
-  if (!hasFlag('dungeon:d1:keytaken:E-3')) return BARROW_STEPS.bones;
-  return BARROW_STEPS.eyes;
+  return barrowStep(screen);
 }
 
 export const objectiveId = () => currentStep()?.id ?? 'open';

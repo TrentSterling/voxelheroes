@@ -206,8 +206,10 @@ export default async function d1(t) {
   t.expect(r.map, 'the map chest is one room from the entrance');
   await t.shot('d1-03-map-hall');
   await go(t, 'west', 'Block Hall');
-  await t.walkTo(4.5, 5.5);
-  await t.stick(1, 0, 4.5);
+  await t.walkTo(4.5, 7.5);
+  await t.stick(1, 0, 2.8);
+  await t.walkTo(8.5, 8.5);
+  await t.stick(0, -1, 1.8);
   r = await t.eval(() => ({ key: window.__d1.of('key').length, flag: window.__d1.flags().includes('dungeon:d1:puzzle:I-3') }));
   t.expect(r.flag && r.key === 1 && (await t.events('block-pushed')).length === 5, `pushing the block onto the plate solves the room and drops a key (${JSON.stringify(r)})`);
   await t.walkTo(8, 8);

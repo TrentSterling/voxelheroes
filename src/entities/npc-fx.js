@@ -11,7 +11,8 @@ import * as THREE from 'three';
 import { camera, scene } from '../core/renderer.js';
 import { g as gfx, registerUiPart, requestUi, COLORS } from '../ui/canvas/gfx.js';
 import { disc } from '../ui/canvas/sprites.js';
-import { hudView } from '../ui/hud.js';
+import { hudBounds } from '../ui/hud.js';
+import { playShortcutBounds } from '../ui/shortcuts.js';
 import { world, heroScreen } from '../world/world.js';
 
 const EMOTE_COLOR = { '!': '#e0402f', '?': '#3a6fd8', '♥': '#e0407a', '♪': '#2e9a4a', '…': '#5a5a5a', '✦': '#d89a1a' };
@@ -106,7 +107,7 @@ const drawable = (b) => {
 // A bubble nearing the top edge fades out before it runs into the HUD's name and goal lines.
 const clearOfHud = (top,left,right) => {
   let bottom=22;
-  for(const widget of hudView().widgets)if(left<widget.x+widget.w&&right>widget.x)bottom=Math.max(bottom,widget.y+widget.h);
+  for(const widget of [...hudBounds(gfx),...playShortcutBounds(gfx)])if(left<widget.x+widget.w&&right>widget.x)bottom=Math.max(bottom,widget.y+widget.h);
   return Math.max(0,Math.min(1,(top-bottom)/14));
 };
 
@@ -127,9 +128,12 @@ registerUiPart({
         const k = fade(b.e);
         const d = 19;
         const rise = b.e.t < 0.12 ? Math.round(3 * (1 - k)) : 0;
-        g.alpha(Math.max(0, Math.min(1, k)) * clearOfHud(y - d - 1 + rise,x-d/2,x+d/2));
-        g.sprite(disc(d, 'rgba(255, 252, 240, 0.97)'), x - d / 2, y - d - 1 + rise);
-        g.text(b.e.sym, x, y - d + 2 + rise, { size: 2, align: 'center', color: EMOTE_COLOR[b.e.sym] ?? '#222' });
+        const alpha=Math.max(0, Math.min(1, k)) * clearOfHud(y - d - 1 + rise,x-d/2,x+d/2);
+        if (alpha>0) {
+          g.alpha(alpha);
+          g.sprite(disc(d, 'rgba(255, 252, 240, 0.97)'), x - d / 2, y - d - 1 + rise);
+          g.text(b.e.sym, x, y - d + 2 + rise, { size: 2, align: 'center', color: EMOTE_COLOR[b.e.sym] ?? '#222' });
+        }
       }
       if (b.b) {
         const k = fade(b.b);
@@ -137,9 +141,12 @@ registerUiPart({
         const w = g.measure(text) + 10;
         const bx=Math.max(4+w/2,Math.min(g.w-4-w/2,x));
         const by = y + (b.e ? -22 : -2) - 13;
-        g.alpha(Math.max(0, Math.min(1, k)) * clearOfHud(by,bx-w/2,bx+w/2));
-        g.panel(bx - w / 2, by, w, 13, { shadow: false, fill: 'rgba(20, 22, 20, 0.86)', line: 'rgba(243, 236, 210, 0.16)' });
-        g.text(text, bx, by + 3, { align: 'center', color: COLORS.ink });
+        const alpha=Math.max(0, Math.min(1, k)) * clearOfHud(by,bx-w/2,bx+w/2);
+        if (alpha>0) {
+          g.alpha(alpha);
+          g.panel(bx - w / 2, by, w, 13, { shadow: false, fill: 'rgba(20, 22, 20, 0.86)', line: 'rgba(243, 236, 210, 0.16)' });
+          g.text(text, bx, by + 3, { align: 'center', color: COLORS.ink });
+        }
       }
     }
   },

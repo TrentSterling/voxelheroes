@@ -37,7 +37,7 @@ export default async function(t) {
   await t.shot('08-first-dungeon');
   await t.exit('east'); await t.step(1);
   t.expect((await t.state()).key === 'd1:4,9', 'native movement enters the first dungeon combat room');
-  const fight=await t.fight({heal:-1,seconds:90,soft:true});
+  const fight=await t.fight({heal:-1,guard:true,seconds:90,soft:true});
   t.note(`Native first key fight: ${JSON.stringify(fight)}`);
   t.expect(fight.ok&&fight.heals===0, 'native sword attacks win the first dungeon fight without invulnerability or healing edits');
   await t.step(.5);

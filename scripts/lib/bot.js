@@ -214,7 +214,7 @@
   // The hero walks up to the nearest one, turns to face it and swings. If
   // health drops to `heal` half-hearts or less it is topped up (counted in
   // `heals`), so a long fight cannot end the test by accident.
-  async function fight({ seconds = 60, heal = 2, reach = 1.15, maxKills = Infinity, guard = false } = {}) {
+  async function fight({ seconds = 60, heal = 2, reach = 1.4, maxKills = Infinity, guard = false, tool = false } = {}) {
     const g = hook();
     const from = screenKey();
     let t = 0;
@@ -225,12 +225,14 @@
     let planT = 0;
     let pathGoal = null;
     let guardHeld = false;
+    let toolWait = 0, itemUses = 0;
     const holdGuard = (want) => {
       if (want === guardHeld) return;
       g.input[want ? 'down' : 'up']('guard'); guardHeld = want;
     };
     const off = g.events.on('enemy-killed', () => kills++);
-    const result = (ok, reason) => ({ ok, reason, t, kills, swings, heals, left: g.entities.filter((e) => e.kind === 'enemy').length });
+    const offItem = g.events.on('item-used', () => itemUses++);
+    const result = (ok, reason) => ({ ok, reason, t, kills, swings, heals, itemUses, left: g.entities.filter((e) => e.kind === 'enemy').length });
     try {
       while (t < seconds) {
         const mode = g.state.mode;
@@ -247,6 +249,7 @@
           heals++;
         }
         const p = g.player;
+        toolWait = Math.max(0, toolWait - DT);
         const foes = g.entities.filter((e) => e.kind === 'enemy');
         if ((!foes.length && !g.game.combat.roomClearBlocked()) || kills >= maxKills) return result(true);
         const ready = foes.filter((e) => e.spawned !== false);
@@ -277,18 +280,30 @@
             // prepends the current tile centre again, so a slow guarding hero
             // reverses before reaching the next centre and never advances.
             if (!path || (planT <= 0 && (!pathGoal || goal[0] !== pathGoal[0] || goal[1] !== pathGoal[1]))) {
-              path = planTo(goal, {}) ?? [];
+              path = planTo(goal, {});
               pathGoal = goal;
               planT = 0.3;
             }
-            while (path.length && Math.hypot(path[0][0] - local(p).x, path[0][1] - local(p).z) < 0.12) path.shift();
-            if (path.length > 1) steer(path[0][0], path[0][1], false);
+            while (path?.length && Math.hypot(path[0][0] - local(p).x, path[0][1] - local(p).z) < 0.12) path.shift();
+            // A flier over a pit has no floor route. Wait on safe ground
+            // instead of walking directly into the pit to chase it.
+            if (path === null && e.flying) g.input.setStick(0, 0);
+            else if (path?.length > 1) steer(path[0][0], path[0][1], false);
             else steer(el.x, el.z, false);
           } else {
             path = null;
-            const diff = angleDiff(Math.atan2(dx, dz), p.yaw);
-            if (Math.abs(diff) > 0.3 && p.attackT <= 0) {
-              g.input.setStick((dx / d) * 0.2, (dz / d) * 0.2);
+            // The blade faces four ways even when walking diagonally. Line
+            // up beside a foe before attacking; running at its centre can
+            // leave every thrust off to its side and walk into contact.
+            const vertical=Math.abs(dz)>=Math.abs(dx), lateral=vertical?dx:dz;
+            const aim=vertical?(dz>0?0:Math.PI):(dx>0?Math.PI/2:-Math.PI/2);
+            const diff=angleDiff(aim,p.yaw);
+            if (Math.abs(lateral)>.24 && p.attackT<=0) {
+              holdGuard(false);
+              g.input.setStick(vertical?Math.sign(dx):0,vertical?0:Math.sign(dz));
+            } else if (Math.abs(diff) > 0.3 && p.attackT <= 0) {
+              holdGuard(false);
+              g.input.setStick(vertical?0:Math.sign(dx),vertical?Math.sign(dz):0);
             } else {
               g.input.setStick(0, 0);
               if (p.attackT <= 0) {
@@ -296,6 +311,9 @@
                 swings++;
               }
             }
+          }
+          if (tool && toolWait===0 && d>reach && d<=5.5 && p.attackT<=0 && !p.carrying && Math.abs(angleDiff(Math.atan2(dx,dz),p.yaw))<.3) {
+            g.input.tap('item'); toolWait=.5;
           }
         }
         await g.tick(DT);
@@ -305,6 +323,7 @@
     } finally {
       holdGuard(false);
       off();
+      offItem();
       g.input.setStick(0, 0);
     }
   }
