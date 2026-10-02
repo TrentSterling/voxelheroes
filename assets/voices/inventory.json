@@ -354,7 +354,7 @@
       "type": "npc-king",
       "opts": {
         "type": "npc-king",
-        "wander": 1
+        "wander": 0
       },
       "source": "src/world/areas/slice.js"
     },
@@ -844,7 +844,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:6237"
+        "src/entities/npcs/slice.js:6420"
       ]
     },
     {
@@ -886,7 +886,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:6337"
+        "src/entities/npcs/slice.js:6520"
       ]
     },
     {
@@ -1264,7 +1264,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:11077:lines"
+        "src/world/areas/slice.js:10845:lines"
       ]
     },
     {
@@ -1306,7 +1306,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13206:lines"
+        "src/world/areas/slice.js:12974:lines"
       ]
     },
     {
@@ -1334,7 +1334,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13206:lines"
+        "src/world/areas/slice.js:12974:lines"
       ]
     },
     {
@@ -1726,7 +1726,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:5713"
+        "src/entities/npcs/slice.js:5896"
       ]
     },
     {
@@ -1838,7 +1838,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/era-workshop.js:3629"
+        "src/world/tiles/era-workshop.js:3695"
       ]
     },
     {
@@ -1937,7 +1937,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/era-workshop.js:3629"
+        "src/world/tiles/era-workshop.js:3695"
       ]
     },
     {
@@ -1979,7 +1979,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/era-workshop.js:3629"
+        "src/world/tiles/era-workshop.js:3695"
       ]
     },
     {
@@ -1993,7 +1993,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/era.js:4385"
+        "src/world/tiles/era.js:4417"
       ]
     },
     {
@@ -2091,7 +2091,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13892:lines"
+        "src/world/areas/slice.js:13660:lines"
       ]
     },
     {
@@ -2231,7 +2231,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13892:lines"
+        "src/world/areas/slice.js:13660:lines"
       ]
     },
     {
@@ -2315,7 +2315,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13629:lines"
+        "src/world/areas/slice.js:13397:lines"
       ]
     },
     {
@@ -2553,7 +2553,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13629:lines"
+        "src/world/areas/slice.js:13397:lines"
       ]
     },
     {
@@ -2651,7 +2651,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:16226:lines"
+        "src/world/areas/slice.js:15992:lines"
       ]
     },
     {
@@ -2679,7 +2679,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:16226:lines"
+        "src/world/areas/slice.js:15992:lines"
       ]
     },
     {
@@ -2805,7 +2805,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:13383:lines"
+        "src/world/areas/slice.js:13151:lines"
       ]
     },
     {
@@ -3253,7 +3253,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:12007:lines"
+        "src/world/areas/slice.js:11775:lines"
       ]
     },
     {
@@ -3323,7 +3323,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:14186:lines"
+        "src/world/areas/slice.js:13954:lines"
       ]
     },
     {
@@ -3561,7 +3561,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:10301:lines"
+        "src/world/areas/slice.js:10069:lines"
       ]
     },
     {
@@ -3939,7 +3939,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:14414:lines"
+        "src/world/areas/slice.js:14182:lines"
       ]
     },
     {
@@ -4037,7 +4037,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:7670"
+        "src/entities/npcs/slice.js:7853"
       ]
     },
     {
@@ -4051,7 +4051,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3808"
+        "src/world/tiles/clockfair.js:4191"
       ]
     },
     {
@@ -4065,7 +4065,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3808"
+        "src/world/tiles/clockfair.js:4191"
       ]
     },
     {
@@ -4079,7 +4079,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3420"
+        "src/world/tiles/clockfair.js:3803"
       ]
     },
     {
@@ -4093,7 +4093,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:7445"
+        "src/entities/npcs/slice.js:7628"
       ]
     },
     {
@@ -4107,7 +4107,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3086"
+        "src/world/tiles/clockfair.js:3469"
       ]
     },
     {
@@ -4121,7 +4121,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:7445"
+        "src/entities/npcs/slice.js:7628"
       ]
     },
     {
@@ -4135,7 +4135,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3420"
+        "src/world/tiles/clockfair.js:3803"
       ]
     },
     {
@@ -4149,7 +4149,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3086"
+        "src/world/tiles/clockfair.js:3469"
       ]
     },
     {
@@ -4163,7 +4163,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3808"
+        "src/world/tiles/clockfair.js:4191"
       ]
     },
     {
@@ -4177,7 +4177,7 @@
       "batch": "town",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/clockfair.js:3808"
+        "src/world/tiles/clockfair.js:4191"
       ]
     },
     {
@@ -12395,7 +12395,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:3317:lines"
+        "src/world/areas/slice.js:3218:lines"
       ]
     },
     {
@@ -12535,7 +12535,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:5723:lines"
+        "src/world/areas/slice.js:5501:lines"
       ]
     },
     {
@@ -12549,7 +12549,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:5723:lines"
+        "src/world/areas/slice.js:5501:lines"
       ]
     },
     {
@@ -12857,7 +12857,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:5981:lines"
+        "src/world/areas/slice.js:5759:lines"
       ]
     },
     {
@@ -12941,7 +12941,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:5981:lines"
+        "src/world/areas/slice.js:5759:lines"
       ]
     },
     {
@@ -12969,7 +12969,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:5022"
+        "src/entities/npcs/slice.js:5205"
       ]
     },
     {
@@ -12983,7 +12983,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:5022"
+        "src/entities/npcs/slice.js:5205"
       ]
     },
     {
@@ -13011,7 +13011,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4038"
+        "src/entities/npcs/slice.js:4221"
       ]
     },
     {
@@ -13025,7 +13025,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4038"
+        "src/entities/npcs/slice.js:4221"
       ]
     },
     {
@@ -13039,7 +13039,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4388"
+        "src/entities/npcs/slice.js:4571"
       ]
     },
     {
@@ -13053,7 +13053,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:3690"
+        "src/entities/npcs/slice.js:3873"
       ]
     },
     {
@@ -13067,7 +13067,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:3191"
+        "src/entities/npcs/slice.js:3374"
       ]
     },
     {
@@ -13081,7 +13081,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4388"
+        "src/entities/npcs/slice.js:4571"
       ]
     },
     {
@@ -13095,7 +13095,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4038"
+        "src/entities/npcs/slice.js:4221"
       ]
     },
     {
@@ -13123,7 +13123,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:3191"
+        "src/entities/npcs/slice.js:3374"
       ]
     },
     {
@@ -13151,7 +13151,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:3690"
+        "src/entities/npcs/slice.js:3873"
       ]
     },
     {
@@ -13193,7 +13193,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4706"
+        "src/entities/npcs/slice.js:4889"
       ]
     },
     {
@@ -13207,7 +13207,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4706"
+        "src/entities/npcs/slice.js:4889"
       ]
     },
     {
@@ -13221,7 +13221,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4388"
+        "src/entities/npcs/slice.js:4571"
       ]
     },
     {
@@ -13249,7 +13249,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:4706"
+        "src/entities/npcs/slice.js:4889"
       ]
     },
     {
@@ -13263,7 +13263,7 @@
       "batch": "crownhold",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:3690"
+        "src/entities/npcs/slice.js:3873"
       ]
     },
     {
@@ -15335,7 +15335,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:4057"
+        "src/world/tiles/departure.js:4145"
       ]
     },
     {
@@ -15349,7 +15349,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:4369"
+        "src/world/tiles/departure.js:4457"
       ]
     },
     {
@@ -15419,7 +15419,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:4369"
+        "src/world/tiles/departure.js:4457"
       ]
     },
     {
@@ -15461,7 +15461,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:4057"
+        "src/world/tiles/departure.js:4145"
       ]
     },
     {
@@ -15476,7 +15476,7 @@
       "kind": "dialogue",
       "sources": [
         "src/entities/npcs/era.js:4429",
-        "src/world/tiles/departure.js:2466"
+        "src/world/tiles/departure.js:2554"
       ]
     },
     {
@@ -15490,7 +15490,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:3054"
+        "src/world/tiles/departure.js:3142"
       ]
     },
     {
@@ -15504,7 +15504,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:4057"
+        "src/world/tiles/departure.js:4145"
       ]
     },
     {
@@ -15532,7 +15532,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:3850"
+        "src/world/tiles/departure.js:3938"
       ]
     },
     {
@@ -15547,7 +15547,7 @@
       "kind": "dialogue",
       "sources": [
         "src/entities/npcs/era.js:4429",
-        "src/world/tiles/departure.js:2466"
+        "src/world/tiles/departure.js:2554"
       ]
     },
     {
@@ -15561,7 +15561,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:3850"
+        "src/world/tiles/departure.js:3938"
       ]
     },
     {
@@ -15645,7 +15645,7 @@
       "batch": "eras",
       "kind": "dialogue",
       "sources": [
-        "src/world/tiles/departure.js:3054"
+        "src/world/tiles/departure.js:3142"
       ]
     },
     {
@@ -16471,7 +16471,7 @@
       "batch": "wilds",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/forest.js:852:lines"
+        "src/world/areas/forest.js:1544:lines"
       ]
     },
     {
@@ -16499,7 +16499,7 @@
       "batch": "wilds",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/forest.js:852:lines"
+        "src/world/areas/forest.js:1544:lines"
       ]
     },
     {
@@ -16975,7 +16975,7 @@
       "batch": "wilds",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:23207:lines"
+        "src/world/areas/slice.js:22886:lines"
       ]
     },
     {
@@ -17073,7 +17073,7 @@
       "batch": "wilds",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/slice.js:23207:lines"
+        "src/world/areas/slice.js:22886:lines"
       ]
     },
     {
@@ -19523,7 +19523,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8840"
+        "src/entities/npcs/slice.js:9023"
       ]
     },
     {
@@ -19537,7 +19537,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8996"
+        "src/entities/npcs/slice.js:9179"
       ]
     },
     {
@@ -19565,7 +19565,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8996"
+        "src/entities/npcs/slice.js:9179"
       ]
     },
     {
@@ -19621,7 +19621,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:9219"
+        "src/entities/npcs/slice.js:9402"
       ]
     },
     {
@@ -19649,7 +19649,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:9219"
+        "src/entities/npcs/slice.js:9402"
       ]
     },
     {
@@ -19733,7 +19733,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8675"
+        "src/entities/npcs/slice.js:8858"
       ]
     },
     {
@@ -19761,7 +19761,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8675"
+        "src/entities/npcs/slice.js:8858"
       ]
     },
     {
@@ -19803,7 +19803,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:9219"
+        "src/entities/npcs/slice.js:9402"
       ]
     },
     {
@@ -19831,7 +19831,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8675"
+        "src/entities/npcs/slice.js:8858"
       ]
     },
     {
@@ -19845,7 +19845,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8996"
+        "src/entities/npcs/slice.js:9179"
       ]
     },
     {
@@ -19859,7 +19859,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8840"
+        "src/entities/npcs/slice.js:9023"
       ]
     },
     {
@@ -19901,7 +19901,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:9219"
+        "src/entities/npcs/slice.js:9402"
       ]
     },
     {
@@ -19915,7 +19915,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8996"
+        "src/entities/npcs/slice.js:9179"
       ]
     },
     {
@@ -19929,7 +19929,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8675"
+        "src/entities/npcs/slice.js:8858"
       ]
     },
     {
@@ -19943,7 +19943,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/d2.js:6347:afterLines"
+        "src/world/areas/d2.js:7484:afterLines"
       ]
     },
     {
@@ -19957,7 +19957,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8996"
+        "src/entities/npcs/slice.js:9179"
       ]
     },
     {
@@ -19971,7 +19971,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8675"
+        "src/entities/npcs/slice.js:8858"
       ]
     },
     {
@@ -19985,7 +19985,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:9219"
+        "src/entities/npcs/slice.js:9402"
       ]
     },
     {
@@ -20041,7 +20041,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8996"
+        "src/entities/npcs/slice.js:9179"
       ]
     },
     {
@@ -20055,7 +20055,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8840"
+        "src/entities/npcs/slice.js:9023"
       ]
     },
     {
@@ -20069,7 +20069,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:8675"
+        "src/entities/npcs/slice.js:8858"
       ]
     },
     {
@@ -20083,7 +20083,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/d2.js:6347:grantLines"
+        "src/world/areas/d2.js:7484:grantLines"
       ]
     },
     {
@@ -20111,7 +20111,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/d2.js:6347:afterLines"
+        "src/world/areas/d2.js:7484:afterLines"
       ]
     },
     {
@@ -20125,7 +20125,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/entities/npcs/slice.js:9219"
+        "src/entities/npcs/slice.js:9402"
       ]
     },
     {
@@ -20139,7 +20139,7 @@
       "batch": "temples",
       "kind": "dialogue",
       "sources": [
-        "src/world/areas/d2.js:6347:grantLines"
+        "src/world/areas/d2.js:7484:grantLines"
       ]
     },
     {

@@ -27,6 +27,7 @@ testFiles.push('scripts/barrow-path-coop-test.mjs','scripts/barrow-path-touch-te
 testFiles.push('scripts/coilmaw-coop-test.mjs','scripts/coilmaw-touch-test.mjs','scripts/coilmaw-native-phone-test.mjs');
 testFiles.push('scripts/gauntlet.mjs','scripts/reward-shield-coop-test.mjs','scripts/reward-shield-touch-test.mjs','scripts/opening-coop-test.mjs','scripts/opening-touch-test.mjs');
 testFiles.push('scripts/forest-hud-layout-test.mjs','scripts/test-silent-output.mjs','scripts/verify-silent-browser.mjs');
+testFiles.push('scripts/rootglass-hud-layout-test.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -50,7 +51,14 @@ const unchanged=file=>previous?.testSources?previous.testSources[file]===report.
 async function run(name,seed,engine='chromium'){
   const id=`${engine}-${seed}-${name}`, dir=join(out,id);let timer;
   const prior=previous?.cases.find(c=>c.id===id&&c.ok);
-  const dependencies=name==='barrow-victory'?['barrow-journey','first-road','opening']:name==='barrow-journey'?['first-road','opening']:name==='first-road'?['opening']:[];
+  const dependencies={
+    'nursery-victory':['nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'nursery-crown-journey':['nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'nursery-journey':['barrow-victory','barrow-journey','first-road','opening'],
+    'barrow-victory':['barrow-journey','first-road','opening'],
+    'barrow-journey':['first-road','opening'],
+    'first-road':['opening'],
+  }[name]??[];
   if(prior&&unchanged(`scripts/scenarios/${name}.mjs`)&&dependencies.every(dep=>unchanged(`scripts/scenarios/${dep}.mjs`))){
     cpSync(join(resolve(value('resume')),id),dir,{recursive:true});report.cases.push({...prior,reusedFrom:resumeFile});save();console.log(`REUSE ${id}: identical game source and unchanged passing test`);return;
   }
@@ -140,6 +148,7 @@ try{
     await stage('hive-coop','hive-coop-test.mjs');
     await stage('hive-layout','hive-layout-test.mjs');
     await stage('forest-hud-layout','forest-hud-layout-test.mjs');
+    await stage('rootglass-hud-layout','rootglass-hud-layout-test.mjs');
     await stage('watch-coop','watch-coop-test.mjs');
     await stage('watch-layout','watch-layout-test.mjs');
     if(!quick)await stage('multiplayer','multiplayer-test.mjs',['--no-build','--local-ice']);

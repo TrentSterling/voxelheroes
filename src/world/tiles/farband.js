@@ -72,3 +72,4 @@ registerBackdrop('overworld', FAR);
 // The castle, Mossbrook and the barrow road use the town tileset (a child of overworld, so the same
 // tiles): without this their edges looked out into the sky.
 registerBackdrop('town', FAR);
+registerBackdrop('whisperwood', FAR);

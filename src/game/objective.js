@@ -240,6 +240,35 @@ function barrowStep(screen) {
 
 const OPEN_GOAL = 'Hunt for heart pieces, see what the smith can do with your coins, or help villagers with their errands.';
 
+function hiveRoomStep(screen,story) {
+  if (!['hive-key','hive-boss'].includes(story?.id)) return null;
+  const goal=(id,text,short)=>({id,text,short});
+  if(screen?.area.id==='d2-boss') {
+    const q=entities.find(e=>!e.removed&&e.type==='boss-queen');
+    if(!q)return null;
+    if(q.ai.phase==='flipped')return goal('hive-queen-flipped','The crown is overturned. Close in and strike before the queen takes flight.','Overturned crown: strike!');
+    if(q.ai.phase==='rest')return goal('hive-queen-rest','The crown is open. Strike it, or plant a bomb and move clear of its fuse.','Open crown: sword or bomb.');
+    if(q.ai.phase==='volley')return goal('hive-queen-volley','Move sideways through the amber volley. Strike nearby drones while you wait for her crown to open.','Sidestep amber; cut drones.');
+    return goal('hive-queen-flight','Cut nearby drones and wait out flight. Bomb the landing crown, then move clear of the blast.','Cut drones; bomb her landing.');
+  }
+  if(screen?.area.id!=='d2'||!hasItem('bombs'))return null;
+  const nurseryTaken=hasFlag('dungeon:d2:keytaken:B-4');
+  if(screen.key==='d2:3,1') {
+    if(nurseryTaken)return goal('hive-nursery-return','The nursery is quiet. Return south to the gallery; the amber crown key waits beyond its eastern seam.','Nursery quiet; south to gallery.');
+    const seals=[0,1,2].filter(i=>!hasFlag(`dungeon:d2:nursery-valve:${i}`)).length;
+    if(seals)return goal(`hive-pressure-${seals}`,'Bomb the three brass seals to quiet their marked floor lanes. Clear the wardens for the nursery key.',`Brass seals: ${seals}. Bomb; move clear.`);
+    if(!hasFlag('dungeon:d2:key:B-4'))return goal('hive-nursery-guards','The irrigation is quiet. Defeat the remaining wardens to release the small key.','Seals open; defeat wardens.');
+    return goal('hive-nursery-pickup','Collect the small key from the nursery floor, then return south to the gallery.','Collect key; return south.');
+  }
+  if(story.id!=='hive-key')return null;
+  if(screen.key==='d2:2,2')return goal('hive-first-seam','Blast the eastern stone seam. The next small key waits north of the gallery; the crown key waits east.','Bomb east; nursery north.');
+  if(screen.key==='d2:3,2')return nurseryTaken
+    ?goal('hive-amber-seam','Blast this gallery\'s eastern stone seam, then open the amber crown-key chest.','Bomb east; amber key chest.')
+    :goal('hive-nursery-north','Enter the northern nursery. Bomb its brass seals and defeat its wardens for another small key.','Nursery north: seals and wardens.');
+  if(screen.key==='d2:4,2')return goal('hive-amber-chest','Open the central chest for the amber crown key, then return west to the gallery.','Open amber key chest.');
+  return null;
+}
+
 // The first step not yet done, or null once every step is (the open goal).
 export function currentStep() {
   const screen = currentScreen(), pinned = trackedQuestId();
@@ -266,6 +295,8 @@ export function currentStep() {
     if (screen?.key === 'ow-3-2:1,2') return {...story,text:'Clear the approach, drink from the spring west of the path, then enter the northern barrow door.',short:'Clear approach; spring; northern door.'};
   }
   if (story?.id === 'tower-trial') return { ...story, ...clockGoal() };
+  if(isComplete('d2')&&screen?.key==='d2:0,0')return {id:'hive-homecoming',text:'Take the southern stairs into Whisperwood. Follow the south exits home to Mossbrook; the next temple lies east.',short:'South stairs; home to Mossbrook.'};
+  const hive=hiveRoomStep(screen,story);if(hive)return hive;
   if (story?.id === 'tide-key') {
     if (!hasMap('d4')) return { id: 'tide-map', text: 'Earn a patrol key west of the entrance. The map waits north of that room.' };
     if (!hasItem('fire-wand')) return { id: 'tide-wand', text: 'Open the lock east of Glass Junction, then clear Ember Cache for the fire wand.' };
