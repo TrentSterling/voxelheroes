@@ -17,8 +17,8 @@ const [W, H] = arg('--size', '1280x720').split('x').map(Number);
 const DPR = +arg('--dpr', '1');
 
 const browser = arg('--browser', 'chrome') === 'firefox'
-  ? await firefox.launch({ headless: true, firefoxUserPrefs: { 'webgl.force-enabled': true, 'gfx.webrender.all': true } })
-  : await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] });
+  ? await firefox.launch({ headless: true, firefoxUserPrefs: { 'media.volume_scale': '0.0', 'webgl.force-enabled': true, 'gfx.webrender.all': true } })
+  : await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));

@@ -1,104 +1,97 @@
-export const description = 'NPC speech: deterministic installed/cloud voice fixtures verify page cancellation, pagination, mute, preferences and late voice discovery. Native engine playback is checked separately by npc-voice-smoke.';
+export const description = 'Recorded NPC voices: real conversations, clip cancellation, subtitle pagination, mute/volume, missing media, stale callbacks and ambient priority using a deterministic media fixture. Actual Opus decoding/playback checked separately.';
 
 export default async function(t) {
   await t.press('Enter'); await t.step(1);
-  await t.teleport('v1:1,1',10.5,10.4); await t.step(.3);
-  await t.eval(()=>{
-    const h=window.__voxelHeroes;
-    h.game.settings.setSetting('npcVoices',true);
-    const engine=new EventTarget();
-    const local=[{name:'Microsoft David',lang:'en-US',localService:true},{name:'Microsoft Zira',lang:'en-US',localService:true}];
-    engine.voices=[...local,{name:'Cloud Aria',lang:'en-US',localService:false}];
-    engine.getVoices=()=>engine.voices;
-    engine.records=[];engine.cancels=0;
-    engine.speak=u=>engine.records.push({text:u.text,voice:u.voice?.name,rate:u.rate,pitch:u.pitch,volume:u.volume});
-    engine.cancel=()=>engine.cancels++;
-    window.__speechFixture={engine,local,synth:window.speechSynthesis,Utterance:window.SpeechSynthesisUtterance};
-    Object.defineProperty(window,'speechSynthesis',{value:engine,configurable:true});
-    Object.defineProperty(window,'SpeechSynthesisUtterance',{value:class{constructor(text){this.text=text;}},configurable:true});
+  await t.teleport('v1:1,1', 10.5, 10.4); await t.step(.3);
+  await t.eval(() => {
+    const h = window.__voxelHeroes; h.game.npcVoices.stopNpcSpeech(); h.game.settings.setSetting('npcVoices', true);
+    window.__voiceFixture = { native: window.Audio, records: [], pauses: 0, loads: 0 };
+    const f = window.__voiceFixture;
+    window.Audio = class extends EventTarget {
+      constructor() { super(); this.paused = true; this.currentTime = 0; f.records.push(this); }
+      play() { this.paused = false; this.dispatchEvent(new Event('playing')); return Promise.resolve(); }
+      pause() { this.paused = true; f.pauses++; }
+      removeAttribute(name) { if (name === 'src') this.src = ''; }
+      load() { f.loads++; }
+    };
   });
-  const view=()=>t.eval(()=>window.__voxelHeroes.game.npcVoices.npcVoiceView());
-  const records=()=>t.eval(()=>window.__speechFixture.engine.records);
-  const close=()=>t.eval(()=>window.__voxelHeroes.setMode('play'));
-  const dialog=(lines,speaker='Hettie')=>t.eval(({lines,speaker})=>{window.__voxelHeroes.game.dialog.showDialog(lines,{speaker});},{lines,speaker});
+  const view = () => t.eval(() => window.__voxelHeroes.game.npcVoices.npcVoiceView());
+  const count = () => t.eval(() => window.__voiceFixture.records.length);
+  const close = () => t.eval(() => window.__voxelHeroes.setMode('play'));
+  const dialog = (text, speaker = 'Hettie', opts = {}) => t.eval(({ text, speaker, opts }) => { window.__voxelHeroes.game.dialog.showDialog(text, { speaker, ...opts }); }, { text, speaker, opts });
   try {
-    await t.eval(()=>{const h=window.__voxelHeroes;h.entities.find(e=>e.name==='Old Tobin').onInteract(h.player);});
-    t.expect((await records()).length===1,'an actual NPC interaction queues speech after a trusted start key');
-    const tobin=(await records())[0];
-    t.expect(tobin.voice==='Microsoft David'&&tobin.rate===.9&&tobin.pitch===.85,'Tobin uses his slower, lower local voice delivery');
-    t.expect(tobin.volume>0&&tobin.volume<1,'speech follows the actual master and effects levels');
+    await t.eval(() => { const h = window.__voxelHeroes; h.entities.find(e => e.name === 'Old Tobin').onInteract(h.player); });
+    t.expect(await count() === 1, 'an actual town quest starts exactly one recording');
+    t.expect((await view()).last.voice === 'bm_george' && (await view()).last.phase === 'speaking', 'Tobin uses his baked Kokoro cast voice');
+    t.expect((await view()).last.volume > 0 && (await view()).last.volume < 1, 'voice uses master and effects levels');
+    t.expect((await view()).modelDownloads === 0, 'recorded speech requires no model');
     await t.tap('confirm');
-    t.expect((await records()).length===1,'finishing the typewriter does not repeat the spoken line');
+    t.expect(await count() === 1, 'finishing the typewriter does not replay a recording');
     await t.tap('confirm');
-    t.expect((await records()).length===2,'advancing the authored page queues just the next line');
-    t.expect(await t.eval(()=>window.__speechFixture.engine.cancels)>0,'page advancement cancels the previous utterance');
-    await t.shot('01-tobin-speaking');
+    t.expect(await count() === 2, 'next authored quest page starts the next recording');
+    t.expect(await t.eval(() => window.__voiceFixture.pauses) === 1, 'next page stops the previous recording');
+    await t.shot('01-tobin-recorded-quest');
+    await close(); t.expect((await view()).current === null, 'closing the dialog stops its recording');
+    await dialog('Welcome to Mossbrook!');
+    t.expect((await view()).last.voice === 'bf_emma', 'Hettie has her own consistent cast voice');
+    const token = (await view()).last.id;
+    await t.eval(() => window.__voiceFixture.records[0].dispatchEvent(new Event('ended')));
+    t.expect((await view()).last.id === token && (await view()).last.phase === 'speaking', 'late callbacks from cancelled clips cannot stop the current speaker');
+    await t.eval(() => window.__voxelHeroes.game.audio.setVolumes({ master: .4, sfx: .5 }));
+    t.expect(Math.abs((await view()).last.volume - .17) < .001 && await t.eval(() => Math.abs(window.__voiceFixture.records.at(-1).volume - .17) < .001), 'changing audio levels updates the playing media element');
+    await t.eval(() => window.__voxelHeroes.game.audio.setMuted(true));
+    t.expect((await view()).current === null, 'mute stops a recording immediately');
+    let before = await count(); await close(); await dialog('Welcome to Mossbrook!');
+    t.expect(await count() === before, 'muted conversations create no media or downloads');
+    await close(); await t.eval(() => window.__voxelHeroes.game.audio.setMuted(false));
+    await t.eval(() => window.__voxelHeroes.game.settings.setSetting('npcVoices', false));
+    await dialog('Welcome to Mossbrook!');
+    t.expect(await count() === before && await t.eval(() => window.__voxelHeroes.game.dialog.dialogOpen()), 'voices off leaves working silent subtitles');
     await close();
-    t.expect((await view()).current===null,'replacing the dialog mode cancels outstanding speech');
-    await dialog('Welcome to Mossbrook.');
-    t.expect((await records()).at(-1).voice==='Microsoft Zira','Hettie gets a distinct installed voice');
-    t.expect((await view()).localVoices.length===2,'remote voices are excluded from the usable voice list');
-    await t.eval(()=>window.__voxelHeroes.game.audio.setMuted(true));
-    t.expect((await view()).current===null,'the actual audio mute immediately stops NPC speech');
-    const mutedCount=(await records()).length;
-    await close();await dialog('This stays silent while muted.');
-    t.expect((await records()).length===mutedCount,'muted conversations never enqueue utterances');
-    await close();await t.eval(()=>window.__voxelHeroes.game.audio.setMuted(false));
-    await t.eval(()=>window.__voxelHeroes.game.settings.setSetting('npcVoices',false));
-    await dialog('Text still works with voices off.');
-    t.expect((await records()).length===mutedCount,'turning NPC voices off keeps dialog usable and silent');
-    t.expect(await t.eval(()=>window.__voxelHeroes.game.dialog.dialogOpen()),'speech does not gate reading the dialog');
+    t.expect(await t.eval(() => { const h = window.__voxelHeroes; h.game.settings.loadSettings(); return h.state.settings.npcVoices; }) === false, 'voice preference survives settings reload');
+    await t.eval(() => window.__voxelHeroes.game.settings.setSetting('npcVoices', true));
+    await dialog('A written sign has no voice.', 'Signpost');
+    t.expect(await count() === before, 'signs do not borrow a character voice');
+    await close(); await dialog('An unrecorded future quest.');
+    t.expect(await count() === before && (await view()).last.phase === 'unrecorded', 'missing content leaves text available without switching to synthetic speech');
     await close();
-    t.expect(await t.eval(()=>{const h=window.__voxelHeroes;h.game.settings.loadSettings();return h.state.settings.npcVoices;})===false,'the NPC voice preference survives reloading browser settings');
-    await t.eval(()=>window.__voxelHeroes.game.settings.setSetting('npcVoices',true));
-    await dialog('A written sign has no voice.','Old stump');
-    t.expect((await records()).length===mutedCount,'signs and unnamed narration do not borrow NPC voices');
+    await t.eval(() => { window.__voxelHeroes.state.profile.name = 'I'; });
+    await dialog('I saved you a smile, {hero}. Also a biscuit, but I ate that.', 'Pip');
+    t.expect((await view()).last.phase === 'speaking' && await t.eval(() => window.__voxelHeroes.game.dialog.dialogView().text.includes('smile, I.')), 'personalized subtitles use the same recording even when the hero name is a common word');
     await close();
-    await t.eval(()=>window.__speechFixture.engine.voices=[]);
-    await dialog('This closed page must never be read later.');
-    t.expect((await view()).last.phase==='waiting-for-local-voice','empty voice lists wait without throwing or choosing a remote service');
+    await t.page.setViewportSize({ width: 568, height: 320 });
+    await t.page.waitForTimeout(200);
+    await t.eval(() => window.__voxelHeroes.render());
+    await t.eval(() => { window.__voxelHeroes.state.settings.largeText = true; }); await t.step(.1);
+    const long = "Blast the stump, then bring it back. The cellar's bronze seal rings for clay, never steel; I left spare pots by the stairs.";
+    before = await count(); await dialog(long, 'Old Tobin', { choices: ["I'll help", 'Not now'] }); await t.tap('confirm');
+    const shown = await t.eval(() => window.__voxelHeroes.game.dialog.dialogView());
+    t.expect(shown.shown.length < long.length, 'large subtitles split the real quest line into landscape screenfuls');
+    await t.tap('confirm');
+    t.expect(await count() === before + 1 && (await view()).current !== null, 'continuing a subtitle screenful preserves the same recording');
+    await t.shot('02-landscape-voiced-subtitles');
     await close();
-    await t.eval(()=>{const f=window.__speechFixture;f.engine.voices=f.local;f.engine.dispatchEvent(new Event('voiceschanged'));});
-    t.expect((await records()).length===mutedCount,'late voice discovery cannot speak a closed dialog');
-    await t.eval(()=>window.__speechFixture.engine.voices=[]);
-    await dialog('An open page can start when local voices arrive.');
-    await t.eval(()=>{const f=window.__speechFixture;f.engine.voices=f.local;f.engine.dispatchEvent(new Event('voiceschanged'));});
-    t.expect((await records()).at(-1).text==='An open page can start when local voices arrive.','late discovery speaks only the currently open page');
+    await dialog('Welcome to Mossbrook!');
+    await t.eval(() => { const a = window.__voiceFixture.records.at(-1); a.error = { code: 4 }; a.dispatchEvent(new Event('error')); });
+    t.expect((await view()).last.phase === 'unavailable' && await t.eval(() => window.__voxelHeroes.game.dialog.dialogOpen()), 'failed media decode never blocks reading');
     await close();
-    await t.page.setViewportSize({width:320,height:568});
-    await t.eval(()=>window.__voxelHeroes.state.settings.largeText=true);await t.step(.1);
-    const long='Follow the four lights through the barrow, forest, desert and coast. Bring the lights to the Fourfold Tower and learn to distinguish the keeper from its reflections. Return to Mossbrook when the King is free.';
-    const start=(await records()).length;
-    await dialog(long);await t.tap('confirm');await t.shot('02-phone-voiced-page');
-    t.expect((await records()).at(-1).text.length<long.length,'speech reads the visible screenful on a small phone');
-    for(let i=0;i<30&&await t.eval(()=>window.__voxelHeroes.state.mode==='dialog');i++)await t.tap('confirm');
-    const chunks=(await records()).slice(start).map(r=>r.text);
-    t.expect(chunks.length>1&&chunks.join(' ').replace(/\s+/g,' ')===long,'all spoken screenfuls preserve the full authored dialog exactly once');
-    t.expect((await view()).current===null,'closing the final screenful cancels the last utterance');
-    await t.eval(()=>window.__voxelHeroes.state.settings.largeText=false);
-    await t.page.setViewportSize({width:1280,height:720});await t.step(.1);
-    await t.eval(()=>window.__voxelHeroes.game.settingsPanel.openSettings());
-    for(let i=0;i<11;i++)await t.tap('down');
-    await t.shot('03-npc-voices-setting');
-    t.expect(await t.eval(()=>window.__voxelHeroes.game.ui.uiView().hits.some(h=>h.id==='setting-npcVoices-next')),'the real Settings panel exposes the NPC voice toggle');
-    await t.tap('right');
-    t.expect((await view()).enabled===false,'the actual setting control switches NPC voices off');
+    await t.page.waitForTimeout(5600); // Let any approach greeting's real-time cooldown expire.
+    await t.eval(() => window.__voxelHeroes.game.npcVoices.speakNpcBark('Lovely day for it!', 'Pip'));
+    t.expect((await view()).current?.ambient === true, 'a nearby reaction can use its baked recording');
+    before = await count();
+    await t.eval(() => window.__voxelHeroes.game.npcVoices.speakNpcBark('Mind the flowers.', 'Old Tobin'));
+    t.expect(await count() === before, 'ambient voices do not overlap');
+    await dialog('Welcome to Mossbrook!');
+    t.expect((await view()).current?.speaker === 'Hettie' && !(await view()).current.ambient, 'focused conversation takes priority over ambient speech');
+    before = await count();
+    await t.eval(() => window.__voxelHeroes.game.npcVoices.speakNpcBark('Lovely day for it!', 'Pip'));
+    t.expect(await count() === before, 'barks cannot interrupt a conversation');
     await close();
-    await t.eval(()=>{
-      window.__voxelHeroes.game.settings.setSetting('npcVoices',true);
-      Object.defineProperty(window,'speechSynthesis',{value:undefined,configurable:true});
-      Object.defineProperty(window,'SpeechSynthesisUtterance',{value:undefined,configurable:true});
-    });
-    await dialog('Browsers without speech can still read and continue.');
-    t.expect((await view()).supported===false&&await t.eval(()=>window.__voxelHeroes.game.dialog.dialogOpen()),'missing browser speech APIs leave a fully usable text conversation');
+    await t.eval(() => { window.Audio = undefined; }); await dialog('Welcome to Mossbrook!');
+    t.expect((await view()).supported === false && await t.eval(() => window.__voxelHeroes.game.dialog.dialogOpen()), 'missing media APIs leave usable text');
     await close();
   } finally {
-    await t.eval(()=>{
-      const h=window.__voxelHeroes,f=window.__speechFixture;
-      h.setMode('play');h.state.settings.largeText=false;
-      Object.defineProperty(window,'speechSynthesis',{value:f.synth,configurable:true});
-      Object.defineProperty(window,'SpeechSynthesisUtterance',{value:f.Utterance,configurable:true});
-      h.game.settings.setSetting('npcVoices',true);
-    });
+    await t.eval(() => { const h = window.__voxelHeroes; h.setMode('play'); window.Audio = window.__voiceFixture.native; h.state.settings.largeText = false; h.game.audio.setMuted(false); h.game.audio.setVolumes({ master: 1, sfx: 1 }); h.game.settings.setSetting('npcVoices', true); });
+    await t.page.setViewportSize({ width: 1280, height: 720 });
   }
 }

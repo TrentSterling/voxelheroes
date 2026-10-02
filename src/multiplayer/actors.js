@@ -3,7 +3,7 @@ import { entities, bucketOf, inBucket, spawn, hasBucket } from '../entities/mana
 import { hasEntityType } from '../entities/registry.js';
 
 export const actorLists = () => [entities, ...[...world.screens.values()].filter(hasBucket).map(bucketOf)];
-export const allActors = () => actorLists().flat().filter((e) => !e.removed && e.kind !== 'friend');
+export const allActors = () => actorLists().flat().filter((e) => !e.removed && !['friend', 'companion'].includes(e.kind));
 
 const runtimeExtras = ['ai', 'trail', 'segments', 'head', 'carried', 'brokenSwings', 'punishOrbs'];
 const omitted = new Set(['type', 'kind', 'priority', 'netId', 'homeKey', '_frame', 'removed']);
@@ -100,6 +100,6 @@ export function applyActors(screen, records, { prune = true, playerShots = false
     e.present?.();
   }
   if (prune) for (const e of [...list]) {
-    if (!e.removed && e.kind !== 'friend' && !e._partyLocalShot && (e._partyPendingSpawn ?? 0) < performance.now() && !incoming.has(e.netId)) e.remove();
+    if (!e.removed && !['friend', 'companion'].includes(e.kind) && !e._partyLocalShot && (e._partyPendingSpawn ?? 0) < performance.now() && !incoming.has(e.netId)) e.remove();
   }
 }

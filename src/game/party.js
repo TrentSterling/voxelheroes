@@ -47,7 +47,7 @@ function send(data, target) {
 
 function localPose() {
   return { screen: currentScreen()?.key, x: player.x, z: player.z, r: player.r, yaw: player.yaw,
-    hp: state.hp, mode: state.mode, pose: player.hero.pose(), carrying: !!player.carrying,
+    hp: state.hp, mode: state.mode, pose: player.hero.pose(), carrying: !!player.carrying, shield: state.gear?.shield ?? 0, guarding: player.guarding, companion: partyHooks.companion(), companions: partyHooks.companions(),
     name: (state.profile?.name || `Hero ${Number.isFinite(rank) ? rank + 1 : ''}`).slice(0, 14),
     blade: player.thrust ? { reach: player.thrust.reach, angle: player.thrust.angle } : null };
 }
@@ -62,8 +62,17 @@ export function roomOwner(key) {
   return occupants[0]?.[0] ?? (members.has(previous) ? previous : selfId);
 }
 
+// A shared story turn-in keeps one authority while both dialogue choices close.
+// Simulation ownership still follows heroes able to play; a friend's dialogue
+// does not pause another hero's fight. Claim authority ignores those mode changes.
+function claimOwner(key) {
+  const occupants = [...members].filter(([, m]) => m.info?.screen === key && m.info.hp > 0);
+  occupants.sort((a, b) => a[1].rank - b[1].rank || a[0].localeCompare(b[0]));
+  return occupants[0]?.[0] ?? roomOwner(key);
+}
+
 function stamp(e) {
-  if (!enabled() || e.kind === 'friend') return;
+  if (!enabled() || ['friend', 'companion'].includes(e.kind)) return;
   if (!e.netId) e.netId = e.head?.netId ? `${e.head.netId}:segment:${e.index}` : idOf();
   if ((e.kind === 'projectile' && e.owner === 'hero') || e.type === 'bomb') {
     if (!e._partyProxy) e._partyLocalShot = true;
@@ -144,6 +153,8 @@ function applyWelcome(data, peerId) {
   for (const snapshot of data.rooms ?? []) if (world.screens.has(snapshot.key)) rooms.set(snapshot.key, snapshot);
   const hub = [...world.screens.values()].find((s) => s.name === 'Mossbrook Square');
   const save = structuredClone(data.save);
+  // Friends choose their own journal task, including when joining a party.
+  save.fields.trackedQuest = serializeState().fields.trackedQuest;
   const profile = state.profile;
   if (profile?.name) save.fields.profile = { ...save.fields.profile, name: profile.name };
   if (hub) {
@@ -163,7 +174,8 @@ function applyWelcome(data, peerId) {
 
 function validateRoomAction(data, peerId) {
   const s = world.screens.get(data.screen), m = members.get(peerId);
-  return s && m && roomOwner(s.key) === selfId && validPoint(data.from) &&
+  const claim = data.action === 'tile-hook' && data.hook === 'onClaim';
+  return s && m && (claim ? claimOwner(s.key) : roomOwner(s.key)) === selfId && validPoint(data.from) &&
     data.from.x >= s.x0 - 1 && data.from.x <= s.x1 + 1 && data.from.z >= s.z0 - 1 && data.from.z <= s.z1 + 1;
 }
 
@@ -194,9 +206,9 @@ function action(data, peerId) {
       if (Math.hypot(e.x - data.from.x, e.z - data.from.z) > 3) return;
       if (data.reflect) e.reflect(); else e.shatter();
     } else if (data.action === 'tile-hook' && Number.isInteger(data.tx) && Number.isInteger(data.tz) &&
-      ['onPush', 'onSword', 'onShot', 'onBomb', 'onFreeze', 'onFire'].includes(data.hook)) {
+      ['onPush', 'onSword', 'onShot', 'onBomb', 'onFreeze', 'onFire', 'onClaim'].includes(data.hook)) {
       const distance = Math.hypot(data.tx + 0.5 - data.from.x, data.tz + 0.5 - data.from.z);
-      if (distance > (data.hook === 'onPush' ? 2 : 24) || world.locate(data.tx, data.tz)?.screen !== s) return;
+      if (distance > (['onPush', 'onClaim'].includes(data.hook) ? 2 : 24) || world.locate(data.tx, data.tz)?.screen !== s) return;
       rpcRecipient = peerId;
       try { world.trigger(data.tx, data.tz, data.hook, { ...data.extra, player: { ...data.from, r: player.r }, dt: Math.min(0.05, data.extra?.dt ?? 1 / 60) }); }
       finally { rpcRecipient = null; }
@@ -211,7 +223,7 @@ function action(data, peerId) {
         try { openChest(ctx); } finally { rpcRecipient = null; }
       } else if (data.action === 'lift' && def?.name === 'pot') {
         world.setTile(data.tx, data.tz, def.becomes ?? '.', { rebuild: false, reason: 'lift' });
-        send({ kind: 'lift-approved', tx: data.tx, tz: data.tz, screen: s.key }, peerId);
+        send({ kind: 'lift-approved', tx: data.tx, tz: data.tz, screen: s.key, loot: def.loot !== false }, peerId);
       }
     }
   });
@@ -235,6 +247,9 @@ function receive(data, peerId) {
     if (data.kind === 'full') { error = 'This party is full'; status = error; return; }
     if (!enabled() || !members.has(peerId)) return;
     if (data.kind === 'action') action(data, peerId);
+    else if (data.kind === 'companion-tech' && ['clockwork-cross', 'bell-shelter', 'steamwheel'].includes(data.name) && validPoint(data) && hasCompanionTechnique(data, peerId)) {
+      emit('companion-tech', { ...data, remote: true });
+    }
     else if (data.kind === 'flag' && typeof data.flag === 'string' && data.flag.length < 150) {
       quiet(() => data.value ? setFlag(data.flag) : clearFlag(data.flag));
       const match = /^chest:(-?\d+),(-?\d+)$/.exec(data.flag);
@@ -313,7 +328,7 @@ function receiveBonk(data, peerId) {
   emit('party-bonk', { from: peerId, swingId: data.swingId });
 }
 
-const sharedGrant = (id) => !!getItem(id) || /^(blade-|shield-|boots-|ring-|spell-|orb-|bomb-bag-|arrow-bag-)/.test(id) || ['heart-container', 'heart-piece', 'magic-container'].includes(id);
+const sharedGrant = (id) => !!getItem(id) || /^(blade-|shield-|boots-|ring-|spell-|orb-|bomb-bag-|arrow-bag-)/.test(id) || ['heart-container', 'heart-piece', 'magic-container', 'fair-medal'].includes(id);
 const progress = () => ({ errands: state.errands, visited: [...state.visited] });
 
 async function broadcastFrame() {
@@ -341,7 +356,7 @@ export function tickParty(dt) {
     player.stopDash();
     if (player.knockT <= 0 && player.lockT <= 0 && !player.thrust) {
       const s = currentScreen();
-      liftPot({ world, screen: s, tx: data.tx, tz: data.tz, def: getTile(s.tileset, 'v'), player }, { approved: true });
+      liftPot({ world, screen: s, tx: data.tx, tz: data.tz, def: getTile(s.tileset, 'v'), player }, { approved: true, loot: data.loot !== false });
       approvedLift = null;
     }
   }
@@ -433,13 +448,14 @@ export const partyRoomSnapshot = (key) => structuredClone(rooms.get(key) ?? null
 
 partyHooks.added = added;
 partyHooks.drive = (e, dt) => {
+  if (e.kind === 'companion') { e.update(dt); return; }
   if (!enabled() || e.kind === 'friend') { if (e.kind !== 'friend') e.update(dt); return; }
   stamp(e);
   if (e._partyLocalShot) { e.update(dt); return; }
   if (!e._partyPlayerShot && roomOwner(e.homeKey) === selfId) { e._partyProxy = false; e.update(dt); return; }
   if (e._partyDestination && e.object) e.object.position.lerp(e._partyDestination, Math.min(1, dt * 18));
   e.present?.(); // Personal Truesight changes only this hero's visual cue.
-  if (e.kind === 'enemy' && !e._partyPlayerShot && e.spawned && !e.harmless && !e.airborne && !e.stunT && !e.knockT && !e.frozenT && e.contactDamage &&
+  if (e.kind === 'enemy' && !e._partyPlayerShot && e.spawned && !e.harmless && !e.airborne && !(e.stunT > 0) && !(e.knockT > 1e-9) && !(e.frozenT > 0) && e.contactDamage &&
     Math.hypot(e.x - player.x, e.z - player.z) < e.r + player.r) e.touchHero?.();
   if (e.kind === 'projectile' && e.owner !== 'hero' && !e.harmless && !e._partyContact && Math.hypot(e.x - player.x, e.z - player.z) <= e.r + player.r) {
     const result = hero.receiveHit({ damage: e.damage, from: e.tail(), kind: 'projectile', tier: e.tier, source: e });
@@ -453,6 +469,21 @@ partyHooks.target = (e) => {
   heroes.sort((a, b) => Math.hypot(a.x - e.x, a.z - e.z) - Math.hypot(b.x - e.x, b.z - e.z));
   return heroes[0] ?? null;
 };
+partyHooks.leader = () => {
+  if (!enabled()) return null;
+  const leader = [...members].filter(([, member]) => member.info?.hp > 0).sort((a, b) => a[1].rank - b[1].rank || a[0].localeCompare(b[0]))[0];
+  return leader ? { id: leader[0], local: leader[0] === selfId, info: leader[1].info } : null;
+};
+function hasCompanionTechnique(data, peerId) {
+  const caster = members.get(peerId)?.info;
+  if (data.name === 'steamwheel') return state.flags.has('coast:mara-travels') && state.flags.has('era:mira-travels')
+    && state.flags.has('coast:beacon-lit') && state.inventory.owned.includes('fire-wand') && caster?.hp > 0
+    && caster.screen === data.screen && Math.hypot(data.x - caster.x, data.z - caster.z) < 4 && currentScreen()?.key === data.screen;
+  const flag = data.name === 'bell-shelter' ? 'era:tern-travels' : 'era:mira-travels';
+  return state.flags.has(flag) && state.flags.has('era:copper-memory') && caster?.screen === data.screen
+    && Math.hypot(data.x - caster.x, data.z - caster.z) < 4 && currentScreen()?.key === data.screen;
+}
+partyHooks.technique = data => { if (enabled()) send({ kind: 'companion-tech', ...data }); };
 partyHooks.damage = (e, hit) => {
   if (!enabled() || applying || !e || e.removed || e.kind !== 'enemy' || roomOwner(e.homeKey) === selfId) return null;
   request('damage', e, { hit: { amount: hit.amount ?? 1, source: hit.source ?? 'sword', swingId: hit.swingId, knockback: hit.knockback, stun: hit.stun, freeze: hit.freeze, crit: hit.crit, truesight: !!hit.truesight } });
@@ -466,10 +497,11 @@ partyHooks.pickup = (e, by) => {
 partyHooks.chest = (ctx) => enabled() && !applying && !rpcRecipient && roomOwner(ctx.screen.key) !== selfId ? tileRequest('chest', ctx) : null;
 partyHooks.lift = (ctx) => enabled() && !applying && roomOwner(ctx.screen.key) !== selfId ? tileRequest('lift', ctx) : null;
 partyHooks.trigger = ({ screen, tx, tz, hook, extra }) => {
-  if (!enabled() || applying || rpcRecipient || roomOwner(screen.key) === selfId || !['onPush', 'onSword', 'onShot', 'onBomb', 'onFreeze', 'onFire'].includes(hook)) return null;
+  const owner = hook === 'onClaim' ? claimOwner(screen.key) : roomOwner(screen.key);
+  if (!enabled() || applying || rpcRecipient || owner === selfId || !['onPush', 'onSword', 'onShot', 'onBomb', 'onFreeze', 'onFire', 'onClaim'].includes(hook)) return null;
   const point = (value) => value ? Object.fromEntries(['x', 'z', 'radius', 'damage', 'source', 'owner', 'freeze', 'strength'].filter((key) => ['number', 'string'].includes(typeof value[key])).map((key) => [key, value[key]])) : null;
   send({ kind: 'action', action: 'tile-hook', screen: screen.key, tx, tz, hook, from: { x: player.x, z: player.z },
-    extra: { dt: extra.dt, hit: point(extra.hit), projectile: point(extra.projectile), explosion: point(extra.explosion) } }, roomOwner(screen.key));
+    extra: { dt: extra.dt, hit: point(extra.hit), projectile: point(extra.projectile), explosion: point(extra.explosion) } }, owner);
   return true;
 };
 partyHooks.freeze = (e, seconds) => {

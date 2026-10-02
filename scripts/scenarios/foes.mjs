@@ -505,17 +505,17 @@ export default async function foes(t) {
     H.full();
     h.state.gear.shield = 1;
     const out = {};
-    // gazer: lined up and facing: holds the hero 1 s, then fires
+    // Stone Eye: a committed one-second warning leaves the hero free to dodge.
     const gz = H.foe('gazer', 4.5, 6);
     gz.yaw = Math.PI / 2; // facing east
-    gz.cool = 0;
+    gz.ai.eye.cool = 0;
     H.place(10.5, 6, 'west');
-    await H.until(() => gz.gaze, 60);
-    out.held = H.hero.hasStatus('paralyzed');
-    const x0 = H.p.x;
-    h.input.setStick(1, 0);
+    await H.until(() => gz.ai.eye.phase === 'aim', 60);
+    out.warning = gz.sightCue.visible && !H.hero.hasStatus('paralyzed');
+    const z0 = H.p.z;
+    h.input.setStick(0, 1);
     await H.ticks(50);
-    out.stayed = Math.abs(H.p.x - x0) < 0.01; // pushing the stick does nothing while held
+    out.dodged = H.p.z - z0 > 1;
     const shotAt = 50 + (await H.until(() => H.of('gazer-shot').length > 0, 120));
     h.input.setStick(0, 0);
     out.shotAt = shotAt;
@@ -579,7 +579,7 @@ export default async function foes(t) {
     H.full();
     return out;
   });
-  t.expect(r.held && r.stayed && r.shotAt >= 58 && r.shotAt <= 62, `a gazer holds the hero still for 1 s, then fires (${r.shotAt} ticks, ${r.held}, ${r.stayed})`);
+  t.expect(r.warning && r.dodged && r.shotAt >= 58 && r.shotAt <= 62, `a Stone Eye warns for 1 s and leaves movement available before its committed shot (${r.shotAt} ticks, ${r.warning}, ${r.dodged})`);
   const ts = r.turret.shots;
   t.expect(ts.length >= 2 && near(ts[1] - ts[0], 120, 1) && r.turret.glowAt !== null && near(ts[0] - r.turret.glowAt, 18, 2), `a turret glows 0.3 s, then fires every 2.0 s (${JSON.stringify(r.turret)})`);
   t.expect(r.turretImmune === 'immune' && r.clearCount === 0, `traps are immune and never hold a room (${r.turretImmune}, ${r.clearCount} left)`);

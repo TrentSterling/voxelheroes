@@ -33,7 +33,7 @@ import { dropCoins } from '../../game/pickups.js';
 import { grant } from '../../systems/grants.js';
 import { registerBestiary } from '../../game/bestiary.js';
 import { Entity } from '../entity.js';
-import { Enemy, stepSquash } from '../enemy.js';
+import { Enemy, stepSquash, stepHitFlash } from '../enemy.js';
 import { tell, stepTell } from '../ai.js';
 import { spawn, entities } from '../manager.js';
 import { registerEntity, hasEntityType } from '../registry.js';
@@ -93,8 +93,7 @@ class Segment extends Enemy {
     // the head places the segments; only contact, the flash and a hit's
     // squash-and-stretch run here
     if (this.flashT > 0) {
-      this.flashT -= dt;
-      this.mat.emissive.setHex(this.flashT > 0 ? 0xffffff : this.glowing ? this.glowColor() : 0x000000);
+      stepHitFlash(this, dt, this.glowing ? this.glowColor() : 0);
     } else if (this.glowing) {
       const s = S();
       this.pulseT += dt;

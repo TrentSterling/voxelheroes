@@ -8,6 +8,7 @@ import { registerUiPart, requestUi, COLORS } from './canvas/gfx.js';
 import { $ } from './dom.js';
 
 let panel = null; // { title, msg, button, kicker, onAction, secondary, controls }
+let titlePartyY = null;
 const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 
 // onAction runs when the panel's main button is pressed. secondary, when given
@@ -40,6 +41,7 @@ export const overlayView = () => ({
   message: panel?.msg ?? '',
   button: panel?.button ?? '',
   secondary: panel?.secondary?.label ?? null,
+  titlePartyY: state.mode === 'title' ? titlePartyY : null,
 });
 
 // k: 0 (clear) to 1 (black). at: [x, y] in CSS px of the view, an iris closing on that point (the
@@ -83,10 +85,10 @@ function drawTitle(g) {
   const pw = Math.min(g.w - 16 - g.safe.l - g.safe.r, 520);
   const inner = pw - 24;
   const lines = g.wrap(panel.msg, inner);
-  const kickerLines=g.wrap(panel.kicker.toUpperCase(),inner,1,1);
+  const kickerLines=g.h<180?[{text:g.fit(panel.kicker.toUpperCase(),inner,1,1)}]:g.wrap(panel.kicker.toUpperCase(),inner,1,1);
   const main=g.buttonMetrics(panel.button,{primary:true,maxWidth:inner});
   const secondary=panel.secondary?g.buttonMetrics(panel.secondary.label,{pad:8,maxWidth:inner}):null;
-  const stacked=secondary&&main.w+12+secondary.w>inner;
+  const stacked=secondary&&(g.h<180||main.w+12+secondary.w>inner);
   const buttonH=stacked?main.h+6+secondary.h:Math.max(main.h,secondary?.h??0);
   const showControls = panel.controls && !coarse && g.w>=300 && g.h>=180;
   // the controls flow as "Move WASD or arrows" chips, wrapping
@@ -115,6 +117,7 @@ function drawTitle(g) {
     ty += 11;
   }
   ty += 8;
+  titlePartyY = g.h < 180 ? (stacked ? ty + main.h + 6 : ty) : null;
   g.primary('overlay-start',panel.button,x+12,ty,press('main'),{maxWidth:inner});
   if(panel.secondary)g.button('overlay-secondary',panel.secondary.label,stacked?x+12:x+12+main.w+12,stacked?ty+main.h+6:ty,press('secondary'),{pad:8,maxWidth:inner});
   ty += buttonH+6;
@@ -130,29 +133,34 @@ function drawMiddle(g) {
   const pw = Math.min(g.w - 24, 300);
   const inner = pw - 32;
   const lines = g.wrap(panel.msg, inner);
-  const titleLines = g.wrap(panel.title, inner, 2);
   const kickerLines=g.wrap(panel.kicker.toUpperCase(),inner,1,1);
   const main=g.buttonMetrics(panel.button,{primary:true,maxWidth:inner});
   const secondary=panel.secondary?g.buttonMetrics(panel.secondary.label,{pad:8,maxWidth:inner}):null;
   const stacked=secondary&&main.w+12+secondary.w>inner;
   const buttonH=stacked?main.h+6+secondary.h:Math.max(main.h,secondary?.h??0);
-  const h=14+kickerLines.length*12+6+titleLines.length*18+8+lines.length*11+12+buttonH+14;
+  const available=g.h-g.safe.t-g.safe.b-16;
+  const normalTitle=g.wrap(panel.title,inner,2);
+  const normalH=14+kickerLines.length*12+6+normalTitle.length*18+8+lines.length*11+12+buttonH+14;
+  const compact=normalH>available,titleSize=compact?1:2,titleLine=compact?12:18;
+  const titleLines=compact?g.wrap(panel.title,inner,1):normalTitle;
+  const pad=compact?8:14,kickerGap=compact?4:6,messageGap=compact?6:8,actionGap=compact?8:12;
+  const h=pad+kickerLines.length*12+kickerGap+titleLines.length*titleLine+messageGap+lines.length*11+actionGap+buttonH+pad;
   const x = Math.round((g.w - pw) / 2);
-  const y = Math.round((g.h - h) / 2);
+  const y = g.safe.t+8+Math.round((available-h)/2);
   g.panel(x, y, pw, h, { accent: true });
-  let ty = y + 14;
+  let ty = y + pad;
   for(const line of kickerLines){g.text(line.text,g.w/2,ty,{align:'center',color:COLORS.gold,tracking:1});ty+=12;}
-  ty+=6;
+  ty+=kickerGap;
   for (const line of titleLines) {
-    g.text(line.text, g.w / 2, ty, { size: 2, align: 'center', color: COLORS.ink, shadow: COLORS.shade });
-    ty += 18;
+    g.text(line.text, g.w / 2, ty, { size: titleSize, align: 'center', color: COLORS.ink, shadow: COLORS.shade });
+    ty += titleLine;
   }
-  ty += 8;
+  ty += messageGap;
   for (const line of lines) {
     g.text(line.text, g.w / 2, ty, { align: 'center', color: COLORS.muted });
     ty += 11;
   }
-  ty += 12;
+  ty += actionGap;
   const total=stacked?Math.max(main.w,secondary.w):main.w+(secondary?secondary.w+12:0);
   const bx=Math.round((g.w-total)/2);
   g.primary('overlay-start',panel.button,stacked?Math.round((g.w-main.w)/2):bx,ty,press('main'),{maxWidth:inner});

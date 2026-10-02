@@ -242,7 +242,7 @@
         }
         const p = g.player;
         const foes = g.entities.filter((e) => e.kind === 'enemy');
-        if (!foes.length || kills >= maxKills) return result(true);
+        if ((!foes.length && !g.game.combat.roomClearBlocked()) || kills >= maxKills) return result(true);
         const ready = foes.filter((e) => e.spawned !== false);
         let e = null;
         let best = Infinity;

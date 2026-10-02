@@ -1,0 +1,65 @@
+export const description='Hourgate choices, real-time garden combat, guarded repair, changed future crossing, one-time heart reward, homecoming, save/load and phone journal. Starting sword and positioning are disclosed fixtures.';
+export default async function(t){
+ const flag=id=>t.eval(id=>window.__voxelHeroes.state.flags.has(id),id);
+ const place=async(x,z,facing='north')=>{await t.eval(({x,z,facing})=>{const h=window.__voxelHeroes;h.game.hero.hero.place(x,z);h.game.hero.hero.setFacing(facing);h.player.invT=0;},{x,z,facing});await t.step(.02);};
+ const dismiss=()=>t.eval(async()=>{const h=window.__voxelHeroes;for(let i=0;i<900&&h.state.mode==='dialog';i++){if(i%15===0)h.input.tap('confirm');await h.tick();}});
+ const talk=async name=>{await t.eval(name=>{const h=window.__voxelHeroes;h.entities.find(e=>e.name===name).onInteract(h.player);},name);await dismiss();};
+ const gate=async(choice)=>{
+   const town=(await t.state()).key==='v1:1,1';
+   await place(town?9.5:6.5,town?14.5:12.5,town?'east':'west');await t.tap('sword');
+   t.expect((await t.state()).mode==='dialog','real sword/interact input opens the hourgate');
+   await t.eval(async()=>{const h=window.__voxelHeroes;for(let i=0;i<600&&!h.game.dialog.dialogView()?.choices;i++)await h.tick();});
+   for(let i=0;i<choice;i++)await t.press('ArrowDown');
+   await t.tap('confirm');await t.step(2.2);
+ };
+ await t.press('Enter');await t.step(1.1);
+ await t.eval(()=>{const h=window.__voxelHeroes;h.give('blade-start');h.game.swords.equipSword('blade-start');});
+ await talk('Mira');t.expect(await flag('era:bell'),'Mira starts the story');
+ await t.eval(()=>{const h=window.__voxelHeroes;h.game.journal.openJournal('era-bell');h.render();h.game.ui.pressUi('journal-track');h.game.journal.closeJournal();});
+ t.expect(await t.eval(()=>window.__voxelHeroes.game.objective.trackedQuestId()==='era-bell'),'the actual Mira adventure can be tracked from the journal');
+ await place(7.5,12.5,'south');await t.shot('01-mossbrook-hourgate');
+ await gate(2);t.expect((await t.state()).key==='mossbrook-future:0,0','hourgate reaches the Silent Year');
+ t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return h.world.tile(s.x0+7,s.z0+7)==='~';}),'future garden is initially cut off by water');
+ await place(7.5,4.5);await t.hold('ArrowUp',.45);
+ t.expect(!(await flag('era:dawn-seed')),'even a late-game shortcut across the water cannot open the dry seed vault');
+ await place(7.5,12.5);
+ await talk('Tern');await t.shot('02-silent-year-before');
+ await gate(1);t.expect((await t.state()).key==='mossbrook-past:0,0','hourgate reaches the First Bloom');
+ await place(7.5,5.5,'north');await t.tap('sword');
+ t.expect(!(await flag('era:water-restored')),'engine cannot be repaired with scavengers alive');
+ await t.shot('03-first-bloom-encounter');
+ const fight=await t.fight();t.expect(fight.kills===3,'real-time sword combat clears all three engine scavengers');await t.step(.8);
+ await place(7.5,5.5,'north');await t.tap('sword');await dismiss();
+ t.expect(await flag('era:water-restored'),'real interaction restarts the engine after combat');
+ t.expect(await t.eval(()=>/Silent Year/.test(window.__voxelHeroes.game.objective.objectiveText())),'real engine repair advances the chosen adventure to the changed future');
+ await place(7.5,7.5,'south');await t.shot('04-water-restored');
+ await gate(2);t.expect((await t.state()).key==='mossbrook-future:0,0','return to the future');
+ t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return [6,7,8].every(z=>[7,8].every(x=>h.world.tile(s.x0+x,s.z0+z)==='='));}),'repair in the past builds the full future crossing');
+ await t.shot('05-future-crossing');
+ const hp=await t.eval(()=>window.__voxelHeroes.state.maxHp);
+ await t.walkTo(7.5,4.5);await t.hold('ArrowUp',.45);
+ t.expect(await flag('era:dawn-seed'),'walking the new crossing and opening the actual chest earns the Dawn Seed');
+ t.expect(await t.eval(()=>/Mossbrook \/ today/.test(window.__voxelHeroes.game.objective.objectiveText())),'the actual garden reward advances tracking to Mira homecoming');
+ t.expect(await t.eval(()=>window.__voxelHeroes.state.maxHp)===hp+2,'Dawn Seed grants exactly one full heart');
+ await t.shot('06-dawn-seed');
+ await gate(0);await talk('Mira');
+ t.expect(await flag('era:homecoming'),'Mira acknowledges the changed future');
+ t.expect(await t.eval(()=>window.__voxelHeroes.game.objective.trackedQuestId()===null),'Mira actual homecoming releases the completed quest pin');
+ await t.eval(()=>{const h=window.__voxelHeroes;window.__eraSave=h.save();});
+ await t.eval(()=>{const h=window.__voxelHeroes;h.load(window.__eraSave);});
+ await t.step(.3);
+ t.expect(await flag('era:homecoming')&&await flag('era:water-restored'),'story and causality survive save/load');
+ await t.teleport('mossbrook-future:0,0',7.5,4.5);await t.hold('ArrowUp',.5);
+ t.expect(await t.eval(()=>window.__voxelHeroes.state.maxHp)===hp+2,'returning to the chest after save/load cannot duplicate the reward');
+ await t.teleport('v1:1,1',7.5,12.5);await t.step(.2);
+ await t.page.setViewportSize({width:390,height:844});
+ await t.page.waitForFunction(()=>Math.abs(window.__voxelHeroes.gfx.camera.aspect-innerWidth/innerHeight)<1e-9);await t.step(.02);
+ await t.press('KeyL');
+ for(let i=0;i<7;i++){
+   const selected=await t.eval(()=>{const j=window.__voxelHeroes.game.journal.journalView();return j.entries[j.selected]?.giver;});
+   if(selected==='Mira')break;
+   await t.press('ArrowDown');
+ }
+ await t.shot('07-phone-journal');
+ t.expect((await t.state()).mode==='journal','phone journal opens with the new story');
+}

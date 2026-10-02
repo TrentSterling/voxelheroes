@@ -26,7 +26,7 @@ import { crossEdge, edgeCrossed } from '../systems/transitions.js';
 import { burst, smoke, sparks } from '../systems/particles.js';
 import { toast } from '../ui/toast.js';
 import { useSelectedItem, cycleItem } from '../items/inventory.js';
-import { makeGuardShield } from '../models/hero/shield.js';
+import { makeGuardShield, poseShield } from '../models/hero/shield.js';
 import { Entity } from './entity.js';
 
 // M1 name; the walking speed is TUNING.hero.walk.
@@ -91,9 +91,9 @@ export class Player extends Entity {
     this.tileX = null; // tile under the hero, for onEnter/onLeave
     this.tileZ = null;
     this.swampT = 0;
-    this.hero = makeHero();
+    this.hero = makeHero(undefined, { shield: null });
     this.object = this.hero.root;
-    this.guardShield = makeGuardShield(); // in the rig only while the guard is up
+    this.guardShield = makeGuardShield(); // the sole carried/raised shield
     // game/hero.js is the one pose authority (CONTRACTS.md 8.1): item gets and
     // other moments reach the model through its 'hero-pose' event.
     on('hero-pose', (e) => {
@@ -492,10 +492,7 @@ export class Player extends Entity {
     else if (set === 'stand') pose = 'stand';
     hero.setPose(pose);
     const guardUp = pose === 'stand' && (set === 'guard' || this.guarding);
-    if (guardUp !== !!this.guardShield.parent) {
-      if (guardUp) hero.body.add(this.guardShield);
-      else hero.body.remove(this.guardShield);
-    }
+    poseShield(this.guardShield, hero.body, state.gear?.shield ?? 0, { guarding: guardUp, hidden: pose === 'cheer' || state.mode === 'dead' });
     const walking = pose === step;
     const sway = (TUNING.hero.sway * Math.PI) / 180;
     const swayOn = state.settings?.sway !== false;

@@ -109,6 +109,10 @@ export const hudView = () => ({
   widgets: placed.map((p) => ({ id: p.w.id, region: p.w.region, x: p.x, y: p.y, w: p.sw, h: p.sh })),
 });
 
+// Current layout without drawing, including newly equipped items and vitals.
+export const hudBounds = (g) => layout(g, state).map(p => ({ id: p.w.id, region: p.w.region,
+  x: p.x, y: p.y, w: p.sw, h: p.sh }));
+
 // ---------------------------------------------------------------- layout
 const rowOf = (items) => ({
   w: items.reduce((a, it, i) => a + it.sw + (i ? GAP : 0), 0),
@@ -159,7 +163,22 @@ function layout(g, s) {
   }
   for (const w of list) {
     if (REGIONS[w.region].side !== 'center') continue;
-    const it = sized(w, maxW);
+    let it = sized(w, maxW);
+    if (!it) continue;
+    // Lower rows can be wider than Settings and life. The clock, equipped
+    // item and counters must also leave room for the centre row at its y.
+    let available = maxW;
+    for (const side of out.filter(p => REGIONS[p.w.region].side !== 'center')) {
+      if (side.y >= cy + it.sh || side.y + side.sh <= cy) continue;
+      available = Math.min(available, REGIONS[side.w.region].side === 'left'
+        ? g.w - 2 * (side.x + side.sw + GAP)
+        : 2 * (side.x - GAP) - g.w);
+    }
+    if (available < 44) {
+      cy = Math.max(cy, colH.left, colH.right, top + 64) + ROW_GAP + 2;
+      available = g.w - 2 * M - leftEdge - rightEdge;
+    }
+    it = sized(w, available);
     if (!it) continue;
     out.push({ ...it, x: Math.round((g.w - it.sw) / 2), y: cy });
     cy += it.sh + ROW_GAP;

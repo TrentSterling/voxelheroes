@@ -138,7 +138,7 @@ registerFallback('smith', async ({ speaker = null, sword = equippedId() } = {}) 
     const pick = await ask(greeting, choices, { speaker });
     if (pick === undefined || pick === sold.length + 1) return undefined;
     if (pick === sold.length) {
-      const sure = await ask(`Back to how it was made? The ${spentOn(sword)} coins you spent on it are gone for good.`, ['Reset', 'Keep it'], { speaker });
+      const sure = await ask(`Back to how it was made? The ${spentOn(sword)} coins you spent on it are gone for good.`, ['Reset', 'Keep it'], { speaker, voiceText: 'Back to how it was made? The coins you spent on it are gone for good.' });
       if (sure === 0) resetSword(sword);
       greeting = `The ${name}. What shall I work on?`;
       continue;

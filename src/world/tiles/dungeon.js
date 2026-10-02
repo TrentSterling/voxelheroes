@@ -30,6 +30,7 @@ import { hash3, shadeHex } from '../../core/vox.js';
 import { makeGlowMaterial } from '../../core/materials.js';
 import { on } from '../../core/events.js';
 import { enterWarp } from '../../systems/transitions.js';
+import { interactChest } from '../../systems/tile-actions.js';
 import { defineTileset, registerTile, getTile } from '../tiles.js';
 import { GOLD } from '../palette.js';
 import { BPT, FPT, registerRing, registerLayer, screenBox } from '../terrain.js';
@@ -353,6 +354,8 @@ registerTile('dungeon', 'C', {
   grapple: true,
   build: (ctx) => fineFloor(ctx),
   prop: chestProp,
+  prompt: 'Open chest',
+  onInteract: interactChest,
   onPush: openChest,
 });
 

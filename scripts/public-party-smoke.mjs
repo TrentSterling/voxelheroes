@@ -12,7 +12,7 @@ mkdirSync(path, { recursive: true });
 let result;
 try {
   for (const [name, engine] of Object.entries({ chromium, firefox })) {
-    const browser = await engine.launch({ headless: true, ...(name === 'chromium' ? { args: CHROMIUM_ARGS } : {}) });
+    const browser = await engine.launch({ headless: true, ...(name === 'chromium' ? { args: CHROMIUM_ARGS } : { firefoxUserPrefs: { 'media.volume_scale': '0.0' } }) });
     browsers.push(browser);
     const page = await browser.newPage();
     page.on('pageerror', e => errors.push(`${name}: ${e.message}`));

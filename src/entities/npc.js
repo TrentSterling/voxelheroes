@@ -39,6 +39,7 @@ import { Bubble } from './npc-fx.js';
 import { toast } from '../ui/toast.js';
 import { Entity } from './entity.js';
 import { player } from './player.js';
+import { speakNpcBark } from '../game/npc-voices.js';
 
 const NOTICE = 3.2; // tiles: he stops and watches the hero
 const GREET = 2.4; // tiles: a greeting (once per approach)
@@ -92,6 +93,28 @@ export class Npc extends Entity {
   onRemove() {
     live.delete(this);
     this.bubble.dispose();
+  }
+
+  onAdd() {
+    this.clearPlacement(true);
+  }
+
+  // Authored positions, changed scenery and morning schedules all use the
+  // same floor check. Keep a corrected home so the next morning stays safe.
+  clearPlacement(correctHome = false) {
+    if (!world.blocked(this.x, this.z, this.r, this)) return;
+    const s = world.screenAt(this.x, this.z);
+    if (!s) return;
+    const spot = world.freeSpot(s, this.x - s.x0, this.z - s.z0, this.r, {
+      body: this,
+      occupied: (x, z) => this.crowded(x, z) || Math.hypot(player.x - x, player.z - z) < this.r + player.r,
+    });
+    if (!spot) return;
+    this.x = s.x0 + spot.x;
+    this.z = s.z0 + spot.z;
+    if (correctHome) this.home = { x: this.x, z: this.z, yaw: this.home.yaw };
+    this.mind.mode = 'idle';
+    this.holder.position.set(this.x, GROUND_Y, this.z);
   }
 
   update(dt) {
@@ -259,6 +282,7 @@ export class Npc extends Entity {
       this.z = A.z;
     }
     if (this.mind.mode === 'in') this.mind.mode = 'idle';
+    this.clearPlacement();
     this.holder.position.set(this.x, GROUND_Y, this.z);
   }
 
@@ -278,6 +302,7 @@ export class Npc extends Entity {
     this.eve = null;
     this.mind.mode = 'idle';
     this.mind.t = 0.5 + this.next();
+    this.clearPlacement(true);
     this.bubble.emote(this.next() < 0.5 ? '♪' : '…', 1.2);
   }
 
@@ -353,8 +378,11 @@ export class Npc extends Entity {
 
   say(kind) {
     if (this.bubble.busy) return;
-    const line = bark(this, kind);
-    if (line) this.bubble.say(line);
+    const line = bark(this, kind, true);
+    if (line) {
+      this.bubble.say(line.replaceAll('{hero}', state.profile?.name || 'Hero'));
+      if (this.out && Math.hypot(player.x - this.x, player.z - this.z) <= 2.8) speakNpcBark(line, this.name);
+    }
   }
 
   // Turn towards (x, z) at once: the game stops while a dialog box is open.
@@ -390,7 +418,7 @@ export class Npc extends Entity {
     // a heart event: a scene and a present, once at 2 and at 4 hearts
     const ev = !first && pendingHeartEvent(this);
     if (ev) {
-      await showDialog(heartEventLines(this, ev), opts());
+      await showDialog(heartEventLines(this, ev, true), opts());
       if (ev === 2) {
         addCoins(20, 'friend');
         toast(`${this.name} gave you 20 coins`, 2.2);
@@ -401,7 +429,7 @@ export class Npc extends Entity {
       this.bubble.emote('♥', 2);
       return;
     }
-    const pages = first && this.lines ? this.lines : [chatLine(this)];
+    const pages = first && this.lines ? this.lines : [chatLine(this, true)];
     const canGift = !first && giftableNow(this);
     const said = showDialog(canGift ? [...pages, 'Anything else?'] : pages, canGift ? { ...opts(), choices: ['Give a gift', 'Goodbye'] } : opts());
     const f = befriend(this.name);
@@ -414,7 +442,7 @@ export class Npc extends Entity {
       const r = giveGift(this, list[pickI][0]);
       if (!r) return;
       this.bubble.emote(r.taste === 'love' ? '♥' : r.taste === 'dislike' ? '…' : '♪', 1.8);
-      await showDialog(r.line, opts());
+      await showDialog(r.template, opts());
       if (r.up) this.heartUp();
     }
   }

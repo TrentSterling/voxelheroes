@@ -31,6 +31,7 @@ import { burst } from './particles.js';
 import { keyCount, useKey } from './keys.js';
 import { grant } from './grants.js';
 import { showBanner } from '../ui/banner.js';
+import { toast } from '../ui/toast.js';
 
 export const chestFlag = (tx, tz) => `chest:${tx},${tz}`;
 
@@ -38,6 +39,26 @@ export const chestFlag = (tx, tz) => `chest:${tx},${tz}`;
 export const chestContents = (ctx) => ctx.screen?.def?.chests?.[`${ctx.x},${ctx.z}`] ?? ctx.screen?.def?.chest ?? null;
 
 export const isChestOpen = (ctx, flag = chestFlag(ctx.tx, ctx.tz)) => hasFlag(flag);
+
+// Use the current tile's push hook: derived vaults keep their story locks,
+// and a guest's request follows the existing authoritative tile-hook route.
+export function interactChest(ctx) {
+  if (isChestOpen(ctx)) toast('Already opened');
+  else {
+    const message = ctx.def.chestLock?.(ctx);
+    if (message) toast(message, 3);
+    else ctx.world.trigger(ctx.tx, ctx.tz, 'onPush', { player: ctx.player });
+  }
+  return true;
+}
+
+// Guests explain a lock locally; the room owner checks it again before any
+// reward is granted. Both paths use the same tile-specific condition.
+export function openGuardedChest(ctx, open) {
+  const message = ctx.def.chestLock?.(ctx);
+  if (message) { toast(message, 3); return false; }
+  return open(ctx);
+}
 
 export function openChest(ctx, { source = 'chest', contents = chestContents(ctx), flag = chestFlag(ctx.tx, ctx.tz) } = {}) {
   const { world, tx, tz } = ctx;

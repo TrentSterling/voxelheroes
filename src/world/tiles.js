@@ -33,6 +33,7 @@
 //                space (ctx.cx, ctx.cz = tile centre). Removed automatically
 //                when the tile changes. obj.userData.tick(t, dt) animates it.
 //   regrow       true: restored every time its screen is entered (bushes).
+//   pushableFloor true: decorative floor that can receive a pushed block.
 //   becomes      char this tile turns into when destroyed or opened.
 //   Hooks, each called with ctx = { world, screen, area, tx, tz, x, z, ch, def, ...extra }:
 //   onEnter / onLeave   the hero's centre moves onto / off the tile
@@ -44,6 +45,8 @@
 //                arrows, thrown blades and enemy rocks all call it
 //   onInteract   A pressed while facing the tile (extra: player); return true
 //                to use up the press so the sword does not swing
+//   onClaim      an explicit story choice claims a shared tile reward once;
+//                routed to stable living-party authority across dialog modes
 
 const tilesets = new Map();
 

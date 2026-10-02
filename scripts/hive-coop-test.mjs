@@ -1,0 +1,84 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { firefox } from 'playwright';
+import { launch, startServer } from './playtest.mjs';
+import { startRelay } from './lib/nostr-relay.mjs';
+const out=process.argv.find(a=>a.startsWith('--out='))?.slice(6)??'playtest-out/hive-coop';
+const url=process.argv.find(a=>a.startsWith('--url='))?.slice(6);
+const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(d,e.name)):[join(d,e.name)]);
+const fp=createHash('sha256');for(const f of [...walk('src'),...walk('public/voices'),'index.html','package.json','package-lock.json'].sort()){fp.update(f.replaceAll('\\','/')+'\0');fp.update(readFileSync(f));}
+mkdirSync(out,{recursive:true});
+const result={startedUtc:new Date().toISOString(),sourceSha256:fp.digest('hex'),checks:[],fixtures:'Muted Chromium/Firefox, real local Trystero RTC, local relay and empty ICE servers. Story and hero positions arranged; guards killed through the damage API. Pressure clocks, personal hazard contact, guest bomb input/fuses, key pickup, independent exploration and room ownership are actual gameplay. No voice playback.'};
+let server,relay,fox;const pages=[];
+try {
+  server=url?{url,close:async()=>{}}:await startServer();relay=await startRelay();
+  fox=await firefox.launch({headless:true,firefoxUserPrefs:{'media.volume_scale':'0.0'}});
+  for(const [name,browser]of[['host',null],['guest',fox]]){
+    const t=await launch({url:server.url,browser,out:`${out}/${name}`});pages.push(t);
+    await t.page.route('**/*',r=>['127.0.0.1','localhost'].includes(new URL(r.request().url()).hostname)?r.continue():r.abort());
+    await t.eval(()=>{const h=window.__voxelHeroes;h.game.progress.startNewGame({prologue:false});h.game.audio.setMuted(true);h.game.audio.setVolumes({master:0});h.game.settings.setSetting('npcVoices',false);h.state.flags.add('overworld:talked:king');h.state.flags.add('dungeon:d1:entered');h.game.dungeons.giveBossKey('d1');h.game.dungeons.defeatBoss('d1');h.game.dungeons.completeDungeon('d1');h.player.invT=999;});await t.give('bombs');
+  }
+  const [host,guest]=pages,config={relayUrls:[relay.url],rtcConfig:{iceServers:[]}};
+  await host.eval(c=>window.__voxelHeroes.game.party.createParty('HIVECOOP',c),config);await guest.eval(c=>window.__voxelHeroes.game.party.joinParty('HIVECOOP',c),config);
+  for(const t of pages)await t.page.waitForFunction(()=>window.__voxelHeroes.game.party.partyView().count===2&&window.__voxelHeroes.game.party.partyConnections().some(c=>c.state==='connected'),null,{timeout:45000});
+  const pump=async(n=20)=>{for(let i=0;i<n;i++){await Promise.all(pages.map(t=>t.step(.04)));await new Promise(r=>setTimeout(r,30));}};
+  const view=t=>t.eval(()=>{const h=window.__voxelHeroes,s=h.screen(),ms=h.entities.filter(e=>e.type==='hive-pressure'&&!e.removed),m=ms[0];return {screen:s.key,self:h.game.party.partyView().selfId,owner:h.game.party.roomOwner(s.key),machines:ms.length,machine:m?{id:m.netId,...m.ai,visible:m.lanes.map(e=>e.visible)}:null,guards:h.entities.filter(e=>!e.removed&&e.kind==='enemy').length,blocked:h.game.combat.roomClearBlocked(),hp:h.state.hp,ammo:h.game.inventory.ammo('bombs'),valves:[0,1,2].map(i=>h.state.flags.has(`dungeon:d2:nursery-valve:${i}`)),vented:h.state.flags.has('dungeon:d2:nursery-vented'),key:h.state.flags.has('dungeon:d2:key:B-4'),taken:h.state.flags.has('dungeon:d2:keytaken:B-4'),keys:h.game.keys.keyCount('d2'),pickups:h.entities.filter(e=>e.type==='key'&&!e.removed).length,error:h.game.party.partyView().error};});
+  const check=(pass,label)=>{assert.ok(pass,label);result.checks.push(label);console.log('PASS '+label);};
+  const wait=async(pred,label,max=280)=>{for(let i=0;i<max;i++){const v=await Promise.all(pages.map(view));if(pred(v))return v;await pump(1);}throw Error(label+': '+JSON.stringify(await Promise.all(pages.map(view))));};
+  const place=(t,x,z)=>t.eval(([x,z])=>window.__voxelHeroes.game.hero.hero.place(x,z),[x,z]);
+  const shot=async(t,name)=>{await t.eval(()=>{window.__voxelHeroes.player.hero.root.visible=true;});await t.shot(name);};
+  const safe=()=>Promise.all(pages.map(t=>t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;h.setHp(h.state.maxHp);})));
+  const bomb=async(t,x,z,index)=>{
+    await place(t,x,z);await t.eval(()=>{const h=window.__voxelHeroes;h.game.hero.hero.setFacing('north');h.game.inventory.selectItem('bombs');});await pump(6);
+    const ammo=(await view(t)).ammo;await t.tap('item');await t.step(.3);
+    check((await view(t)).ammo===ammo-1,'Actual '+(t===guest?'guest':'host')+' input spends one bomb for seal '+(index+1));
+    await place(t,2.5,6);await pump(65);
+    await wait(v=>v.every(r=>r.valves[index]),'shared seal '+(index+1),100);
+    check((await Promise.all(pages.map(view))).every(v=>v.valves[index]),'The owner shares seal '+(index+1)+' after the real fuse and blast');
+  };
+  check(true,'Muted Chromium and Firefox connect over local RTC');
+  await host.teleport('d2:3,1',2.5,6);await guest.teleport('d2:3,1',5.5,4.65);await pump(40);
+  let views=await Promise.all(pages.map(view));
+  check(views.every(v=>v.machines===1&&v.guards===3&&v.blocked&&!v.key),'Both friends see one pressure machine, three guards and a held key');
+  check(views[0].machine.id===views[1].machine.id&&views[0].owner===views[0].self&&views[1].owner===views[0].self,'The two browsers share one machine under the host room owner');
+  await host.eval(()=>{const h=window.__voxelHeroes;for(const e of h.entities.filter(e=>e.kind==='enemy'))h.game.damage.dealDamage(e,{amount:999,source:'bomb',from:{x:e.x,z:e.z-2}});});await pump(10);
+  check((await Promise.all(pages.map(view))).every(v=>v.guards===0&&v.blocked&&!v.key),'Remote guard deaths cannot bypass the shared pressure lock');
+  await wait(v=>v.every(r=>r.machine?.phase==='warning'&&r.machine.lane===0),'replicated first warning');
+  await shot(guest,'01-guest-pressure-warning');
+  const hp=await Promise.all(pages.map(t=>t.eval(()=>window.__voxelHeroes.state.hp)));
+  for(const t of pages)await t.eval(()=>window.__voxelHeroes.player.invT=0);
+  await wait(v=>v[1].hp<hp[1],'guest hazard contact');views=await Promise.all(pages.map(view));
+  check(views[1].hp===hp[1]-1&&views[0].hp===hp[0],'The replicated burst hurts only the guest standing in its lane');
+  await shot(guest,'02-guest-pressure-hit');
+  await place(host,5.5,7.2);await place(guest,10.5,7.2);await wait(v=>v.every(r=>r.machine?.phase==='warning'&&r.machine.lane===1),'second warning');
+  const bothHp=await Promise.all(pages.map(t=>t.eval(()=>window.__voxelHeroes.state.hp)));for(const t of pages)await t.eval(()=>window.__voxelHeroes.player.invT=0);
+  await wait(v=>v.every((r,i)=>r.hp<bothHp[i]),'contact on both peers');views=await Promise.all(pages.map(view));
+  check(views.every((r,i)=>r.hp===bothHp[i]-1),'The same active lane applies personal hazard damage on the owner and replica');await safe();
+  await bomb(guest,4.5,4.5,0);await shot(guest,'03-guest-breaks-first-seal');
+  await guest.teleport('mossbrook-future:0,0',6,13);await host.eval(()=>window.__voxelHeroes.game.state.setFlag('era:water-restored'));await pump(30);
+  check((await view(host)).machines===1&&(await view(guest)).screen==='mossbrook-future:0,0','One friend explores the future while the other stays in the nursery');
+  await bomb(host,11.5,9.5,1);
+  await wait(v=>v[0].machine?.phase==='warning'&&v[0].machine.lane===2,'last lane before transfer');
+  await guest.teleport('d2:3,1',2.5,6);await pump(5);await host.teleport('Rootglass Mouth',8,7);await pump(12);
+  views=await Promise.all(pages.map(view));
+  check(views[1].owner===views[1].self&&views[1].machines===1&&views[1].valves.join(',')==='true,true,false','The guest takes ownership during the remaining lane cycle without duplicate machinery or lost seals');
+  await shot(guest,'04-guest-owns-nursery');
+  await host.teleport('mossbrook-future:0,0',6,13);await pump(12);
+  const patch=()=>host.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return [2,3].flatMap(x=>[10,11].map(z=>h.world.tile(s.x0+x,s.z0+z)));});
+  check((await patch()).every(ch=>ch==='.'),'A remote future garden stays dormant until the final seal is vented');
+  await bomb(guest,11.5,4.5,2);views=await Promise.all(pages.map(view));
+  check(views.every(v=>v.vented&&v.key)&&views[1].pickups===1&&!views[1].blocked,'The new owner completes the nursery and leaves exactly one shared key');
+  await wait(asyncViews=>asyncViews.every(v=>v.vented),'vent flag');await pump(8);
+  check((await patch()).every(ch=>ch==='b'),'The friend already in the future sees nursery growth from the remote vent');await shot(host,'05-future-garden-changed-by-friend');
+  await place(guest,8,6);await pump(20);views=await Promise.all(pages.map(view));
+  check(views.every(v=>v.taken&&v.keys===1)&&views[1].pickups===0,'A physical guest key pickup shares one key with the friend in another era');await shot(guest,'06-quiet-shared-nursery');
+  await host.teleport('d2:3,1',8,7);await pump(30);views=await Promise.all(pages.map(view));
+  check(views.every(v=>v.machines===1&&v.machine.phase==='vented'&&v.guards===0&&v.pickups===0&&v.keys===1),'Reuniting restores the quiet encounter without extra guards or rewards');
+  check(views.every(v=>!v.error)&&pages.every(t=>t.errors.length===0),'Neither browser reports a game or party error');
+  const saved=await guest.save();await guest.load(saved);await guest.step(.3);const loaded=await view(guest);
+  check(loaded.vented&&loaded.guards===0&&loaded.keys===1&&loaded.pickups===0,'The guest saves its completed shared adventure and reloads it alone');
+  result.ok=true;
+}catch(error){result.ok=false;result.error={message:error.message,stack:error.stack};result.snapshots=await Promise.all(pages.map(t=>t.state().catch(()=>null)));process.exitCode=1;console.error(error.stack);}
+finally{result.completedUtc=new Date().toISOString();result.passed=result.checks.length;writeFileSync(`${out}/result.json`,JSON.stringify(result,null,2));for(const t of pages)await t.close();await fox?.close();await relay?.close();await server?.close();}

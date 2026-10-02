@@ -44,7 +44,7 @@ import { on, emit } from '../../core/events.js';
 import { sfx } from '../../core/audio.js';
 import { TUNING } from '../../core/tuning.js';
 import { grant } from '../../systems/grants.js';
-import { registerTile } from '../tiles.js';
+import { registerTile, getTile } from '../tiles.js';
 import { fineFloor, buildWall } from './dungeon.js';
 import { BPT } from '../terrain.js';
 import { wallFace, chestProp, doorProp, revealBurst, revealGlint } from '../tilekit.js';
@@ -52,9 +52,9 @@ import { modelMesh } from '../../models/kit.js';
 import { pushBlockModel } from '../../models/props.js';
 import { barsModel, bossDoorModel, colorDoorModel, switchModel, tabletModel, portalModel } from '../../models/d1/props.js';
 import { enterWarp } from '../../systems/transitions.js';
-import { openChest, openKeyDoor } from '../../systems/tile-actions.js';
+import { openChest, openKeyDoor, interactChest } from '../../systems/tile-actions.js';
 import { registerPlayHook } from '../../systems/flow.js';
-import { enemiesLeft } from '../../systems/combat.js';
+import { enemiesLeft, roomClearBlocked } from '../../systems/combat.js';
 import { burst } from '../../systems/particles.js';
 import { spawn } from '../../entities/manager.js';
 import { world, currentScreen } from '../world.js';
@@ -329,7 +329,7 @@ registerTile('dungeon', 'Q', {
     const nz = ctx.z + sz;
     if (nx < 1 || nz < 1 || nx > s.w - 2 || nz > s.h - 2) return false;
     const to = s.tiles[nz][nx];
-    if (to !== '.' && to !== '_') return false;
+    if (to !== '.' && to !== '_' && !getTile(s.tileset, to)?.pushableFloor) return false;
     const ttx = ctx.tx + sx;
     const ttz = ctx.tz + sz;
     const under = s.base[ctx.z][ctx.x] === 'Q' ? '.' : s.base[ctx.z][ctx.x];
@@ -438,6 +438,8 @@ registerTile('dungeon', 'c', {
   grapple: true,
   build: (ctx) => fineFloor(ctx),
   prop: chestProp,
+  prompt: 'Open chest',
+  onInteract: interactChest,
   onPush: (ctx) => openChest(ctx),
 });
 registerTile('dungeon', 'h', { name: 'chest-spot', driven: 'room', build: (ctx) => fineFloor(ctx) }); // floor where the room's chest appears
@@ -523,7 +525,7 @@ on('room-enter', ({ screen } = {}) => {
   lockIn.shut = false;
   lockIn.t = -1;
   if (!s?.def || !s.area?.rooms) return;
-  if (tilesOf(s, 'H').length && enemiesLeft() > 0) lockIn.t = TUNING.dungeon.shutterDelay;
+  if (tilesOf(s, 'H').length && (enemiesLeft() > 0 || roomClearBlocked())) lockIn.t = TUNING.dungeon.shutterDelay;
   if (s.def.encounterHint && enemiesLeft() > 0) toast(s.def.encounterHint, 4);
   // a room whose chest showed stays that way
   if (s.def.clear === 'chest' && hasFlag(roomFlag(s, 'cleared'))) showChests(s);
@@ -542,7 +544,7 @@ registerPlayHook({
     if (lockIn.t >= 0) {
       lockIn.t -= dt;
       if (lockIn.t < 0) {
-        if (enemiesLeft() > 0) {
+        if (enemiesLeft() > 0 || roomClearBlocked()) {
           lockIn.shut = true;
           sfx.door();
           emit('shutters-closed', { screen: lockIn.screen });

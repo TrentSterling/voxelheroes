@@ -2,7 +2,7 @@
 import { chromium } from 'playwright';
 const url = process.argv[2] ?? 'http://localhost:4201/';
 const area = process.argv[3] ?? 'ow-3-2';
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto(url + '?seed=1&manual=1');
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { timeout: 30000 });

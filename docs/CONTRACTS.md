@@ -459,6 +459,8 @@ its own use (`'items:bomb-lit'`).
 | `enemy-hit` | `{ entity, hit, result, damage }` (`result` also `'frozen'`; `hit.crit` for the red word) | `damage.dealDamage`, `damage.freezeAt` |
 | `enemy-killed` | `{ entity, hit }` | foes: `Enemy.die` |
 | `room-cleared` | `{ screen }` | `combat.checkRoomCleared` (`clears.js` listens) |
+| `hive-valve-released` | `{ screen, valve, remaining }` | nursery pressure seal after a bomb |
+| `hive-pressure-burst` | `{ screen, lane }` | nursery machine after its warning |
 | `boss-intro` | `{ id, name, title, dungeon, hint }` | foes-dungeon, as its `boss-intro` mode starts |
 | `boss-phase` | `{ id, phase }` | foes-dungeon |
 | `boss-defeated` | `{ id, dungeon, refight }` | `dungeons.defeatBoss` |

@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { chromium, firefox } from 'playwright';
 import { startRelay } from './lib/nostr-relay.mjs';
+const out=process.argv.find(a=>a.startsWith('--out='))?.slice(6)??'playtest-out/browser-smoke';
 
 const url = process.argv.find((arg) => arg.startsWith('--url='))?.slice(6) ?? 'http://127.0.0.1:5173/';
 const reproduce = process.argv.includes('--expect-blocked');
-mkdirSync('playtest-out/browser-smoke', { recursive: true });
+mkdirSync(out, { recursive: true });
 const localRelay=process.argv.includes('--local-signaling')?await startRelay():null;
 try {
 for (const [name, engine] of Object.entries({ firefox, chromium })) {
-  const browser = await engine.launch({ headless: true, ...(name === 'chromium' ? { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } : {}) });
+  const browser = await engine.launch({ headless: true, ...(name === 'chromium' ? { args: ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } : { firefoxUserPrefs: { 'media.volume_scale': '0.0' } }) });
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     if(localRelay)await page.addInitScript(({relayUrl})=>{
@@ -42,7 +43,7 @@ for (const [name, engine] of Object.entries({ firefox, chromium })) {
       try {
         await page.waitForFunction(() => window.__voxelHeroes?.version >= 1);
       } catch (error) {
-        await page.screenshot({ path: `playtest-out/browser-smoke/${name}-boot-failed.png` });
+        await page.screenshot({ path: `${out}/${name}-boot-failed.png` });
         throw new Error(`${name} failed to boot: ${errors.join('; ') || error.message}`);
       }
       assert.deepEqual(blocked, []);
@@ -53,7 +54,7 @@ for (const [name, engine] of Object.entries({ firefox, chromium })) {
       assert.ok(await page.evaluate(() => window.__voxelHeroes.registries.entities().includes('boomerang')));
       assert.deepEqual(errors, []);
       console.log(`PASS ${name}: filter enabled, game started, boomerang registered, no page errors`);
-      await page.screenshot({ path: `playtest-out/browser-smoke/${name}-after.png` });
+      await page.screenshot({ path: `${out}/${name}-after.png` });
       await page.evaluate(() => {
         const h = window.__voxelHeroes; h.newGame(); h.render();
         h.game.ui.pressUi('party-open'); h.render(); h.game.ui.pressUi('party-code');
@@ -67,12 +68,12 @@ for (const [name, engine] of Object.entries({ firefox, chromium })) {
       assert.equal(await page.evaluate(() => window.__voxelHeroes.screen().name), 'Mossbrook Square');
       assert.equal(await page.evaluate(() => window.__voxelHeroes.state.swords.equipped), null);
       await page.evaluate(() => { const h = window.__voxelHeroes; h.game.partyUi.openParty(); h.render(); });
-      await page.screenshot({ path: `playtest-out/browser-smoke/${name}-party-create.png` });
+      await page.screenshot({ path: `${out}/${name}-party-create.png` });
       await page.evaluate(() => window.__voxelHeroes.game.party.leaveParty());
       assert.deepEqual(errors, []);
       console.log(`PASS ${name}: real party menu accepts text, rejects invalid code, creates an adventure from title${localRelay?' (local signaling fixture; external HTTP blocked and public ICE disabled)':''}`);
     }
-    if (reproduce) await page.screenshot({ path: `playtest-out/browser-smoke/${name}-before.png` });
+    if (reproduce) await page.screenshot({ path: `${out}/${name}-before.png` });
   } finally { await browser.close(); }
 }
 } finally { await localRelay?.close(); }

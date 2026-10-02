@@ -217,7 +217,7 @@ export function errandEntries() {
     if (status === 'active' && n.type === 'search') progress = hasFlag(`errand:${giver}:revealed`) ? 'Locket revealed; pick it up' : 'Search the crossing bushes';
     if (status === 'active' && n.type === 'time') progress = 'Return at dusk';
     if (status === 'active' && n.type === 'flag') progress = def.progress?.() ?? (hasFlag('village:tobin-cellar-open') ? 'Retrieve the cellar keepsake' : 'Blast the stump beside Tobin');
-    return { giver, title, where, detail, status, progress, reward: rewardText(def.reward) };
+    return { id: `errand:${giver}`, giver, title, where, detail, status, progress, reward: rewardText(def.reward) };
   });
 }
 

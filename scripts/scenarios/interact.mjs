@@ -139,10 +139,16 @@ export default async function (t) {
       h.input.setStick(0, 0);
       const moved = at(st.x, st.z) !== 'S' && at(st.x - st.from[0], st.z - st.from[1]) === 'S';
       h.world.regrow(s);
+      const safe = !h.world.blocked(h.player.x, h.player.z, h.player.r, h.player);
+      // A real next visit has an arriving hero, rather than the hero still
+      // standing in the statue's former footprint after pushing it away.
+      h.game.hero.hero.place(st.x + st.from[0] + 0.5, st.z + st.from[1] + 0.5);
+      h.world.regrow(s);
       const back = at(st.x, st.z) === 'S' && at(st.x - st.from[0], st.z - st.from[1]) !== 'S';
-      return { moved, back };
+      return { moved, back, safe };
     }, st);
     t.expect(p.moved, 'leaning on a statue slides it a tile');
+    t.expect(p.safe, 'resetting scenery cannot place the statue through the hero');
     t.expect(p.back, 'and it is back in place on the next visit');
   }
 

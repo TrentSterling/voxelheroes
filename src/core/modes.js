@@ -45,6 +45,7 @@ function switchTo(to, { suspended = false, resumed = false, unwind = [] } = {}) 
   modes.get(from)?.exit?.({ to, suspended });
   for (const name of unwind) modes.get(name)?.exit?.({ to, suspended: false });
   state.mode = to;
+  document.body.dataset.gameMode = to;
   input.clearPresses();
   for (const a of carry) input.carry(a);
   modes.get(to)?.enter?.({ from, resumed });

@@ -19,6 +19,7 @@ import { dropCoins } from '../../game/pickups.js';
 import { refill } from '../../game/vitals.js';
 import { registerBestiary } from '../../game/bestiary.js';
 import { toast } from '../../ui/toast.js';
+import { clockAnchorCount, clockUnwound } from '../../systems/tower-clock.js';
 
 const MASK={id:'boss-bishop',name:'Veyl',title:'Keeper of False Light',hint:'Cast Truesight. Only the real body has a shadow; strike it before it disappears. Wisps drop life and magic.'};
 const CROWN={id:'boss-king',name:'Caldrin',title:'The Hollow Crown',hint:'Leave the marked lightning squares. Guard storms with the Bastion Shield. Dash sideways out of the bright charged shot.'};
@@ -26,7 +27,7 @@ const SITES=[[5,4],[16,10],[5,10],[16,4],[11,7]];
 const cleanup=()=>{for(const e of [...entities])if(['crown-shot','crown-charge','crown-storm','crown-lightning','crown-wisp','bishop-copy'].includes(e.type))e.remove();};
 function fireAt(e,type='crown-shot',spread=0,speed=5){
  const p=e.targetHero()??player,a=Math.atan2(p.z-e.z,p.x-e.x)+spread;
- spawn(type,{x:e.x+Math.cos(a)*(e.r+.15),z:e.z+Math.sin(a)*(e.r+.15),dir:{x:Math.cos(a),z:Math.sin(a)},speed});
+ spawn(type,{x:e.x+Math.cos(a)*(e.r+.15),z:e.z+Math.sin(a)*(e.r+.15),dir:{x:Math.cos(a),z:Math.sin(a)},speed,...(e.trial||e.head?.trial?{tier:2}:{})});
 }
 class Bishop extends Enemy{
  constructor(opts){
@@ -35,11 +36,11 @@ class Bishop extends Enemy{
   this.ai={phase:'appear',t:.8,clock:0,turn:0,addT:8};this.shadow.visible=false;this.mesh.castShadow=false;
  }
  onAdd(){
-  if((this.trial&&bossDefeated(this.dungeon))||(!this.trial&&hasFlag('tower:mask-broken'))){this.remove();return;}
+  if((this.trial&&(bossDefeated(this.dungeon)||hasFlag('tower:trial')))||(!this.trial&&hasFlag('tower:mask-broken'))){this.remove();return;}
   this.populate();this.placeBodies();
  }
  onRemove(){for(const e of this.segments)e?.remove();}
- populate(){const count=this.trial||this.hp>50?2:this.hp>25?3:4;while(this.segments.length<count)this.segments.push(spawn('bishop-copy',{x:this.x,z:this.z,head:this,index:this.segments.length+1,spawnDelay:0}));}
+ populate(){const count=this.trial?Math.max(0,2-Math.floor(clockAnchorCount()/2)):this.hp>50?2:this.hp>25?3:4;while(this.segments.length>count)this.segments.pop().remove();while(this.segments.length<count)this.segments.push(spawn('bishop-copy',{x:this.x,z:this.z,head:this,index:this.segments.length+1,spawnDelay:0}));}
  placeBodies(){const s=currentScreen();for(const[i,e]of[this,...this.segments].entries()){const p=SITES[(this.ai.turn+i)%SITES.length];e.x=s.x0+p[0];e.z=s.z0+p[1];e.yaw=Math.atan2(player.x-e.x,player.z-e.z);}}
  present(){const visible=!this.trial&&effectActive('truesight')&&this.ai.phase!=='vanish';this.shadow.visible=visible;this.mesh.castShadow=visible;this.mesh.visible=this.ai.phase!=='vanish';}
  guards(hit){return this.trial||!hit.truesight||this.ai.phase!=='hold';}
@@ -48,9 +49,10 @@ class Bishop extends Enemy{
  vanish(){this.ai.phase='vanish';this.ai.t=.55;this.ai.turn=(this.ai.turn+2)%SITES.length;this.populate();this.placeBodies();}
  hurt(hit){super.hurt({...hit,tiles:0,stun:0});if(!this.removed){this.flashT=.25;this.vanish();}}
  think(dt){
-  if(!this.introDone){this.introDone=true;startBossIntro(this,this.trial?{...MASK,title:'The First Reflection',hint:'Endure for two minutes. Move between the reflections, deflect their shots, and collect the wisps. This body cannot yet be hurt.'}:MASK);}
+  if(!this.introDone){this.introDone=true;startBossIntro(this,this.trial?{...MASK,title:'The First Reflection',hint:'Unwind four anchors: returning blade, bomb, grapple and fire. Their pedestals block the reflections\' shots.'}:MASK);}
   const a=this.ai;a.clock+=dt;a.t-=dt;a.addT-=dt;
-  if(this.trial&&a.clock>=120){cleanup();this.remove();this.markDone();defeatBoss(this.dungeon,{refight:true});setFlag('tower:trial');toast('The first reflection fades. Climb north and seek Sage Iona.',4);return;}
+  if(this.trial&&clockUnwound()){cleanup();this.remove();this.markDone();defeatBoss(this.dungeon,{refight:true});setFlag('tower:trial');toast('The city clock moves again. Climb north and seek Sage Iona.',4);return;}
+  if(this.trial)this.populate();
   if(a.addT<=0){a.addT=8;const live=entities.filter(e=>e.type==='crown-wisp');if(live.length<4){const s=currentScreen();spawn('crown-wisp',{x:s.x0+11,z:s.z0+9,index:Math.floor(a.clock/8),spawnDelay:0});}}
   if(a.t<=0){
    if(a.phase==='vanish'){a.phase='appear';a.t=.75;}

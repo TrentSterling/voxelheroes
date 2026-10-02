@@ -5,8 +5,8 @@ import { chromium, firefox } from 'playwright';
 
 const ff = process.argv.includes('--browser') && process.argv[process.argv.indexOf('--browser') + 1] === 'firefox';
 const browser = ff
-  ? await firefox.launch({ headless: true, firefoxUserPrefs: { 'webgl.force-enabled': true } })
-  : await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
+  ? await firefox.launch({ headless: true, firefoxUserPrefs: { 'media.volume_scale': '0.0', 'webgl.force-enabled': true } })
+  : await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto('http://localhost:4179/?seed=1&manual=1');
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { timeout: 30000 });

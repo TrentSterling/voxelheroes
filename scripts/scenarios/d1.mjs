@@ -264,6 +264,11 @@ export default async function d1(t) {
   r = await t.eval(() => ({ foes: window.__d1.foes(), shut: window.__d1.solid(15, 5) }));
   t.expect(r.foes > 0 && r.shut, 'Crossed Bones locks the hero in');
   await t.eval(() => window.__d1.killAll());
+  await t.step(.3);
+  t.expect(await t.eval(()=>window.__d1.solid(15,5)&&!window.__d1.flags().includes('dungeon:d1:key:E-3')), 'the first wave cannot release the key or shutters during the quiet interval');
+  await t.step(1.4);
+  t.expect(await t.eval(()=>window.__d1.of('barrow-warden').length===1&&window.__d1.of('gazer').length===1), 'Crossed Bones calls a shielded warden and ranged gazer in its second wave');
+  await t.eval(() => window.__d1.killAll());
   await t.step(0.3);
   await t.walkTo(8, 5);
   await t.step(0.3);
@@ -435,7 +440,9 @@ export default async function d1(t) {
     const s = window.__voxelHeroes.screen();
     return { x: e.x - s.x0, z: e.z - s.z0 };
   });
-  await t.walkTo(hc.x, hc.z, { soft: true });
+  await t.step(0.5); // Let the final sword swing and knockback finish before routing to the prize.
+  const heartWalk = await t.walkTo(hc.x, hc.z);
+  t.note('Heart approach: ' + JSON.stringify(heartWalk));
   await t.step(1);
   s = await snap(t);
   t.expect(s.maxHp === maxHp0 + 2, `the heart container adds a heart (${maxHp0} -> ${s.maxHp})`);

@@ -417,6 +417,7 @@ function bindTouch() {
   };
   if (stickEl) {
     stickEl.addEventListener('pointerdown', (e) => {
+      if (e.defaultPrevented) return; // The canvas menu consumed this gesture.
       device = 'touch';
       id = e.pointerId;
       stickEl.setPointerCapture?.(id);
@@ -442,6 +443,7 @@ function bindTouch() {
     if (!el) continue;
     let down = false;
     el.addEventListener('pointerdown', (e) => {
+      if (e.defaultPrevented) return;
       e.preventDefault();
       device = 'touch';
       if (down) return;

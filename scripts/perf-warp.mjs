@@ -8,8 +8,8 @@ import { chromium, firefox } from 'playwright';
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const ff = arg('--browser', 'chrome') === 'firefox';
 const browser = ff
-  ? await firefox.launch({ headless: true, firefoxUserPrefs: { 'webgl.force-enabled': true } })
-  : await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] });
+  ? await firefox.launch({ headless: true, firefoxUserPrefs: { 'media.volume_scale': '0.0', 'webgl.force-enabled': true } })
+  : await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.goto(`${arg('--url', 'http://localhost:4179/')}?seed=1`);
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { timeout: 30000 });

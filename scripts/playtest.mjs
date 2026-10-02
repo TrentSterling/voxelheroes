@@ -39,7 +39,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCENARIOS = join(ROOT, 'scripts', 'scenarios');
 const BOT = join(ROOT, 'scripts', 'lib', 'bot.js');
 const GLOBAL_PLAYWRIGHT = '/opt/node22/lib/node_modules/playwright/index.mjs';
-export const CHROMIUM_ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+export const CHROMIUM_ARGS = ['--mute-audio', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
 export const DT = 1 / 60;
 
 // Console warnings every run prints: three.js r186 swaps the renderer's

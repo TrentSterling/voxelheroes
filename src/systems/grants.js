@@ -39,6 +39,7 @@ import { addKeys } from './keys.js';
 import * as vitals from '../game/vitals.js';
 import { partyHooks } from '../multiplayer/adapters.js';
 import { heartContainerModel, prizeMesh } from '../models/items/items.js';
+import { rewardModel } from '../models/items/rewards.js';
 
 const grants = new Map(); // id -> { fn, meta }
 let fallback = null;
@@ -47,7 +48,7 @@ export function registerGrant(id, fn, meta = {}) {
   if (grants.has(id)) throw new Error(`Grant "${id}" is already registered`);
   if (typeof fn !== 'function') throw new Error(`Grant "${id}" needs a function`);
   if (meta.model != null && typeof meta.model !== 'function') throw new Error(`Grant "${id}": model must be a function returning a THREE.Object3D`);
-  grants.set(id, { fn, meta: { name: id, fanfare: false, model: null, ...meta } });
+  grants.set(id, { fn, meta: { name: id, fanfare: false, ...meta, model: meta.model ?? rewardModel(id, meta.kind) } });
 }
 
 // Used by the item registry: grant(id) for any registered item.

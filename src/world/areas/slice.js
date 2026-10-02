@@ -263,6 +263,8 @@ registerArea({
   id: 'v1',
   name: 'Mossbrook',
   kind: 'town',
+  groundPalette: { grass:[0x79ae89,0x568b77,0xa5c99a], path:[0xc1ac8c,0x9c8c7e,0xdac7a4] },
+  housePalette: { roof:0x945877, roofDark:0x633f60, plaster:0xe8d1aa, timber:0x64516a },
   tileset: 'town',
   lighting: 'day',
   music: 'village',
@@ -367,8 +369,9 @@ registerArea({
     },
     '1,1': {
       name: "Mossbrook Square",
-      warps: { y: { area: 'cellar-tobin', screen: [0, 0], x: 5.5, z: 8, yaw: 0 } },
+      warps: { y: { area: 'cellar-tobin', screen: [0, 0], x: 5.5, z: 8, yaw: 0 }, '12,10': { area: 'mossbrook-fair', screen: [0,0], x: 8.5, z: 14, yaw: Math.PI } },
       spawnsAt: {
+        '9,12': { type: 'npc-mira' },
         '5,4': { type: 'npc-shop', shop: 'v1-shop' },
         '10,4': { type: 'npc-smith' },
         '13,5': { type: 'npc-inventor' }, // the Sprint Boots (gameplay spec: the inventor in V1, before D1)
@@ -386,16 +389,16 @@ registerArea({
         'THHHHH.pp.HHHHHT',
         'THHhHH.pp.HHhHHT',
         'T..pp..pp..pp..T',
-        'T..pppppppppp..T',
+        'T&.pppppppppp.&T',
         'ppppppp~~ppppppp',
         'pppppp~~~~pppp%p',
         'pppppp~~~~pppppp',
         'ppppppp~~ppppppp',
-        'T..pppppppppp..T',
+        'T..pppppppppV..T',
         'T..pp..pp..pp..T',
         'THHhH..pp..HhHHT',
         'THHHH..pp..HHHHT',
-        'T......pp......T',
+        'T......pp.@....T',
         'TTTTTTppppTTTTTT',
       ],
     },
@@ -444,7 +447,7 @@ registerArea({
     '1,2': {
       name: "Mossbrook Lane",
       spawnsAt: {
-        '13,4': { type: 'npc', name: 'Old Wick', lines: ['They say the barrow west of here keeps a throwing blade', 'that comes back to your hand.'] },
+        '12,4': { type: 'npc', name: 'Old Wick', lines: ['They say the barrow west of here keeps a throwing blade', 'that comes back to your hand.'] },
       },
       rows: [
         'TTTTTTppppTTTTTT',

@@ -62,6 +62,7 @@ export const isMuted = () => muted;
 export function setVolumes(v = {}) {
   for (const k of Object.keys(levels)) if (Number.isFinite(v[k])) levels[k] = Math.max(0, Math.min(1, v[k]));
   applyLevels();
+  emit('audio-levels-changed', { ...levels });
   return { ...levels };
 }
 

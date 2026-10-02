@@ -58,6 +58,7 @@ const E = (payload, from, to) => ({ payload, from, to });
 
 export const EVENTS = {
   'audio-muted': E('{ muted }', 'core/audio.js setMuted', 'NPC speech cancellation'),
+  'audio-levels-changed': E('{ master, music, sfx }', 'core/audio.js setVolumes', 'recorded NPC voice volume'),
   'party-bonk': E('{ from, swingId }', 'game/party.js friendly sword contact', 'UI, tests'),
   // ---- frame, modes, world (M1 and feat/world)
   'mode-change': E('{ from, to }', 'core/modes.js on every switch', 'anyone'),
@@ -76,6 +77,8 @@ export const EVENTS = {
 
   // ---- hero and the hero's vitals
   'sword-swing': E('{ player, stats }', 'hero: sword.js when a thrust starts', 'hero (a thrust ends a dash), audio'),
+  'sword-charged-spin': E('{ player, stats }', 'hero: sword.js on a released charged spin', 'companions: Clockwork Cross'),
+  'companion-tech': E('{ name, screen, x, z, remote? }', 'companions or party transport', 'companion animation and pulse'),
   'sword-hit': E('{ target, hit }', 'hero: sword.js when the blade connects', 'foes'),
   'pot-lifted': E('{ tx, tz }', 'systems/pots.js after removing a pot from its tile', 'ui, audio'),
   'pot-thrown': E('{ x, z, dir }', 'systems/pots.js when a carried pot becomes a projectile', 'ui, audio'),
@@ -138,6 +141,11 @@ export const EVENTS = {
   hour: E('{ hour }', 'game/clock.js when the in-game hour changes', 'npcs (schedules read hour())'),
   'new-day': E('{ day, reason }', 'game/clock.js after a night at an inn or past 2:00', 'forage (picked tiles reset), npcs (gifts once a day)'),
   'music-change': E('{ id, from }', 'music.js playMusic', 'audio'),
+
+  'barrow-wave': E('{ screen, wave }', 'barrow-bell.js after its reinforcement interval', 'tests, encounter UI'),
+  'barrow-bell-muted': E('{ screen, seconds }', 'barrow echo tile after a thrown pot', 'tests, journal'),
+  'hive-valve-released': E('{ screen, valve, remaining }', 'hive pressure seal after a bomb', 'tests, room clear'),
+  'hive-pressure-burst': E('{ screen, lane }', 'hive pressure controller after its warning', 'tests'),
 
   // ---- meta
   'new-game': E('{ profile, prologue }', 'progress.js startNewGame, once play starts', 'anyone'),

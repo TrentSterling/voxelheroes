@@ -2,5 +2,7 @@ node_modules
 dist
 dist-artifact
 playtest-out
+__pycache__/
+*.py[cod]
 
 dist-*

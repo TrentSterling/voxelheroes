@@ -162,7 +162,8 @@ function chartSize(g,cell=CELL,maxHeight=g.h-100) {
   }
   let w = 60;
   let h = 8;
-  const columns=model.floors.length>1&&g.w>=350&&g.h<240;
+  const floorWidth=model.floors.reduce((sum,f)=>sum+Math.max(g.measure(f.label??''),f.cols*(cell+1)-1),0)+(model.floors.length-1)*16;
+  const columns=model.floors.length>1&&g.h<240&&floorWidth+40<=g.w;
   if(columns){
     w=Math.max(w,model.floors.reduce((sum,f)=>sum+Math.max(g.measure(f.label??''),f.cols*(cell+1)-1),0)+(model.floors.length-1)*16+12);
     h+=Math.max(...model.floors.map(f=>(f.label?11:0)+f.rows*(cell+1)+6));

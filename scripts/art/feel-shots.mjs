@@ -2,7 +2,7 @@
 // the dev cheat menu.  npx vite preview --port 4179   then   node scripts/art/feel-shots.mjs
 import { chromium } from 'playwright';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto('http://localhost:4179/?seed=1&dev=1');
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1);

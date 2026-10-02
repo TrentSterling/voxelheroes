@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 
 const area = process.argv[2] ?? 'd1';
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.goto('http://localhost:4179/?seed=1&manual=1');
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1, null, { timeout: 30000 });

@@ -5,6 +5,7 @@ import { registerMode, pushMode, popMode } from '../../core/modes.js';
 import { createParty, joinParty, leaveParty, partyView, inviteLink } from '../../game/party.js';
 import { registerUiPart, requestUi, COLORS } from '../canvas/gfx.js';
 import { hideOverlay } from '../overlay.js';
+import { partyShortcutLayout } from '../shortcuts.js';
 import * as THREE from 'three';
 import { camera } from '../../core/renderer.js';
 import { partyFriends } from '../../game/party.js';
@@ -82,9 +83,8 @@ registerUiPart({
   id: 'party-entry', order: 65,
   key: () => `${state.mode}|${partyView().count}|${partyView().active}|${partyView().ready}`,
   draw(g) {
-    if (!['title', 'play', 'paused'].includes(state.mode)) return;
-    const label = partyView().active ? `Party ${partyView().count}/8` : 'Play with friends';
-    g.button('party-open', label, g.w - g.safe.r - g.measure(label) - 24, g.safe.t + (state.mode === 'play' ? 36 : 10), openParty);
+    const layout = partyShortcutLayout(g);
+    if (layout) g.button(layout.id, layout.label, layout.x, layout.y, openParty);
   },
 });
 
@@ -113,11 +113,12 @@ registerUiPart({
     rosterPage=Math.min(rosterPage,pages-1);
     const members=view.members.slice(rosterPage*shownCount,(rosterPage+1)*shownCount);
     const activeH=rosterTop+members.length*rowH+6+actionsH+message.length*11+8+(pages>1?17:0)+13+12;
-    const createY=26+intro.length*11+6;
-    const hintY=createY+17+12;
-    const fieldY=hintY+entryHint.length*11+6;
-    const bonkY=fieldY+(codeStacked?19+6+17:19)+12;
-    const inactiveH=bonkY+bonk.length*11+8+message.length*11+13+12;
+    const compact=g.h<190;
+    const createY=26+intro.length*11+(compact?4:6);
+    const hintY=createY+17+(compact?6:12);
+    const fieldY=hintY+entryHint.length*11+(compact?4:6);
+    const bonkY=fieldY+(codeStacked?19+6+17:19)+(compact?6:12);
+    const inactiveH=bonkY+bonk.length*11+(compact?6:8)+message.length*11+13+12;
     const ph=view.active?activeH:inactiveH;
     const x=Math.round((g.w-pw)/2),y=Math.max(6,Math.round((g.h-ph)/2));
     g.rect(0, 0, g.w, g.h, 'rgba(8,17,13,0.72)');

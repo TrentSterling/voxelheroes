@@ -23,9 +23,9 @@ const LOGO_SCALE = 0.78;
 
 // What the title panel says: the story, and the keys.
 const TITLE_PANEL = {
-  kicker: 'An overworld made of cubes',
+  kicker: 'One small town. Three unfinished tomorrows.',
   title: 'Voxel Heroes',
-  msg: 'The old barrow west of the village has woken, and worse things crawl out of it every night. King Aldric has sent for you: find him at Crownhold, south past the gate, then head west to Barrowfield and see what sleeps in the Old Barrow.',
+  msg: 'Mossbrook\'s bell rang from a day that has not happened. Mira has opened a copper door beside the square. First, find King Aldric at Crownhold south of town for your sword. Then follow the bell, or brave the old barrow to the west.',
   controls: [
     ['Move', 'WASD or arrows'],
     ['Sword', 'J or Z'],

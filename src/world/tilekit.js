@@ -27,7 +27,7 @@ import {
 } from '../models/props.js';
 import { burst, sparks, smoke } from '../systems/particles.js';
 import { liveEntities } from '../entities/manager.js';
-import { tilesetFloor } from './tiles.js';
+import { tilesetFloor, getTile } from './tiles.js';
 import { rollDrop } from '../systems/drops.js';
 import { keyCount, useKey } from '../systems/keys.js';
 import { grant } from '../systems/grants.js';
@@ -176,10 +176,11 @@ export function pushTile(ctx) {
   const floor = tilesetFloor(ctx.screen.tileset) ?? '.';
   const nx = tx + sx;
   const nz = tz + sz;
-  if (world.tile(nx, nz) !== floor || world.locate(nx, nz)?.screen !== ctx.screen) return false;
+    if ((world.tile(nx, nz) !== floor && !world.tileDefAt(nx, nz)?.pushableFloor) || world.locate(nx, nz)?.screen !== ctx.screen) return false;
   for (const e of liveEntities()) if (e.solid !== false && e.kind !== 'pickup' && Math.floor(e.x) === nx && Math.floor(e.z) === nz) return false;
   world.setTile(nx, nz, ch, { reason: 'push' });
-  world.setTile(tx, tz, floor, { reason: 'push' });
+    const under = ctx.screen.base[ctx.z][ctx.x];
+    world.setTile(tx, tz, getTile(ctx.screen.tileset, under)?.pushableFloor ? under : floor, { reason: 'push' });
   sfx.push?.() ?? sfx.block();
   smoke(tx + 0.5 + sx * 0.5, GROUND_Y + 0.05, tz + 0.5 + sz * 0.5, 4, { radius: 0.1, spread: 0.3, life: 0.4 });
   emit('tile-pushed', { from: [tx, tz], to: [nx, nz], ch });

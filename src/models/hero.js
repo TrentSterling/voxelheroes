@@ -156,8 +156,14 @@ function heroV2Grid(pose, S, shield) {
   const key = Object.values(S).join(',');
   let grids = v2ByPalette.get(key);
   if (!grids) v2ByPalette.set(key, (grids = parseBoxel(HERO_V2_SRC, { recolor: S }).grids));
-  const g = grids[pose];
+  let g = grids[pose];
   if (!shield) {
+    // Removing baked equipment must not mutate the parsed pose used by
+    // another rig or palette cache entry.
+    const copy = new DenseGrid(g.sx, g.sy, g.sz);
+    copy.data.set(g.data);
+    if (g.faces) copy.faces = new Map(g.faces);
+    g = copy;
     for (let z = 0; z < g.sz; z++) for (let y = 0; y < g.sy; y++) for (let x = 0; x < g.sx; x++)
       if (g.has(x, y, z) && SHIELD_COLOURS.has(g.color(x, y, z))) g.set(x, y, z, null);
   }

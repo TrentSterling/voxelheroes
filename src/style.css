@@ -182,6 +182,13 @@ body {
 
 body:not(.title-mode) .tront-about { display: none; }
 body.title-mode .tront-about { top: 52px; bottom: auto; }
+body:is([data-game-mode="party"], [data-game-mode="journal"], [data-game-mode="settings"], [data-game-mode="map"], [data-game-mode="paused"], [data-game-mode="inventory"], [data-game-mode="dialog"], [data-game-mode="ending"], [data-game-mode="dead"]) #touch {
+  display: none;
+}
+body.reward-caption #touch { visibility: hidden; }
+@media (max-width: 600px), (max-height: 360px) {
+  body.title-mode .tront-about { display: none; }
+}
 /* Title on a touch screen: no pad over the panel */
 @media (pointer: coarse) {
   body.title-mode #touch { display: none; }

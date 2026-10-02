@@ -9,10 +9,18 @@
     "preview": "vite preview",
     "artifact": "vite build && node scripts/build-artifact.mjs",
     "playtest": "node scripts/playtest.mjs",
+    "voices:inventory": "node scripts/voice-inventory.mjs",
+    "voices:bake": "node scripts/bake-npc-voices.mjs",
+    "voices:check": "node scripts/voice-bank-audit.mjs",
+    "voices:review": "node scripts/build-voice-review.mjs",
+    "gauntlet": "node scripts/gauntlet.mjs",
+    "gauntlet:quick": "node scripts/gauntlet.mjs --quick",
     "playtest:browsers": "node scripts/browser-smoke.mjs",
     "playtest:multiplayer": "node scripts/multiplayer-test.mjs",
     "review": "node scripts/build-review.mjs",
-    "review:check": "node scripts/verify-review.mjs"
+    "review:check": "node scripts/verify-review.mjs",
+    "voices:check:assets": "node scripts/voice-bank-audit.mjs --static-only",
+    "test:audio-policy": "node scripts/test-audio-policy.mjs"
   },
   "dependencies": {
     "three": "^0.186.1",

@@ -150,13 +150,14 @@ export class Projectile extends Entity {
       return;
     }
     const wall = this.passWalls ? null : world.shotBlockerAt(this.x, this.z);
-    if (wall) {
+    if (wall && !this.ignoresWall(...wall)) {
       // the tile that stops it: by a room's side wall that is the wall, not
       // the floor tile the shot is over
       const [tx, tz] = wall;
+      const blockerDef = world.tileDefAt(tx, tz);
       const hit = { damage: this.damage, fromX: this.x - dx, fromZ: this.z - dz, source: this.source, projectile: this };
-      world.trigger(tx, tz, 'onShot', { projectile: this, hit });
-      if (this.onHitWall(tx, tz) !== false) this.shatter(DUST);
+      const triggered = world.trigger(tx, tz, 'onShot', { projectile: this, hit });
+      if (this.onHitWall(tx, tz, blockerDef, triggered) !== false) this.shatter(DUST);
       return;
     }
     if (this.owner === 'hero') this.hitEnemies();
@@ -220,6 +221,7 @@ export class Projectile extends Entity {
   // Hooks: return false from onHitWall / onHitHero / onHitEnemy to keep the
   // shot flying (a bouncing bolt, a boomerang).
   onHitWall(_tx, _tz) {}
+  ignoresWall(_tx, _tz) { return false; }
   onHitHero(_result) {}
   onHitEnemy(_entity, _result) {}
   onReflect() {}

@@ -46,7 +46,8 @@ const fill = (text) => String(text).replaceAll('{hero}', heroName());
 
 export function showDialog(lines, opts = {}) {
   return new Promise((resolve) => {
-    queue.push({ pages: (Array.isArray(lines) ? lines : [lines]).map(fill), opts, resolve });
+    const authored = (Array.isArray(lines) ? lines : [lines]).map(String);
+    queue.push({ pages: authored.map(fill), voicePages: authored, opts, resolve });
     if (!active) openNext();
   });
 }
@@ -83,7 +84,7 @@ function openNext() {
 }
 
 function speakSegment() {
-  speakNpcSegment(pageText().slice(0, dialogLayout(canvasG).limit), active.opts.speaker, active.opts);
+  speakNpcSegment(active.voicePages[active.page], active.opts.voiceSpeakers?.[active.page] ?? active.opts.speaker, { ...active.opts, continuation: active.offset > 0 });
 }
 
 const pageText = () => active.pages[active.page].slice(active.offset);

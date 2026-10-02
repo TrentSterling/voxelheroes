@@ -1,7 +1,7 @@
 // Base class for enemies (CONTRACTS 8.5). It handles what every enemy
 // shares: popping in (TUNING.scroll.spawnWait, then spawnStagger between
 // enemies, spec 4.3), the stagger and stun of a hit (hit.tiles over
-// TUNING.enemy.knockTime, then hit.stun), the white hit flash, contact
+// TUNING.enemy.knockTime, then hit.stun), the fading warm hit flash, contact
 // damage through hero.receiveHit (a guard block knocks the enemy
 // TUNING.guard.attackerKnock tiles back and stuns it attackerStun s), the
 // crown (TUNING.enemy.crownedChance: 1.5 x speed), the slow spell
@@ -54,6 +54,16 @@ import { Entity } from './entity.js';
 import { player } from './player.js';
 
 const KNOCKBACK_DECAY = 0.85; // M1 knockback speed kept per 1/60 s (hits with no `tiles`)
+
+// Keep the hit/invulnerability clock intact; fade its visual contribution so
+// enemy colours and vulnerability poses remain readable during the stagger.
+export function stepHitFlash(e, dt, idleColor = 0) {
+  if (!(e.flashT > 0)) return;
+  e.flashT = Math.max(0, e.flashT - dt);
+  if (e.flashT <= 0) { e.mat.emissive.setHex(idleColor); return; }
+  const k = Math.min(1, e.flashT / TUNING.sword.enemyFlash);
+  e.mat.emissive.setHex(TUNING.sword.enemyFlashColor).multiplyScalar(TUNING.sword.enemyFlashStrength * k * k);
+}
 
 // A hit's squash-and-stretch: flattens on impact, then springs back past 1
 // and settles. Shared by Enemy.update and the serpent's segments (which
@@ -208,10 +218,7 @@ export class Enemy extends Entity {
       this.crown.rotation.y += dt * 2;
     }
 
-    if (this.flashT > 0) {
-      this.flashT -= rawDt;
-      this.mat.emissive.setHex(this.flashT > 0 ? 0xffffff : 0x000000);
-    }
+    stepHitFlash(this, rawDt);
     if (Math.hypot(player.x - this.x, player.z - this.z) < (this.r + player.r) * TUNING.enemy.contactReach) this.touchHero();
   }
 

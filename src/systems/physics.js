@@ -11,6 +11,9 @@ import { player } from '../entities/player.js';
 export function bumpsEntity(b, x, z) {
   for (const e of entities) {
     if (!e.solid || e.removed || e === b) continue;
+    // Remote heroes keep physical player contact, but enemies must reach the
+    // same damage radius they reach against the local hero.
+    if (b.kind === 'enemy' && e.kind === 'friend') continue;
     if (bumps(b, e, x, z)) return true;
   }
   return b.solid && b !== player && bumps(b, player, x, z);

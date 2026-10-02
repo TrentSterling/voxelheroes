@@ -74,6 +74,14 @@ import { collectPickup, dropCoins } from './pickups.js';
 import { UNITS_PER_HEART } from './vitals.js';
 import './fields.js';
 
+// Temporary block effects register here so every contact/projectile still uses
+// receiveHit. The ordinary shield gets first refusal; hazards never reach these.
+const hitGuards = new Map();
+export function registerHitGuard(id, fn) {
+  if (hitGuards.has(id) || typeof fn !== 'function') throw new Error(`Invalid hit guard: ${id}`);
+  hitGuards.set(id, fn);
+}
+
 export const FACINGS = ['north', 'east', 'south', 'west'];
 export const FACING_VECTORS = { north: { x: 0, z: -1 }, east: { x: 1, z: 0 }, south: { x: 0, z: 1 }, west: { x: -1, z: 0 } };
 export const FACING_YAW = { north: Math.PI, east: Math.PI / 2, south: 0, west: -Math.PI / 2 };
@@ -250,6 +258,11 @@ export const hero = {
     const blockable = !unblockable && kind !== 'hazard' && tier !== Infinity;
     if (blockable && shield >= Math.max(1, tier) && hero.isGuarding() && inGuardArc(p)) {
       pushAway(p, TUNING.guard.pushBack, TUNING.guard.pushTime);
+      sfx.block();
+      emit('hero-hit', { result: 'blocked', damage: 0, kind, source, from: p });
+      return 'blocked';
+    }
+    if (blockable && [...hitGuards.values()].some(fn => fn({ damage, from: p, kind, tier, source }))) {
       sfx.block();
       emit('hero-hit', { result: 'blocked', damage: 0, kind, source, from: p });
       return 'blocked';

@@ -13,6 +13,7 @@ import { sfx } from '../../core/audio.js';
 import { getMaterial } from '../../core/materials.js';
 import { modelMesh } from '../../models/kit.js';
 import { grappleModel } from '../../models/items/grapple.js';
+import { hasItem } from '../../items/inventory.js';
 
 const link = new THREE.BoxGeometry(1, 1, 1);
 class Hook extends Projectile {
@@ -20,7 +21,7 @@ class Hook extends Projectile {
     const object = new THREE.Group();
     object.add(modelMesh(grappleModel()));
     super(opts, { owner: 'hero', source: 'grapple', damage: 0, speed: TUNING.items.grapple.speed,
-      range: TUNING.items.grapple.range, r: 0.22, height: 0.45, object });
+      range: hasItem('sun-dial') ? TUNING.items.grapple.dialRange : TUNING.items.grapple.range, r: 0.22, height: 0.45, object });
     this.chain = new THREE.Mesh(link, getMaterial('prop'));
     this.chain.scale.set(1 / 16, 1 / 16, 1);
     object.add(this.chain);
@@ -50,7 +51,13 @@ class Hook extends Projectile {
       this.travelled += Math.hypot(this.vx, this.vz) * dt;
       const wall = world.shotBlockerAt(this.x, this.z);
       if (wall) {
-        if (world.tileDefAt(...wall)?.grapple) this.latch(...wall);
+        const def = world.tileDefAt(...wall);
+        if (def?.grapple) {
+          // A hook can turn a winding as well as pull the hero. Existing
+          // grappling tiles without a shot hook keep their ordinary latch.
+          if (def.onShot) world.trigger(...wall, 'onShot', { projectile: this, hit: { source: 'grapple' } });
+          this.latch(...wall);
+        }
         else { sfx.block(); this.back(); }
       } else {
         for (const e of entities) {

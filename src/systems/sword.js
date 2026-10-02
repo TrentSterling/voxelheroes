@@ -231,6 +231,7 @@ export function startChargedSpin(p) {
   th.extra = (2 * Math.PI) / ((TUNING.sword.spinRate * Math.PI) / 180) + 0.05; // time for a full turn
   th.id = `spin-${p.swingId}`;
   sfx.swing();
+  emit('sword-charged-spin', { player: p, stats: swordStats() });
   return true;
 }
 

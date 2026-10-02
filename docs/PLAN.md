@@ -1,13 +1,145 @@
 # Voxel Heroes build plan
 
-Goal: a browser game (Three.js, Vite, vanilla JS) that plays and feels like 3D Dot Game Heroes as closely as we can manage. Mechanics, camera, pacing and structure should follow that game. Every piece of art, every name and every line of text is our own, so nothing is copied from 3D Dot Game Heroes or from Zelda.
+Goal: an original real-time voxel co-op adventure (Three.js, Vite, vanilla JS). On September 30, 2026 Trent changed the creative direction: retain real-time combat, but use Chrono Trigger as the reference for expressive color, memorable characters, linked eras, personal stakes and authored encounters. This supersedes the older requirement to follow 3D Dot Game Heroes closely. Characters, models, dialogue and music remain original.
+
+The Last Departure now connects two optional station screens south of the
+Copperwalk. Meet Tern on his first day, repair a signal across eras, fight a
+Waiting Bell Courier with committed three-note warnings, and choose to call it
+home. One shared permanent magic gem and three present-day station lights close
+the story. Four native station floors and fifteen new baked Tern lines extend
+the current 1,460-clip bank. See `LAST-DEPARTURE.md` for scope, controls, saved
+causality and simultaneous co-op reward claims.
+
+Nearby party members now share camera composition and individual terrain cutaway
+probes. Portrait frames keep the travelling party visible, and the technique hint
+leaves room for their figures. Solo transitions and rewards keep their original
+rules. See `PARTY-CAMERA.md` for scope, native measurements and local delivery.
+
+Party travel now reconnects around walls and changing terrain, separates settled
+followers and resets stale teleport trails. Enemy hit flashes fade to preserve
+native colours and vulnerability poses during stuns. See `PARTY-TRAVEL.md` for
+the movement, combat and verification scope.
+
+The Buried Watch now follows the drowned Sunreach transit story with grapple-opened
+Meridian Sentries, an optional shared eight-tile Sun Dial, a sunken platform route,
+six dungeon floor materials and four outdoor materials. Its two-floor campaign
+and Colossus route remain playable. See `BURIED-WATCH.md` for behavior and tests.
+
+Brineglass now adds ice-shell Skaters, an optional upper kiln and a shared Ember
+Lens that melts two ice blocks per bolt. A shore beacon warms a memorial and
+opens a one-time vault in the Silent Year, including across independently
+exploring friends. Six temple floors and four coastal paths provide more native
+voxel variety. See `BRINEGLASS.md` for behavior, limits and acceptance tests.
+
+Keeper Mara now joins after restoring the shore beacon, with a personal keeper
+story, distinct paddle-and-lantern voxel poses and a Fire Wand Steamwheel with
+Mira. The three-companion party supports shared guest techniques, independent
+era exploration, dismissal and leader transfer. Crowded conversations favor
+the person directly in front, and compact touch technique feedback stays clear
+of item prompts. Seven new pre-recorded Kokoro lines keep the current voice bank
+around 20 MB. See `MARA.md` for controls, behavior and verification.
+
+Stone Eyes now commit to a coral sight line for one second, leaving movement
+available. Boomerang, clay, sword and freeze interrupt their pending shot,
+and the closing lid leaves a counterattack window. Their attack clock transfers
+with dungeon ownership. Gazer Walk adds iris mosaics and copper borders.
+Touch arrival titles, transient hints and item labels now take turns, and the
+wide journal keeps long quest lists above its footer. See STONE-EYES.md for
+controls, scope and muted verification.
+
+## Era direction: first playable chapter
+
+The reported Old Wick pot overlap and unavailable action-button chest opening
+now have targeted reproductions and regression coverage. The original town's
+NPC homes join the full world placement audit. All four future vaults retain
+their story locks and use the action button, including local guest feedback
+and owner-controlled rewards. See TOWN-CHESTS.md for the exact cases and
+fixtures.
+
+Rootglass also has leaf-and-brass Pollinators and an optional western
+Pollinator Court with a saved heart piece. Its committed pink dive warning
+keeps dodging and tool interruption available. Petal stones and seed rails
+bring its local decorative materials to eight. See NURSERY-WINGS.md for
+controls, room scope and muted native-input verification.
+
+The Bell That Rang Tomorrow introduces clockmaker Mira, machine caretaker Tern,
+and an hourgate in Mossbrook Square. A past engine repair changes the future's
+crossing and garden, including for a friend already standing there. Three enemies
+guard the engine; its repair, a one-time Dawn Seed heart reward and homecoming
+are saved and shared. It is an optional story route alongside the existing
+four-dungeon campaign, not a finished rewrite of that campaign.
+
+The visual language now starts with plum village roofs, sea-green foliage,
+brass and sea-glass machines, tall festival pennants, and indigo/gold menus.
+The First Bloom uses warm paths and teal roofs; the Silent Year uses desaturated
+blue stone, empty spires and a garden that physically regrows. Characters need
+individual voices and reasons to care about places, with short conversations
+that reveal those reasons through the adventure.
+
+NPCs now use baked Kokoro recordings for all currently authored conversations
+and nearby reactions, including errands, gifts, heart scenes and campaign
+branches. Source inventory, cast checks, every-clip Firefox/Chromium decoding
+and real recorded-media playback are part of the voice acceptance workflow.
+The game loads individual Opus files and has no live inference or model download.
+
+Mira now joins through conversation choices and travels with the living party
+leader. Her wrench supports active sword fights without clearing idle rooms.
+The Copper Memory unlocks Clockwork Cross: a nearby charged-spin release costs
+two magic gems, adds a six-point pulse and recharges in four seconds. Co-op
+publishes one companion pose with the leader; guests can use the combination,
+split into other eras, or become her new leader after host departure.
+
+The first dungeon now has its first authored two-wave encounter in Crossed
+Bones. A copper bell previews four aimed projectiles; real pottery cancels the
+warning and silences it for four seconds. A skeleton/bat opening becomes a
+warden/gazer fight after a quiet beat. Its fourth key and shutters wait for both
+waves. Quieting the bell also reveals a retryable Echo Memory chest with a
+one-time shared magic gem and a saved journal note. Six dungeon rooms gain
+local stone, copper, repair-channel and rubble variations. This is one encounter
+redesign, not a claim that all four old dungeons have been redesigned.
+
+Next creative work: additional companions and combination techniques,
+distinctive dungeon architecture for each era, additional era-dependent town
+quests, and campaign scenes that connect the four temples to the broken clock.
+These are future work, not features implemented by the opening chapter.
+
+Tern is now the second travelling companion, recruited after returning the
+archive's Copper Memory and hearing the choir. He travels as an original brass
+garden machine alongside Mira. Bell Shelter uses held Guard plus Sword for
+two personal magic gems: three seconds of nearby team protection, with an
+eight-second cooldown. Hazards and explicitly unblockable attacks bypass it.
+Each companion can be dismissed independently. Two companion poses follow one
+living party leader; separated friends cannot call a distant technique, and
+both followers transfer to the remaining hero after host departure. The three
+new Tern lines are baked Kokoro clips, with no runtime model download.
+
+Tern acceptance now covers actual recruitment, both followers, ordinary shot
+blocking and hazard/expiry boundaries, independent dismissal, reload and host
+migration. Touch dialogue hides the gameplay pad; fitted feedback appears above
+touch controls. The UI check verifies actual two-finger casting, complete large
+text paragraphs and pointer choices.
+
+Story guidance now advances from location and actual quest milestones. Completed
+era routes lead back to the hourgate; finishing the choir before the garden
+homecoming still leaves Mira's turn-in available. The journal can Track any
+unfinished era story, barrow memory or village errand. That personal choice
+survives save/load and party join, while a shared turn-in releases a completed
+pin. Stable task ids preserve selection when progress reorders the journal.
+Titles and rewards wrap on phones. The larger temple/era story rewrite and
+other village quest redesigns remain future work.
+
+Verification: `--scenario eras,journal,text-layout`, plus
+`node scripts/era-coop-test.mjs` for local Chromium/Firefox cross-era replication.
+The solo scenario uses real sword combat, gate choices, engine interaction and
+chest collection; the co-op fixture isolates replication using patrol kills
+through the damage API and disables public ICE.
 
 Design inputs, read these when they exist and follow them over this plan:
 
 - `/mnt/project-files/design/gameplay-spec.md`, the mechanics spec
 - `/mnt/project-files/design/art-bible.md`, the art bible
 
-## What "1:1" means here
+## Original mechanical reference (historical; revised direction above wins)
 
 The signature things a player of the original would expect to find (with the gameplay spec's corrections, section 2.1):
 
@@ -62,8 +194,9 @@ Buried Watch add grapple crossings, blue vault, powder bag, the colossus,
 third orb and Quake. Brineglass Coast and the twenty-five-room, two-floor
 Brineglass Temple add the fire wand, paired torch gates, meltable ice, magic
 shield vault, thirty-bomb bag, Nacre, fourth orb and Freeze. The hive sage
-also teaches Reflect. The Fourfold Tower adds an invulnerable two-minute first
-reflection, three memory floors with independent keys/maps/puzzles/rematches,
+also teaches Reflect. The Fourfold Tower opens with four active tool anchors, any-order progress,
+shot-blocking pedestals and a southern retreat. Partial and earned legacy saves
+remain valid. Three memory floors with independent keys/maps/puzzles/rematches,
 rest wells, Truesight, the Bastion Shield and Dawn Blade. The final keeper grows
 from three to five bodies; personal Truesight reveals its vulnerable body.
 The Hollow Crown uses storm, marked lightning and charged-shot patterns. The
@@ -87,6 +220,33 @@ needs its own art audit rather than substituting a generic prize.
 
 ## Architecture contracts
 
+Rootglass now has its own six-material floor kit and an abandoned municipal
+nursery story. Three bomb-breakable pressure seals control marked hazard lanes;
+the second key requires both vented machinery and defeated guards. Partial saves,
+old earned keys, guest bomb input and encounter ownership remain supported.
+Venting the nursery feeds another patch of the Silent Year garden after the
+water engine is repaired. [ROOTGLASS.md](ROOTGLASS.md) records its mechanics and
+muted Chromium/Firefox, co-op, touch and visual receipts. The other temples
+still need distinct encounters and more of the original era story.
+
+The era route now extends through four authored copperwalk/workshop/archive
+screens. Two original quests connect engine repair, pressure tuning, a future
+garden and the lost town choir. Real-time encounters guard the repairs and
+physical chests. The archive grants a one-time shared magic-capacity upgrade.
+Fifteen terrain/prop variants plus valve and memory-chest interactions provide
+material variety without a final asset polish pass.
+
+`npm run gauntlet` is the repeatable acceptance run: all scenarios, two extra
+critical-case seeds, Firefox checks, recorded voice callbacks and local
+Trystero multiplayer. Its world audit validates all registered maps and warp
+destinations; its input soak drives 2,880 simulated frames and twelve save
+reloads per seed. It checkpoints structured results and hashes screenshots.
+Passing these checks does not imply external-network RTC coverage or complete
+campaign redesign. Mira now travels with the party and supports real-time
+combat; Copper Memory unlocks Clockwork Cross, a charged-spin combination
+that spends two magic points. Additional companions, more coordinated
+abilities and deeper changes to the four old dungeons remain future work.
+
 - [ARCHITECTURE.md](ARCHITECTURE.md) is the map of the code: the registries (tiles, areas, entities, items, modes, HUD widgets, grants, drops, save fields), the event bus, the test hook `window.__voxelHeroes` and the play-test harness.
 - [CONTRACTS.md](CONTRACTS.md) fixes everything the M2 streams share: one owner per file, units, state fields, events, input actions and bindings, the APIs (hero, damage, projectiles, pickups, items and spells, swords, dungeons, shops and menus, music, loading cards, settings, save slots), ids and the reserved regions of the global grid. A stream that needs a change in a file it does not own asks for it in its report instead of editing.
 
@@ -96,3 +256,21 @@ needs its own art audit rather than substituting a generic prize.
 - Headless Chromium renders slowly, so tests step the simulation at fixed 1/60 s ticks through `window.__voxelHeroes` rather than waiting in real time.
 - Work happens in a local git repo. Parallel features use separate branches and worktrees, and an integration pass merges them. In M2 each stream works on `feat/m2-<stream>`, keeps one scenario in `scripts/scenarios/<stream>.mjs` and saves its screenshots under `/mnt/project-files/voxel-heroes-shots/m2/<stream>/`.
 - Trent puts the code on GitHub himself; each milestone ships a source zip and the playable link.
+
+
+### Clockfair and borrowed-hour story pass (2026-10-01)
+
+Reported town/future bugs are followed by the visible-reward and single-shield
+pass in [REWARD-SHIELD.md](REWARD-SHIELD.md). Native NPC grants, the complete
+fanfare model catalog, held guard, six tiers, saves, small touch layouts and
+remote friend presentation have dedicated muted acceptance cases.
+
+Mossbrook now has The Bells We Borrow, an optional 70-second native pot activity
+with blinking targets, committed wind-up notes, occupied-safe clay stands, shared
+rounds, independent travel, a one-time party medal reward and saved best times.
+The arch is in the open southeast square at (12,10). King Aldric and the three
+ending pages now connect the four temple hours to Mira and Caldrin. Responsive
+centered panels retain the complete text in short viewports. See CLOCKFAIR.md
+for scope, saved-state rules, fixtures and silent acceptance commands. The bank
+contains 1,490 compressed Kokoro recordings; no model ships. More town life,
+encounter variety, original story integration and art polish remain ongoing.

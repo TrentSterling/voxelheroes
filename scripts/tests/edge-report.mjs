@@ -1,7 +1,7 @@
 // Where do paths lead nowhere? Every walkable tile on an outer screen edge with no screen beyond it.
 import { chromium } from 'playwright';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11'] });
 const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
 await page.goto('http://localhost:4179/?seed=1&manual=1');
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1);

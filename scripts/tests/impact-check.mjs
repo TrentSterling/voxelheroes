@@ -3,7 +3,7 @@
 //   npx vite preview --port 4179   then   node scripts/tests/impact-check.mjs
 import { chromium } from 'playwright';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11'] });
 const page = await browser.newPage({ viewport: { width: 1000, height: 600 } });
 await page.goto('http://localhost:4179/?seed=1');
 await page.waitForFunction(() => window.__voxelHeroes?.version >= 1);

@@ -91,6 +91,24 @@ reload; the pickup claim sets the found flag. `ui/screens/journal.js` is a
 canvas mode opened with L, Back/View or its play button. It reads campaign
 state and pauses local gameplay while the player reviews tasks.
 
+`game/objective.js` derives quest steps from live progress and location. Every
+journal entry has a stable `id`; journal selection follows that id when shared
+progress changes its sorting priority. The personal saved `trackedQuest` field
+is validated against the registered task list. Completed tasks resolve to no
+pin, including during a remote turn-in or serialization. New games and older
+saves default to automatic guidance. `party.applyWelcome` retains the guest's
+active choice while loading the host adventure; a released completed pin stays
+untracked when joining a fresh adventure. The choice is not part of party
+progress packets. Quest completion, inventory and story flags remain unchanged.
+
+The objective HUD uses a short task instruction and opens the full journal
+entry through `objective-open`. Pinned instructions may use two rows when the
+view has enough height; short landscape keeps one fitted row. Centre HUD rows
+also reserve the clock, equipped item and counters at their actual height.
+Track/Untrack and Auto have a separate footer
+row above task and Read navigation. The tracked task's heading replaces a
+duplicate objective paragraph; titles and rewards wrap within their columns.
+
 Tobin's stump and pot-seal cellar are in `world/areas/village-quests.js` and
 `world/tiles/village-quests.js`; the keepsake grant is in `systems/village-quests.js`.
 Rook's three-room bow adventure is in `world/areas/rook-den.js`,
@@ -100,11 +118,22 @@ that arrow source lights the two targets. Permanent target, bridge, treasure
 and quiver state shares through ordinary party hooks. Rook's saved quest tag
 reoffers the new route to older saves that completed his former bush errand.
 
-`game/npc-voices.js` uses installed local English `speechSynthesis` voices for
-focused named-NPC dialogue. `ui/dialog.js` speaks the visible screenful, stops
-on advance or close, and preserves complete reading without speech support.
-Settings, mute and the effects volume control playback; no model or remote
-speech service is downloaded.
+`game/npc-voices.js` loads authored Kokoro Opus clips from the voice-bank catalog.
+`ui/dialog.js` retains the authored paragraph alongside its visible text pages,
+stops playback on advance or close, and preserves complete reading without
+speech. Settings, mute and the effects volume control playback. Kokoro runs
+only in the development recording worker; the game downloads individual clips.
+
+`game/companions.js` presents one Mira and one Tern outside room actor snapshots.
+The living party leader publishes Mira's existing `companion` pose and Tern in
+the additive `companions.tern` field. Each follower trails real movement and
+finds clear floor after a discontinuous arrival. Tern's resident uses the same
+native voxel pose kit and hides when his saved recruitment flag is active.
+Bell Shelter consumes held Guard plus a Sword press before normal attacks,
+then publishes a technique cue. Eligible nearby heroes keep a local three-second
+ward, with no shared magic cost. `game/hero.js` runs registered temporary hit
+guards after the ordinary shield check and only for blockable contact/shots.
+Hazards, unblockable shots, room changes and save/reset do not retain that ward.
 
 `systems/item-prize.js` consumes the model factory already carried by item-get
 events through the hero API. It creates one personal scene instance above the
@@ -1841,3 +1870,38 @@ voxel models and child transforms replicate through the existing actor codec.
 
 The four sages grant Reveal, Reflect, Quake and Freeze. Each learned spell
 adds one maximum magic; Freeze costs four for heroes without focus.
+
+## Barrow encounter and journal pages
+
+`entities/barrow-bell.js` is an encounter actor, not an enemy. Its primitive
+`ai` phase, warning, mute and wave fields use the existing actor snapshot codec.
+The current room owner advances it; guests call `present()` and send pot tile
+hits through the normal `onShot` RPC. Authored reinforcements use unique IDs
+derived from the controller, wave and index. Their safe-floor search excludes
+the owner and target hero. A new owner continues the snapshotted quiet interval.
+
+`registerRoomClearBlocker(id, predicate)` lets an encounter hold the room clear
+without changing the actual enemy count. Dungeon shutters, clear rewards,
+companion conversations and the fight bot all honor `roomClearBlocked()`.
+The controller changes to `done` before calling `checkRoomCleared()`.
+Do not count the controller as a guard or emit room-clear between its waves.
+
+The inherited `barrow` tileset owns the local e/o/p/u/m/i glyphs. Registering
+those globally on `dungeon` would shadow the crypt's e spawn marker. Raised
+rubble and plinths use detail layers with reported height bounds.
+`systems/barrow-story.js` owns the saved clear/quiet/memory flags and the
+one-time nested `magic-container` grant. The optional chest can be revealed
+after combat if the hero missed every pot during the fight.
+
+Journal descriptions allocate rows after reserving reward and navigation space.
+Short screens show one task; small portrait screens use two footer rows.
+`journal-detail-next` and the confirm action page the whole description.
+`journalView()` exposes page count and shown text for character-coverage checks.
+Journal buttons use one pixel of extra hit padding, keeping adjacent task and
+footer regions disjoint. Touch stick/button handlers ignore pointer events
+already consumed by the canvas, so a menu gesture cannot also activate a control
+beneath it. Short title/party panels use compact spacing, and dungeon maps place
+floor bands side by side whenever the measured widths fit the short screen.
+The mode switch publishes `body.dataset.gameMode`; CSS hides the gameplay pad
+behind party, journal, settings, map, pause and inventory panels. Title mode keeps
+its own existing pad rule. Other modes retain their touch action controls.

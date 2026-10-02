@@ -1,0 +1,38 @@
+import {fairState,fairRead,fairLift,fairThrow,fairRingAll} from '../lib/clockfair.mjs';
+export const description='Clockfair native arch travel, unarmed clay lifting, empty-stand occupancy and refill, no clay loot, choices, live light timing, wrong-tool/dark-bell rejection, warning/dodge/guard/hit, timeout, actual six-throw wins, repeat record, one-time coins, saves and return. Gear, invulnerability outside pressure, positions and isolated light/attack clock fixtures are disclosed. Browser output muted; NPC recordings disabled.';
+export default async function(t){
+ const safe=()=>t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;h.setHp(h.state.maxHp);});
+ const photo=async name=>{await t.page.waitForFunction(()=>!window.__voxelHeroes.game.banner.bannerView().visible);await t.eval(()=>window.__voxelHeroes.player.hero.root.visible=true);await t.shot(name);};
+ await t.eval(()=>{const h=window.__voxelHeroes;h.game.progress.startNewGame({prologue:false});h.state.settings.muted=true;h.game.audio.setMuted(true);h.game.audio.setVolumes({master:0});h.game.settings.setSetting('npcVoices',false);h.player.invT=999;h.state.swords.owned=[];h.state.swords.equipped=null;h.state.gear.shield=1;h.state.coins=0;});
+ t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.world.screens.get('v1:1,1');return h.world.tileDef(s,'=').name==='bridge'&&h.world.tileDef(s,'V').name==='clockfair-arch';}),'the fair arch uses a separate tile while inherited town bridges retain their definition');
+ await t.teleport('v1:1,1',11.7,10.5);await photo('01-the-fair-in-town');await t.walkTo(12.5,10.5,{allowHooks:true,soft:true});await t.step(1.6);
+ t.expect((await t.state()).key==='mossbrook-fair:0,0','actual walking through the square brass arch enters the fair');
+ t.expect((await fairState(t)).ai?.phase==='idle','the fair waits for an affirmative board choice');await photo('02-six-borrowed-bells');
+ await fairRead(t,1);t.expect((await fairState(t)).ai.phase==='idle'&&(await fairState(t)).requests.length===0,'actual Later choice leaves the clock and reward untouched');
+ await fairLift(t,0);t.expect((await fairState(t)).carrying&&(await fairState(t)).loot===false,'actual unarmed A lifts practice clay with loot disabled');
+ await t.walkTo(2.5,12.5);await t.step(.8);t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return h.world.tile(s.x0+2,s.z0+12)==='o'&&!h.world.blocked(h.player.x,h.player.z,h.player.r,h.player);}), 'an occupied empty stand does not regrow a pot into the hero');
+ await t.walkTo(4.5,13.5);await t.step(.2);t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return h.world.tile(s.x0+2,s.z0+12)==='v';}),'a vacant clay stand refills through the native controller');await t.tap('sword');await t.step(.8);
+ t.expect((await fairState(t)).coins===0&&await t.eval(()=>!window.__voxelHeroes.entities.some(e=>e.kind==='pickup')),'broken unlimited practice clay creates no coin or heart loot');
+ await fairRead(t,0);t.expect((await fairState(t)).ai.phase==='running'&&(await fairState(t)).requests.length===1,'actual affirmative Read starts one shared seventy-second attempt');await photo('03-a-light-to-follow');
+ await t.step(2.9);t.expect(!(await fairState(t)).ai.lit&&(await fairState(t)).ai.target===0&&!(await fairState(t)).medal,'the native light clock blinks without skipping an unhit bell');await t.step(.7);t.expect((await fairState(t)).ai.lit&&(await fairState(t)).ai.target===0,'an unhit bell lights again without a whole-room rotation wait');
+ await fairLift(t,0);await t.walkTo(3.5,4.6);await t.eval(()=>{const h=window.__voxelHeroes,m=h.entities.find(e=>e.type==='fair-clock');m.ai.target=0;m.ai.lit=false;m.ai.beat=5;h.game.hero.hero.setFacing('north');});await t.tap('sword');await t.step(.3);
+ t.expect((await fairState(t)).ai.mask===0,'a real clay throw at a controlled dark bell does not score');
+ await t.eval(()=>{const h=window.__voxelHeroes;h.game.inventory.giveItem('fire-wand');h.game.inventory.selectItem('fire-wand');const a=h.entities.find(e=>e.type==='fair-clock').ai;a.target=0;a.lit=true;a.beat=5;});await t.tap('item');await t.step(.35);
+ t.expect((await fairState(t)).ai.mask===0,'a real flame cannot substitute for practice clay');
+ const pressure=async()=>t.eval(()=>{const h=window.__voxelHeroes,m=h.entities.find(e=>e.type==='fair-clock');for(const e of [...h.entities])if(e.type==='fair-note')e.remove();h.game.hero.hero.place(7.5,11.5);h.game.hero.hero.setFacing('north');h.player.invT=h.player.knockT=h.player.lockT=h.player.stallT=0;h.setHp(h.state.maxHp);m.ai.shotT=0;m.ai.warning=false;m.ai.elapsed=0;window.__fairHits=[];if(!window.__fairHitListener){window.__fairHitListener=true;h.game.events.on('hero-hit',e=>{if(e.source?.type==='fair-note')window.__fairHits.push(e.result);});}});
+ await pressure();await t.step(.02);t.expect((await fairState(t)).ai.warning&&await t.eval(()=>window.__voxelHeroes.entities.find(e=>e.type==='fair-clock').cue.visible),'actual machine clock warns before committing its direction');await photo('04-wind-up-warning');const hp=(await fairState(t)).hp;await t.stick(1,0,.45);await t.step(2.2);
+ t.expect((await fairState(t)).hp===hp&&(await fairState(t)).ai.warning===false,'actual sidestep avoids the committed notes');
+ await pressure();await t.eval(()=>window.__voxelHeroes.input.down('guard'));await t.step(2.6);await t.eval(()=>window.__voxelHeroes.input.up('guard'));
+ t.expect((await fairState(t)).hp===hp&&await t.eval(()=>window.__fairHits.includes('blocked')&&!window.__fairHits.includes('hit')),'real held starter shield blocks the native practice notes');
+ await pressure();await t.step(2.6);t.expect((await fairState(t)).hp<hp&&await t.eval(()=>window.__fairHits.includes('hit')),'unguarded native notes deal real damage');await safe();await t.step(71);
+ t.expect((await fairState(t)).ai.phase==='timeout'&&!(await fairState(t)).medal&&(await fairState(t)).coins===0,'timeout ends the attempt, removes notes and awards nothing');await photo('05-another-round');
+ await fairRead(t,0);await fairRingAll(t);let v=await fairState(t);
+ t.expect(v.ai.phase==='won'&&v.ai.mask===63&&v.medal,'six actual lift, movement and timed clay throws earn the medal');
+ t.expect(v.coins===60&&v.times.length===1&&await t.eval(()=>!window.__voxelHeroes.entities.some(e=>e.type==='fair-note')),'the first real win pays sixty coins, records a time and clears notes');await photo('06-six-bells-together');
+ const earned=await t.save();await t.load(earned);await safe();await t.step(.2);v=await fairState(t);
+ t.expect(v.medal&&v.coins===60&&v.times.length===1&&v.ai.phase==='idle','earned medal, coins and best time survive reload while the activity returns to its board');
+ await fairRead(t,0);await fairLift(t,0);await fairThrow(t,0);const partial=await t.save();await t.load(partial);await safe();await t.step(.2);
+ t.expect((await fairState(t)).ai.phase==='idle'&&(await fairState(t)).coins===60,'loading an unfinished repeat does not grant coins or restart an old timer');
+ await fairRead(t,0);await fairRingAll(t);v=await fairState(t);t.expect(v.medal&&v.coins===60&&v.ai.phase==='won','a complete real repeat keeps the medal and cannot pay another reward');
+ await t.walkTo(8.5,15.5,{allowHooks:true,soft:true});await t.step(1.6);t.expect((await t.state()).key==='v1:1,1','actual southern arch returns to the town hub without an immediate re-entry');await photo('07-the-fair-stays-open');
+}

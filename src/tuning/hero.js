@@ -12,7 +12,7 @@ export const hero = {
   ledgePush: 0.2,
   ledgeHop: 0.35,
   interactRange: 1.0,
-  prize: { time: 1.0, height: 1.18, size: 1.0, yaw: 0.5, turn: 0.7, bob: 0.04,
+  prize: { time: 1.65, height: 1.14, size: 1.0, yaw: 0.35, turn: 0.45, bob: 0.035,
     top: 0.21, phoneTop: 0.24, phoneHeader: 200 },
 };
 
@@ -34,6 +34,8 @@ export const sword = {
   swipe: 90,
   beam: { speed: 12, size: 0.4, range: 6.5 }, // the full-life sword beam (systems/sword.js startSwing)
   enemyFlash: 0.3,
+  enemyFlashColor: 0xffe0b0,
+  enemyFlashStrength: .32,
   regainFlash: 0.2,
   freezePerLevel: 1.0, // seconds a freeze-special hit freezes, per level
   starTime: 3, // seconds of invulnerability from the star special

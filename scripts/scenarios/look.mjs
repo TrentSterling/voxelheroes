@@ -245,12 +245,20 @@ export default async function lookScenario(t) {
   t.expect(room.statues === 'prop' && room.flames > 0, `statues in the prop kind, ${room.flames} glowing flames`);
 
   // ---------------------------------------------------------------- frame-time watchdog
-  // The real-time loop at medium quality (unpinned) in software GL: frames take seconds, so the
-  // watchdog must drop to low (high -> medium works the same way; a high frame here takes ~12 s).
+  // A disclosed slow-render fixture makes the real-time watchdog check
+  // independent of whether this engine uses software GL or the local GPU.
   await t.teleport('overworld:1,1', 8, 5.5, { yaw: 0 });
   await t.eval(() => {
     const h = window.__voxelHeroes;
     h.look.set('medium', { pin: false });
+    window.__lookOriginalRender = h.gfx.renderer.render;
+    h.gfx.renderer.render = function(scene, camera) {
+      if (scene === h.gfx.scene) {
+        const start = performance.now();
+        while (performance.now() - start < 30) { /* actual slow-render fixture */ }
+      }
+      return window.__lookOriginalRender.call(this, scene, camera);
+    };
     h.setManual(false);
   });
   // poll (real time) until the watchdog acts, for up to 60 s
@@ -259,7 +267,8 @@ export default async function lookScenario(t) {
     i = await info(t);
     if (i.drops.length) break;
   }
-  await t.eval(() => window.__voxelHeroes.setManual(true));
+  await t.eval(() => {const h=window.__voxelHeroes;h.setManual(true);h.gfx.renderer.render=window.__lookOriginalRender;delete window.__lookOriginalRender;});
+  t.note('Watchdog used a 30 ms delay per native scene draw; production renderer is unchanged.');
   t.note(`watchdog: ${JSON.stringify(i.watchdog)}`);
   t.expect(i.drops.length >= 1 && i.quality === 'low', `watchdog dropped quality: ${i.drops.map((d) => `${d.from}->${d.to} (median ${d.median} ms)`).join(', ') || 'none'}`);
   await t.eval(() => window.__voxelHeroes.look.set('high'));

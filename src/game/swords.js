@@ -42,6 +42,7 @@ import { TUNING } from '../core/tuning.js';
 import { registerGrant } from '../systems/grants.js';
 import { isFullLife, spendCoins, canAfford } from './vitals.js';
 import './fields.js';
+import { rewardModel } from '../models/items/rewards.js';
 
 export const SWORD_STATS = ['length', 'width', 'strength', 'spin', 'beam', 'pierce', 'special'];
 export const STAT_RANGES = { length: [0, 20], width: [0, 20], strength: [1, 20], spin: [0, 1], beam: [0, 3], pierce: [0, 1], special: [0, 5] };
@@ -81,6 +82,7 @@ export function registerSword(def) {
   if (!(budget === Infinity || (Number.isFinite(budget) && budget >= 0))) throw new Error(`Sword "${def.id}": budget must be 0 or more coins (Infinity: no cap)`);
   if (def.model != null && typeof def.model !== 'function') throw new Error(`Sword "${def.id}": model must be a function returning a THREE.Object3D`);
   const full = { name: def.id, description: '', order: 100, icon: '', model: null, source: '', ...def, base, max, price, budget, special: def.special ?? null };
+  full.model ??= rewardModel(def.id, 'sword');
   swords.set(def.id, full);
   registerGrant(def.id, () => giveSword(def.id), { name: full.name, fanfare: true, kind: 'sword', model: full.model });
   return full;

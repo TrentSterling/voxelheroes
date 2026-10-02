@@ -33,7 +33,7 @@ if(manifest.textBoundsReceipt)for(const path of [manifest.textBoundsReceipt.path
 if(manifest.npcVoicesReceipt)for(const path of [manifest.npcVoicesReceipt.path,root+'/npc-native-voices.json'])assert.equal(createHash('sha256').update(readFileSync(path)).digest('hex'),manifest.npcVoicesReceipt.sha256,'Native voice receipt changed: '+path);
 if(manifest.publicPartyRerun)assert.deepEqual(JSON.parse(readFileSync(root+'/public-party-rerun-blocked.json','utf8')),manifest.publicPartyRerun,'Public-relay rerun limitation changed');
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];

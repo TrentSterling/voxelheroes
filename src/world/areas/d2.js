@@ -8,6 +8,19 @@ export const HIVE_PALETTE = { ...GOLD, floor: 0x435e50, floorRing: 0x64816a, gro
 // passages use explicit warps so the breach persists independently of room clears.
 const room = (name, doors, props = [], extra = {}) => {
   const rows = Array.from({ length: 12 }, (_, z) => Array.from({ length: 16 }, (_, x) => x === 0 || x === 15 || z === 0 || z === 11 ? 'W' : '.'));
+  // Walkable floor kits leave the authored doors and puzzle props untouched.
+  // Each wing has a readable use: growing beds, service grates or crown glass.
+  for (let z = 1; z < 11; z++) for (let x = 1; x < 15; x++) {
+    const pollinator = ['Mossbridge', 'Pollinator Court'].includes(name);
+    const service = ['Powder Cache', 'Root Counterweight', 'Crossfire Nursery'].includes(name);
+    const crown = ['Amber Key', 'Crown Antechamber', 'Second Light', 'Scarlet Well'].includes(name);
+    const broken = ['Breached Gallery', 'Forgotten Pay', 'Broken Patrol'].includes(name);
+    rows[z][x] = pollinator ? (x === 3 || x === 12 ? '=' : z === 3 || z === 8 || name === 'Pollinator Court' && x >= 6 && x <= 9 ? '+' : 'e')
+      : service ? (x === 3 || x === 12 ? 'u' : z === 4 || z === 7 ? 'j' : 'e')
+      : crown ? (x >= 6 && x <= 9 ? 'a' : (x + z) % 5 === 0 ? 'o' : 'e')
+      : broken ? ((x * 3 + z * 5) % 7 < 2 ? 'p' : z === 5 || z === 6 ? 'a' : 'e')
+      : (x === 6 || x === 9 ? 'u' : z === 3 || z === 8 ? 'o' : 'e');
+  }
   for (const [side, tile] of Object.entries(doors)) {
     for (const k of [0, 1]) rows[side === 'n' ? 0 : side === 's' ? 11 : 5+k][side === 'w' ? 0 : side === 'e' ? 15 : 7+k] = tile;
   }
@@ -31,11 +44,24 @@ const screens = {
   '3,2': room('Breached Gallery', { w: 'y', e: 'z', n: '.', s: '.' }, [[5,3,'g'],[10,8,'g'],[4,6,'S'],[11,4,'S'],[12,8,'v']], {
     warps: { '0,5': { area: 'd2', screen: [2,2], x: 13, z: 6, yaw: -Math.PI/2 }, '0,6': { area: 'd2', screen: [2,2], x: 13, z: 6, yaw: -Math.PI/2 }, y: { area: 'd2', screen: [4,2], x: 2.5, z: 6, yaw: Math.PI/2 } },
   }),
-  '3,3': room('Forgotten Pay', { n: '.' }, [[8,4,'c'],[5,7,'b'],[11,7,'b'],[3,3,'F'],[12,3,'F']], { chest: { grant: 'coins', amount: 70 } }),
-  '3,1': room('Crossfire Nursery', { s: 'H' }, [[4,3,'t'],[11,8,'t'],[7,3,'S'],[8,8,'S'],[5,6,'b'],[11,4,'v'],[4,8,'v']], { clear: 'key', keyAt: [8,6], encounterHint: 'Use the two pillars to break the turrets’ lines of fire.' }),
+  '3,3': room('Forgotten Pay', { n: '.' }, [[8,4,'c'],[3,3,'F'],[12,3,'F']], { chest: { grant: 'coins', amount: 70 }, spawnsAt: { '5,7': 'nursery-pollinator', '11,7': 'nursery-pollinator' } }),
+  '3,1': room('Crossfire Nursery', { s: 'H' }, [[4,3,'1'],[11,8,'2'],[11,3,'3'],[3,3,'m'],[12,3,'m'],[2,8,'T'],[4,8,'v']], {
+    clear: 'key', keyAt: [8,6], encounterHint: 'Leave the glowing channel before it bursts. Bomb each brass seal to quiet its lane.',
+    tablet: ['ROOTGLASS MUNICIPAL NURSERY: Seedlings reserved for the children of Mossbrook. Collection overdue: 300 years.',
+      'Three brass seals hold the irrigation under pressure. Bomb a seal to quiet its marked floor channel. Clear the wardens to reach the nursery key.',
+      'A clock is not a heart. It does not know when to stop waiting.'],
+    spawnsAt: { '8,4': 'hive-pressure', '5,6': { type: 'skeleton', once: true }, '11,5': { type: 'skeleton', once: true }, '6,8': { type: 'barrow-warden', once: true }, '13,8': 'bomb-supply' },
+  }),
   '4,2': room('Amber Key', { w: 'y' }, [[8,4,'c'],[3,3,'F'],[12,3,'F'],[3,8,'v'],[12,8,'v']], { chest: 'key-boss', warps: { y: { area: 'd2', screen: [3,2], x: 13, z: 6, yaw: -Math.PI/2 } } }),
-  '2,1': room('Mossbridge', { s: '.', w: '.', n: 'l' }, [[3,2,'O'],[4,2,'O'],[3,3,'O'],[4,3,'O'],[11,7,'O'],[12,7,'O'],[11,8,'O'],[12,8,'O'],[5,4,'b'],[10,6,'b'],[3,9,'v']], {}),
-  '1,1': room('Three Watchers', { e: '.', n: 'r' }, [[3,0,'w'],[5,0,'w'],[12,0,'w'],[4,4,'S'],[11,4,'S'],[8,8,'T']], { switches: { opens: 'key', window: 7 }, keyAt: [8,6], tablet: ['Wake the three eyes together. Send the returning wood along the north wall.', 'The red door keeps a larger well of magic.'] }),
+  '2,1': room('Mossbridge', { s: '.', w: '.', n: 'l' }, [[3,2,'O'],[4,2,'O'],[3,3,'O'],[4,3,'O'],[11,7,'O'],[12,7,'O'],[11,8,'O'],[12,8,'O'],[3,9,'v']], { encounterHint: 'Dodge pink. Strike rest.', spawnsAt: { '5,4': 'nursery-pollinator', '10,6': 'nursery-pollinator' } }),
+  '1,1': room('Three Watchers', { e: '.', w: '.', n: 'r' }, [[3,0,'w'],[5,0,'w'],[12,0,'w'],[4,4,'S'],[11,4,'S'],[8,8,'T']], { switches: { opens: 'key', window: 7 }, keyAt: [8,6], tablet: ['Wake the three eyes together. Send the returning wood along the north wall.', 'The red door keeps a larger well of magic.', 'The western greenhouse still tends its empty flower beds. Pink wing marks mean: step aside.'] }),
+  '0,1': room('Pollinator Court', { e: 'H' }, [[3,3,'v'],[12,8,'v'],[4,5,'m'],[11,5,'m'],[8,3,'h'],[2,2,'T'],[3,2,'F'],[12,2,'F']], {
+    clear: 'chest', chest: { grant: 'heart-piece' }, encounterHint: 'Dodge pink. Strike rest.',
+    spawnsAt: { '5,3': 'nursery-pollinator', '10,7': 'nursery-pollinator' },
+    tablet: ['ROOTGLASS POLLINATOR COURT: Children may collect their seedlings on the first warm morning.',
+      'The morning never came. The brass wings kept turning. Someone left a little heart here for the next child through the door.',
+      'Raised leaves mark a straight dive. Step aside, strike the resting body, or interrupt with returning wood and clay.'],
+  }),
   '1,0': room('Scarlet Well', { s: '.' }, [[8,4,'c'],[4,3,'F'],[11,3,'F']], { chest: 'magic-container' }),
   '2,0': room('Crown Antechamber', { s: '.', n: 'B' }, [[8,6,'Z'],[3,8,'Y'],[5,4,'T'],[3,3,'F'],[12,3,'F'],[12,8,'v']], {
     tablet: ['The queen circles, folds, then rests. Strike the open crown.', 'Her amber shots bend toward you. Move sideways; a steel shield can catch them.', 'A bomb beneath the queen scatters her brood and turns her crown over.'],
@@ -44,10 +70,10 @@ const screens = {
   }),
   '0,0': room('Second Light', { s: 'X' }, [[8,4,'c'],[3,3,'F'],[12,3,'F']], { chest: 'orb-2', spawnsAt: { '4,6': { type: 'npc-sage', name: 'Sage Oriel', spell:'spell-reflect', grantLines:['Two lights awake. Let your guard send a spell back to its caster.','Reflect lasts ten seconds. Hold your shield when a shot reaches you.'], afterLines:['Keep the bombs. Old stone hides more than this one path.','The eastern road leads to Sunreach Basin.'] } } }),
 };
-registerArea({ id: 'd2', name: 'Rootglass Hive', kind: 'dungeon', tileset: 'dungeon', lighting: 'crypt', camera: 'dungeon', rooms: true, origin: [220,0], start: [2,4], entrance: D2_ENTRANCE, keyGroup: 'd2', palette: HIVE_PALETTE, spawns: { s: 'skeleton', n: 'barrow-warden', b: 'bat', g: 'gazer', t: 'turret' }, warps: { X: D2_EXIT }, screens });
+registerArea({ id: 'd2', name: 'Rootglass Hive', kind: 'dungeon', tileset: 'hive', lighting: 'crypt', camera: 'dungeon', rooms: true, origin: [220,0], start: [2,4], entrance: D2_ENTRANCE, keyGroup: 'd2', palette: HIVE_PALETTE, spawns: { s: 'skeleton', n: 'barrow-warden', b: 'bat', g: 'gazer', t: 'turret' }, warps: { X: D2_EXIT }, screens });
 
-registerArea({ id: 'd2-boss', name: 'Amber Crown', kind: 'arena', tileset: 'dungeon', lighting: 'crypt', camera: 'boss', rooms: true, screen: [22,16], at: [228*16,0], entrance: D2_ENTRANCE, keyGroup: 'd2', palette: HIVE_PALETTE, spawns: { q: { type: 'boss-queen', dungeon: 'd2' }, k: { type: 'queen-tombstone', dungeon: 'd2' } }, screens: { '0,0': {
+registerArea({ id: 'd2-boss', name: 'Amber Crown', kind: 'arena', tileset: 'hive', lighting: 'crypt', camera: 'boss', rooms: true, screen: [22,16], at: [228*16,0], entrance: D2_ENTRANCE, keyGroup: 'd2', palette: HIVE_PALETTE, spawns: { q: { type: 'boss-queen', dungeon: 'd2' }, k: { type: 'queen-tombstone', dungeon: 'd2' } }, screens: { '0,0': {
   name: 'Amber Crown',
   warps: { '10,0': { area: 'd2', screen: [0,0], x: 8, z: 9, yaw: Math.PI }, '11,0': { area: 'd2', screen: [0,0], x: 8, z: 9, yaw: Math.PI }, '10,15': { area: 'd2', screen: [2,0], x: 8, z: 2, yaw: 0 }, '11,15': { area: 'd2', screen: [2,0], x: 8, z: 2, yaw: 0 } },
-  rows: ['WWWWWWWWWWUUWWWWWWWWWW','W....................W','W.F................F.W','W....................W','W..........q.........W','W....................W','W....................W','W....................W','W....................W','W....................W','W....................W','W..........k.........W','W....................W','W.F................F.W','W....................W','WWWWWWWWWWUUWWWWWWWWWW'],
+  rows: ['WWWWWWWWWWUUWWWWWWWWWW','W....................W','W.F................F.W','W....................W','W..........q.........W','W....................W','W....................W','W....................W','W....................W','W....................W','W....................W','W..........k.........W','W....................W','W.F................F.W','W....................W','WWWWWWWWWWUUWWWWWWWWWW'].map((row, z) => [...row].map((ch, x) => ch !== '.' ? ch : x >= 8 && x <= 13 ? 'a' : z % 4 === 2 ? 'o' : 'e').join('')),
 } } });

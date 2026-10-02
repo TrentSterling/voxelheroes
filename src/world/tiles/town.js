@@ -24,6 +24,9 @@ const STONE_DARK = 0x8e8a82;
 const WALL_TOP = 12; // blocks of wall above the ground
 
 function house(ctx, door) {
+  const palette=ctx.owner?.area?.housePalette ?? {};
+  const roof=palette.roof ?? ROOF, roofDark=palette.roofDark ?? ROOF_DARK;
+  const plaster=palette.plaster ?? PLASTER, timber=palette.timber ?? TIMBER;
   const top = land(ctx, { kind: 'dirt' });
   const { T, X0, Z0 } = ctx;
   const isH = (dx, dz) => ['H', 'h'].includes(ctx.tileAt(dx, dz));
@@ -38,20 +41,20 @@ function house(ctx, door) {
     if (h < 2) return BASE;
     const edgeX = (west && X === X0) || (east && X === X0 + 7);
     const edgeZ = (south && Z === Z0 + 7) || (north && Z === Z0);
-    if (h === WALL_TOP - 1 || h === 2 || (edgeX && (edgeZ || Z === Z0 || Z === Z0 + 7)) || (edgeX && edgeZ)) return TIMBER;
-    return shadeHex(PLASTER, 1 + (hash3(X, Y, Z, 3) - 0.5) * 0.04);
+    if (h === WALL_TOP - 1 || h === 2 || (edgeX && (edgeZ || Z === Z0 || Z === Z0 + 7)) || (edgeX && edgeZ)) return timber;
+    return shadeHex(plaster, 1 + (hash3(X, Y, Z, 3) - 0.5) * 0.04);
   });
   // a window or the door on the front face
   if (south) {
     const Z = Z0 + 7;
     if (door) {
       T.box(X0 + 2, y0, Z, X0 + 6, y0 + 7, Z + 1, DOOR);
-      T.box(X0 + 1, y0 + 7, Z, X0 + 7, y0 + 8, Z + 1, TIMBER);
+      T.box(X0 + 1, y0 + 7, Z, X0 + 7, y0 + 8, Z + 1, timber);
       T.set(X0 + 5, y0 + 3, Z, 0xe6b43a);
     } else {
       T.box(X0 + 2, y0 + 4, Z, X0 + 6, y0 + 8, Z + 1, GLASS);
-      T.box(X0 + 2, y0 + 6, Z, X0 + 6, y0 + 7, Z + 1, TIMBER);
-      T.box(X0 + 1, y0 + 3, Z, X0 + 7, y0 + 4, Z + 1, TIMBER);
+      T.box(X0 + 2, y0 + 6, Z, X0 + 6, y0 + 7, Z + 1, timber);
+      T.box(X0 + 1, y0 + 3, Z, X0 + 7, y0 + 4, Z + 1, timber);
     }
   }
   // the roof: rises from the eaves, one block up per block in
@@ -60,8 +63,8 @@ function house(ctx, door) {
     const Z = Z0 + k;
     const rise = Math.min(north ? k : 9, south ? 7 - k : 9, 7);
     for (let X = X0; X < X0 + 8; X++) {
-      const c = (Z + (rise % 2)) % 2 ? ROOF : ROOF_DARK;
-      T.box(X, ry, Z, X + 1, ry + rise + 1, Z + 1, (x, Y) => (Y === ry + rise ? c : shadeHex(ROOF_DARK, 0.8)));
+      const c = (Z + (rise % 2)) % 2 ? roof : roofDark;
+      T.box(X, ry, Z, X + 1, ry + rise + 1, Z + 1, (x, Y) => (Y === ry + rise ? c : shadeHex(roofDark, 0.8)));
     }
   }
 }

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GROUND_Y } from '../core/constants.js';
 import { scene } from '../core/renderer.js';
 import { makeHero } from '../models/hero.js';
+import { makeGuardShield, poseShield } from '../models/hero/shield.js';
 import { modelMesh } from '../models/kit.js';
 import { potModel } from '../models/props.js';
 import { Entity } from '../entities/entity.js';
@@ -15,7 +16,8 @@ export function createFriend(id, rank, onBonk) {
   const e = new Entity({ r: 0.4 });
   e.type = 'party-hero'; e.kind = 'friend'; e.peerId = id;
   e.screenScoped = false; e.swordable = true;
-  const hero = makeHero(undefined, { tunic: partyColor(rank), blade: null });
+  const hero = makeHero(undefined, { tunic: partyColor(rank), blade: null, shield: null });
+  e.guardShield = makeGuardShield();
   e.hero = hero; e.object = hero.root; e.object.visible = false;
   e.struckBy = new Set();
   e.onSword = (hit) => {
@@ -39,6 +41,7 @@ export function createFriend(id, rank, onBonk) {
     e.object.position.set(e.x, GROUND_Y, e.z);
     e.object.rotation.y += Math.atan2(Math.sin(data.yaw - e.object.rotation.y), Math.cos(data.yaw - e.object.rotation.y)) * k;
     hero.setPose(data.pose || 'stand');
+    poseShield(e.guardShield, hero.body, data.shield ?? 0, { guarding: !!data.guarding && data.pose === 'stand', hidden: data.pose === 'cheer' || !!data.carrying });
     if (data.carrying && !e.pot) { e.pot = modelMesh(potModel()); e.pot.position.y = 1.05; hero.root.add(e.pot); }
     if (!data.carrying && e.pot) { e.pot.removeFromParent(); e.pot = null; }
     if (data.blade && !e.blade) {

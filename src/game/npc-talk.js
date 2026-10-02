@@ -108,25 +108,27 @@ export function talksWith(name) {
   return friend(name).talks;
 }
 
-export function chatLine(npc) {
+export function chatLine(npc, raw = false) {
   const P = PERSONALITIES[personalityOf(npc)];
   const tier = Math.min(P.chat.length - 1, Math.floor(heartsOf(npc.name) / 2));
   const lines = P.chat[tier];
   const i = friend(npc.name).talks % lines.length;
-  return fill(lines[i]);
+  return raw ? lines[i] : fill(lines[i]);
 }
 
-export function bark(npc, kind) {
+export function bark(npc, kind, raw = false) {
   if (kind === 'greet') {
     const ctx = contextGreet(npc);
-    if (ctx) return ctx;
+    if (ctx) return raw ? ctx : fill(ctx);
     const beat = storyLine(npc);
-    if (beat) return beat;
+    if (beat) return raw ? beat : fill(beat);
   }
-  const list = (npc.barks?.[kind]) ?? PERSONALITIES[personalityOf(npc)][kind];
+  const authored = (npc.barks?.[kind]) ?? PERSONALITIES[personalityOf(npc)][kind];
+  const list = typeof authored === 'string' ? [authored] : authored;
   if (!list?.length) return null;
   npc.barkN = (npc.barkN ?? 0) + 1;
-  return fill(list[(npc.barkN + (npc.seed ?? 0)) % list.length]);
+  const text = list[(npc.barkN + (npc.seed ?? 0)) % list.length];
+  return raw ? text : fill(text);
 }
 
 // ---------------------------------------------------------------- ambient reactions (charm)
@@ -217,7 +219,7 @@ function contextGreet(npc) {
   if (!hit || npc.next() < 0.4) return null;
   f.ctxDay = today;
   const list = hit.lines[personalityOf(npc)] ?? hit.lines.cheery;
-  return fill(list[Math.floor(npc.next() * list.length)]);
+  return list[Math.floor(npc.next() * list.length)];
 }
 
 // ---------------------------------------------------------------- a small story, per villager
@@ -336,7 +338,7 @@ function storyLine(npc) {
   if (step >= beats.length || step >= STORY_AT.length) return null;
   if (talksWith(npc.name) !== STORY_AT[step]) return null;
   f.storyStep = step + 1;
-  return fill(beats[step]);
+  return beats[step];
 }
 
 export const heartString = (n) => (n > 0 ? ' ' + '♥'.repeat(n) : '');
@@ -378,8 +380,9 @@ export function giveGift(npc, id) {
   const r = befriend(npc.name, GIFT_POINTS[taste]);
   f.talks -= GIFT_POINTS[taste] > 0 ? 1 : 0; // a gift is not a conversation
   const tpl = typeof REACTIONS[taste] === 'string' ? REACTIONS[taste] : REACTIONS[taste][p];
-  const line = fill(tpl.replace('{gift}', g.name).replace(/^./, (c) => c.toUpperCase()));
-  return { line, taste, ...r };
+  const template = tpl.replace('{gift}', g.name).replace(/^./, (c) => c.toUpperCase());
+  const line = fill(template);
+  return { line, template, taste, ...r };
 }
 
 // ---------------------------------------------------------------- heart events
@@ -409,7 +412,8 @@ export function pendingHeartEvent(npc) {
   return null;
 }
 
-export function heartEventLines(npc, at) {
+export function heartEventLines(npc, at, raw = false) {
   friend(npc.name).events.push(at);
-  return (HEART_EVENTS[at][personalityOf(npc)] ?? HEART_EVENTS[at].cheery).map(fill);
+  const lines = HEART_EVENTS[at][personalityOf(npc)] ?? HEART_EVENTS[at].cheery;
+  return raw ? [...lines] : lines.map(fill);
 }

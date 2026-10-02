@@ -30,6 +30,8 @@ import { areaScreenSize, areaCorner, areaStart } from './areas.js';
 import { screenKey, tileKey } from './grid.js';
 import { edgeReport } from './links.js';
 import { partyHooks } from '../multiplayer/adapters.js';
+import { entities, bucketOf } from '../entities/manager.js';
+import { player } from '../entities/player.js';
 
 // The spatial index: square cells of CELL tiles, each listing the screens
 // that overlap it.
@@ -725,6 +727,7 @@ export class World {
   // Tiles marked `regrow` (bushes) come back each time a screen is entered.
   regrow(screen) {
     if (!partyHooks.regrow(screen)) return;
+    const bodies = [player, ...entities, ...bucketOf(screen)].filter((e) => !e.removed && (e === player || e.solid || e.kind === 'enemy'));
     for (let z = 0; z < screen.h; z++)
       for (let x = 0; x < screen.w; x++) {
         const base = screen.base[z][x];
@@ -734,7 +737,14 @@ export class World {
         const n = getTile(screen.tileset, now);
         // cut bushes and broken pots come back (props: no re-mesh); a pushed statue goes back where
         // it stood and its new spot clears (terrain: re-mesh)
-        if (b?.regrow || (n?.regrow && n.onPush)) this.setTile(screen.x0 + x, screen.z0 + z, base, { rebuild: !b?.prop && !n?.prop, reason: 'regrow' });
+        if (b?.regrow || (n?.regrow && n.onPush)) {
+          const tx = screen.x0 + x, tz = screen.z0 + z;
+          const box = solidExtent(this.locate(tx, tz), tx, tz);
+          // A wanderer or hero may now occupy the cleared pot. Restore it
+          // on a later visit, rather than growing solid scenery through them.
+          if (bodies.some((e) => isSolidDef(b, e) && e.x + e.r > box[0] && e.x - e.r < box[2] && e.z + e.r > box[1] && e.z - e.r < box[3])) continue;
+          this.setTile(tx, tz, base, { rebuild: !b?.prop && !n?.prop, reason: 'regrow' });
+        }
       }
   }
 

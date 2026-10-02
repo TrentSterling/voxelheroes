@@ -65,14 +65,14 @@ const ring = (x, y, w, h, color) => {
 };
 
 export const COLORS = {
-  panel: 'rgba(8, 17, 13, 0.9)',
+  panel: 'rgba(18, 24, 43, 0.94)',
   ink: '#f3ecd2',
-  muted: '#b8c4a6',
-  gold: '#f1c232',
-  goldDeep: '#b8871b',
-  edge: '#050a07',
+  muted: '#b5c9d4',
+  gold: '#efca7d',
+  goldDeep: '#a87b48',
+  edge: '#090e20',
   line: 'rgba(243, 236, 210, 0.38)',
-  shade: '#0a140f',
+  shade: '#151e36',
 };
 
 // The drawing kit. All positions are logical pixels and are rounded to whole ones.
@@ -129,14 +129,14 @@ export const g = {
   // A text button: registers its own hit region, lights up under the pointer, dips when pressed.
   // Returns its width.
   button(id, label, x, y, onPress, opts = {}) {
-    const { size = 1, pad = 5, on = false } = opts;
+    const { size = 1, pad = 5, on = false, hitPad = 3 } = opts;
     const {w,h,lines}=g.buttonMetrics(label,{size,pad,maxWidth:opts.maxWidth});
     const hot = hover === id;
     const down = pressed === id;
     const py = y + (down ? 1 : 0);
     g.panel(x, py, w, h, { shadow: !down, fill: on ? 'rgba(241, 194, 50, 0.22)' : hot ? 'rgba(243, 236, 210, 0.16)' : COLORS.panel });
     lines.forEach((line,i)=>g.text(line.text,x+pad,py+3+i*LINE*size,{size,color:hot||on?COLORS.ink:COLORS.muted}));
-    g.hit(id, x - 3, y - 3, w + 6, h + 6, onPress); // a fingertip is bigger than the plate
+    g.hit(id, x - hitPad, y - hitPad, w + hitPad * 2, h + hitPad * 2, onPress);
     return w;
   },
   // The gold call-to-action button (a panel's main one). Returns its width.

@@ -60,10 +60,10 @@ export default async function(t){
   await hook(8.5,7.7,'north',p=>p.z<4);await warp(7,0,'d3:2,7');await t.shot('08-upper-landing');
   await go('west','Hook and Guard');
   // Place a guard on a clear line to inspect the tool's one-second stun.
-  await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen(),e=h.entities.find(e=>e.type==='skeleton');e.x=s.x0+6.5;e.z=s.z0+5;e.recover(5);h.game.hero.hero.place(6.5,8,Math.PI);h.game.inventory.selectItem('grapple');});
+  await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen(),e=h.entities.find(e=>e.type==='skeleton'),sentry=h.entities.find(e=>e.type==='watch-sentinel');sentry.x=s.x0+12.5;sentry.z=s.z0+2.5;sentry.think=()=>{};e.x=s.x0+6.5;e.z=s.z0+5;e.recover(5);h.game.hero.hero.place(6.5,8,Math.PI);h.game.inventory.selectItem('grapple');});
   const guardHp=await t.eval(()=>window.__voxelHeroes.entities.find(e=>e.type==='skeleton').hp);
   await t.tap('item');await t.step(.25);
-  t.expect(await t.eval(hp=>{const e=window.__voxelHeroes.entities.find(e=>e.type==='skeleton');return e.hp===hp&&e.stunT>.5;},guardHp),'real hook stuns a guard for a sword opening without damaging it');await kill();await go('east','Upper Landing');
+  t.expect(await t.eval(hp=>{const e=window.__voxelHeroes.entities.find(e=>e.type==='skeleton');return e.hp===hp&&e.stunT>.5;},guardHp),'real hook stuns a guard for a sword opening without damaging it');await kill();await chest(8,3);t.expect(await t.eval(()=>window.__voxelHeroes.game.inventory.hasItem('sun-dial')),'the optional upper cache extends the grapple');await answer();await go('east','Upper Landing');
   await go('north','The Missing Bridge');await hook(8.5,7.7,'north',p=>p.z<4,'09a-pit-pull');await t.shot('09-missing-bridge');
   await hook(8.5,3.5,'south',p=>p.z>7);await go('east','Crossing Arsenal');await kill();await hook(6.3,6.5,'east',p=>p.x>10);await go('east','Watchkeeper Crown');
   await hook(8.5,8.3,'north',p=>p.z<4);await chest(8,2);t.expect(await t.eval(()=>window.__voxelHeroes.game.dungeons.hasBossKey('d3')),'hooking the distant crown chest unlocks the boss route');

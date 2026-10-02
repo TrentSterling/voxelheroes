@@ -95,20 +95,32 @@ const VOXEL_COLOR = /* glsl */ `
 // floor at his feet stays), only nearer the camera than he is, never the characters. The original
 // avoids most of this by keeping camera-side props low; this catches the rest.
 const cutUniforms = {
-  cutHero: { value: new THREE.Vector3(0, -1000, 0) },
+  cutTargets: { value: Array.from({ length: 8 }, () => new THREE.Vector3(0, -1000, 0)) },
+  cutCount: { value: 0 },
+  cutEnd: { value: .6 },
   cutCam: { value: new THREE.Vector3(0, 1000, 0) },
   cutRadius: { value: 1.1 },
   cutFloor: { value: 0 },
 };
 export function setCutaway(hero, cam, floorY) {
-  cutUniforms.cutHero.value.copy(hero);
+  setPartyCutaway([hero], cam, floorY);
+}
+export function setPartyCutaway(targets, cam, floorY) {
+  const n = Math.min(targets.length, cutUniforms.cutTargets.value.length);
+  for (let i = 0; i < n; i++) cutUniforms.cutTargets.value[i].copy(targets[i]);
+  cutUniforms.cutCount.value = n;
+  cutUniforms.cutEnd.value = n > 1 ? .15 : .6;
   cutUniforms.cutCam.value.copy(cam);
   cutUniforms.cutFloor.value = floorY;
 }
+export const cutawayView = () => ({ targets: cutUniforms.cutTargets.value.slice(0, cutUniforms.cutCount.value).map(v => v.toArray()),
+  camera: cutUniforms.cutCam.value.toArray(), floor: cutUniforms.cutFloor.value, end: cutUniforms.cutEnd.value });
 const CUT_VERTEX = 'varying vec3 vCutPos;';
 const CUT_FRAGMENT_PARS = /* glsl */ `
 varying vec3 vCutPos;
-uniform vec3 cutHero;
+uniform vec3 cutTargets[8];
+uniform int cutCount;
+uniform float cutEnd;
 uniform vec3 cutCam;
 uniform float cutRadius;
 uniform float cutFloor;
@@ -120,13 +132,19 @@ float cutBayer(vec2 p) {
 }`;
 const CUT_FRAGMENT = /* glsl */ `
 {
-  vec3 ray = cutHero - cutCam;
-  float len2 = dot(ray, ray);
-  float t = dot(vCutPos - cutCam, ray) / len2;
-  if (t > 0.0 && t < 1.0 - 0.6 / sqrt(len2) && vCutPos.y > cutFloor + 0.2) {
-    float d = length(vCutPos - (cutCam + ray * t));
-    float k = 1.0 - smoothstep(cutRadius * 0.55, cutRadius, d);
-    if (k > cutBayer(gl_FragCoord.xy)) discard;
+  if (vCutPos.y > cutFloor + 0.2) {
+    float dissolve = 0.0;
+    for (int i = 0; i < 8; i++) {
+      if (i >= cutCount) break;
+      vec3 ray = cutTargets[i] - cutCam;
+      float len2 = max(dot(ray, ray), 0.0001);
+      float t = dot(vCutPos - cutCam, ray) / len2;
+      if (t > 0.0 && t < 1.0 - cutEnd / sqrt(len2)) {
+        float d = length(vCutPos - (cutCam + ray * t));
+        dissolve = max(dissolve, 1.0 - smoothstep(cutRadius * 0.55, cutRadius, d));
+      }
+    }
+    if (dissolve > cutBayer(gl_FragCoord.xy)) discard;
   }
 }`;
 
@@ -185,7 +203,7 @@ export class VoxelMaterial extends THREE.MeshStandardMaterial {
   }
   customProgramCacheKey() {
     if (!this.procedural) return 'voxel-plain-v1';
-    return this.cutaway ? 'voxel-bevel-seam-cut-v1' : 'voxel-bevel-seam-v1';
+    return this.cutaway ? 'voxel-bevel-seam-cut-v2' : 'voxel-bevel-seam-v1';
   }
   copy(source) {
     super.copy(source);

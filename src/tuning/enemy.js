@@ -42,7 +42,6 @@ export const enemy = {
     teleportGone: 1.0,
     teleportMinDist: 3,
     frontGuardArc: 60,
-    gazeParalyze: 1.0,
   },
   // Crowned elites: the crown floats this high over the enemy (tiles).
   crownHeight: 1.05,
@@ -68,7 +67,8 @@ export const enemy = {
     skeleton: { hp: 6, contact: 1, speed: 2, turnChance: 0.25, r: 0.36, sight: 6, attackReach: 2.8, tell: 0.55, rushSpeed: 5.2, rushTiles: 2.5, recovery: 0.85 },
     'barrow-warden': { hp: 9, contact: 1, speed: 1.7, r: 0.42, sight: 8, attackReach: 3.2, tell: 0.7, rushSpeed: 6, rushTiles: 3, recovery: 1.2 },
     bat: { hp: 3, contact: 1, speed: 4, r: 0.3, height: 0.8 },
-    gazer: { hp: 6, contact: 1, speed: 1.5, sight: 7, boltSpeed: 7, boltDamage: 2, cooldown: 2.0, r: 0.38 },
+    'nursery-pollinator': { hp: 9, contact: 2, speed: 1.4, r: .38, sight: 5, tell: .85, diveSpeed: 6, diveTiles: 4.5, recovery: 1.25, cooldown: .75 },
+    gazer: { hp: 6, contact: 1, speed: 1.5, sight: 7, boltSpeed: 7, boltDamage: 2, cooldown: 2.0, tell: 1.0, recovery: 0.7, r: 0.38 },
   },
 };
 

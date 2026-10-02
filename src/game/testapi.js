@@ -37,6 +37,10 @@ import * as objective from '../game/objective.js';
 import * as banner from '../ui/banner.js';
 import * as npcFx from '../entities/npc-fx.js';
 import * as npcVoices from './npc-voices.js';
+import * as npcTalk from './npc-talk.js';
+import * as companions from './companions.js';
+import * as partyCamera from './party-camera.js';
+import * as materials from '../core/materials.js';
 import * as mapScreen from '../ui/screens/map.js';
 import * as settingsPanel from '../ui/settings-panel.js';
 import * as toast from '../ui/toast.js';
@@ -72,6 +76,10 @@ import * as errands from './errands.js';
 
 export const gameApi = {
   npcVoices,
+  npcTalk,
+  companions,
+  partyCamera,
+  materials,
   version: 1,
   tuning,
   events,

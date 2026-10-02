@@ -145,7 +145,7 @@ function currentLens() {
 }
 
 // The preset in use (fitted to the current room), for code that reads the lens.
-export const currentCameraPreset = () => currentLens();
+export const currentCameraPreset = () => viewLens ?? currentLens();
 
 // Switch preset; rect (a screen) fits presets that scale with room width.
 export function setCameraPreset(name = DEFAULT_PRESET, rect = null) {
@@ -326,19 +326,107 @@ export function followSubject(pos, rect) {
 let headroom = null;
 export function setCameraHeadroom(target) { headroom = target; }
 
-export function placeCamera() {
-  const lens = currentLens();
+// Presentation fits nearby figures after the original solo target and slide
+// have been calculated. It never changes transition thresholds or camTarget.
+let partyFrame = null, viewLens = null, framing = null;
+export function setCameraFrame(frame) {
+  if (frame && (!partyFrame || frame.key !== partyFrame.key ||
+      Math.hypot(frame.anchor.x - partyFrame.anchor.x, frame.anchor.z - partyFrame.anchor.z) > 4)) framing = null;
+  partyFrame = frame;
+}
+
+function frameIntervals(p, points, safe, prefer) {
+  let loZ = -Infinity, hiZ = Infinity;
+  for (const v of points) {
+    loZ = Math.max(loZ, subjectZForRow(p, safe.bottom, v.y - GROUND_Y, v.z));
+    // A top ray above the horizon imposes no ground-subject upper bound.
+    if (p.pitch * DEG > Math.atan((1 - 2 * safe.top) * Math.tan(p.fov * DEG / 2)))
+      hiZ = Math.min(hiZ, subjectZForRow(p, safe.top, v.y - GROUND_Y, v.z));
+  }
+  if (headroom) hiZ = Math.min(hiZ, subjectZForRow(p, headroom.row, headroom.height, headroom.z));
+  // All horizontal bounds have the same subject-z slope. Solve the least
+  // southward subject that fits the width before deciding to zoom out.
+  let loX0 = -Infinity, hiX0 = Infinity;
+  for (const v of points) {
+    const hw = halfWidthAt(p, v.z, camera.aspect, v.y - GROUND_Y);
+    loX0 = Math.max(loX0, v.x - (2 * safe.right - 1) * hw);
+    hiX0 = Math.min(hiX0, v.x - (2 * safe.left - 1) * hw);
+  }
+  const grow = 2 * (safe.right - safe.left) * Math.tan(p.fov * DEG / 2) * camera.aspect * Math.cos(p.pitch * DEG);
+  loZ = Math.max(loZ, (loX0 - hiX0) / grow + 1e-7);
+  if (loZ > hiZ) return null;
+  const z = THREE.MathUtils.clamp(prefer.z, loZ, hiZ);
+  let loX = -Infinity, hiX = Infinity;
+  for (const v of points) {
+    const hw = halfWidthAt(p, v.z - z, camera.aspect, v.y - GROUND_Y);
+    if (hw <= 0) return null;
+    loX = Math.max(loX, v.x - (2 * safe.right - 1) * hw);
+    hiX = Math.min(hiX, v.x - (2 * safe.left - 1) * hw);
+  }
+  return loX <= hiX ? { x: THREE.MathUtils.clamp(prefer.x, loX, hiX), z, loX, hiX, loZ, hiZ } : null;
+}
+
+function fitPartyFrame(base, dt) {
+  if (!partyFrame) {
+    if (!framing) return { lens: base, subject: camTarget };
+    const k = Math.exp(-10 * dt);
+    for (const field of ['dx', 'dz', 'height', 'pitch']) framing[field] *= k;
+    if (Math.max(...['dx', 'dz', 'height', 'pitch'].map(f => Math.abs(framing[f]))) < .001) framing = null;
+    return framing ? { lens: { ...base, height: base.height + framing.height, pitch: base.pitch + framing.pitch },
+      subject: { x: camTarget.x + framing.dx, z: camTarget.z + framing.dz } } : { lens: base, subject: camTarget };
+  }
+  const p = { ...base, pitch: Math.max(base.pitch, 28) };
+  let best = null;
+  for (const safe of partyFrame.regions) {
+    let height = p.height, fit = frameIntervals(p, partyFrame.points, safe, camTarget);
+    if (!fit) {
+      let lo = height, hi = Math.max(height, Math.min(height * 4, 40));
+      if (!frameIntervals({ ...p, height: hi }, partyFrame.points, safe, camTarget)) continue;
+      for (let i = 0; i < 12; i++) {
+        const mid = (lo + hi) / 2;
+        if (frameIntervals({ ...p, height: mid }, partyFrame.points, safe, camTarget)) hi = mid;
+        else lo = mid;
+      }
+      height = hi;
+      fit = frameIntervals({ ...p, height }, partyFrame.points, safe, camTarget);
+    }
+    const score = 8 * (height / p.height - 1) + .2 * Math.hypot(fit.x - camTarget.x, fit.z - camTarget.z) / p.height;
+    if (!best || score < best.score) best = { ...fit, height, safe, score };
+  }
+  if (!best) return { lens: base, subject: camTarget }; // pathological tiny viewport
+  const k = 1 - Math.exp(-10 * dt);
+  if (!framing) framing = { dx: best.x - camTarget.x, dz: best.z - camTarget.z, height: best.height - base.height, pitch: p.pitch - base.pitch };
+  else {
+    framing.dx = THREE.MathUtils.lerp(framing.dx, best.x - camTarget.x, k);
+    framing.dz = THREE.MathUtils.lerp(framing.dz, best.z - camTarget.z, k);
+    // Expand as needed to keep members visible; ease back when they close up.
+    framing.height = Math.max(best.height - base.height, THREE.MathUtils.lerp(framing.height, best.height - base.height, k));
+    framing.pitch = p.pitch - base.pitch;
+  }
+  const lens = { ...p, height: base.height + framing.height };
+  const prefer = { x: camTarget.x + framing.dx, z: camTarget.z + framing.dz };
+  const fit = frameIntervals(lens, partyFrame.points, best.safe, prefer) ?? best;
+  framing.dx = fit.x - camTarget.x; framing.dz = fit.z - camTarget.z;
+  camera.userData.partyFrame = { targets: partyFrame.targets, safe: best.safe, scale: lens.height / base.height };
+  return { lens, subject: { x: fit.x, z: fit.z } };
+}
+
+export function placeCamera(dt = 1 / 60) {
+  camera.userData.partyFrame = null;
+  const base = currentLens();
+  const framed = fitPartyFrame(base, dt);
+  const lens = viewLens = framed.lens;
   if (camera.fov !== lens.fov) {
     camera.fov = lens.fov;
     camera.updateProjectionMatrix();
   }
-  const subject = headroom ? { x: camTarget.x, z: Math.min(camTarget.z,
-    subjectZForRow(lens, headroom.row, headroom.height, headroom.z)) } : camTarget;
+  const subject = headroom ? { x: framed.subject.x, z: Math.min(framed.subject.z,
+    subjectZForRow(lens, headroom.row, headroom.height, headroom.z)) } : framed.subject;
   poseCamera(camera, lens, subject);
   if (shake.t > 0) {
     const k = (shake.t / shake.dur) ** 2;
-    shake.t -= 1 / 60;
-    shake.n++;
+    shake.t = Math.max(0, shake.t - dt);
+    if (dt > 0) shake.n++;
     camera.position.x += Math.sin(shake.n * 2.9) * shake.amp * k;
     camera.position.y += Math.sin(shake.n * 3.7 + 1) * shake.amp * 0.6 * k;
   }
@@ -354,6 +442,7 @@ export function shakeCamera(amp = 0.06, dur = 0.12) {
 }
 
 export function snapCamera(target) {
+  framing = partyFrame = viewLens = null;
   camTarget.copy(target);
   tween = null;
 }

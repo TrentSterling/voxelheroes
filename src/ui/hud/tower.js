@@ -1,5 +1,7 @@
+import { clockAnchorCount } from '../../systems/tower-clock.js';
 import { registerHudWidget } from '../hud.js';
 import { entities } from '../../entities/manager.js';
 import { COLORS } from '../canvas/gfx.js';
-const remaining=()=>{const b=entities.find(e=>e.type==='boss-bishop'&&e.trial&&!e.removed);return b?Math.max(0,Math.ceil(120-b.ai.clock)):null;};
-registerHudWidget({id:'reflection-time',region:'center',order:30,key:()=>String(remaining()),measure(g){const t=remaining();return t===null?null:[g.measure('Endure: '+t+'s')+2,9];},draw(g,s,x,y){g.text('Endure: '+remaining()+'s',x+1,y+1,{color:COLORS.gold,outline:COLORS.shade});}});
+const visible=()=>entities.some(e=>e.type==='boss-bishop'&&e.trial&&!e.removed);
+const label=()=>`Anchors: ${clockAnchorCount()}/4`;
+registerHudWidget({id:'reflection-clock',region:'center',order:30,key:()=>visible()?label():'-',measure(g,s,maxW){if(!visible())return null;return[g.measure(g.fit(label(),Math.max(1,(maxW??g.w)-2)))+2,9];},draw(g,s,x,y,w){g.text(g.fit(label(),w-2),x+1,y+1,{color:COLORS.gold,outline:COLORS.shade});}});

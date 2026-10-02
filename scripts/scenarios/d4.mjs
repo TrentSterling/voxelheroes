@@ -28,7 +28,7 @@ export default async function(t){
   t.expect(await t.eval(()=>window.__voxelHeroes.game.objective.objectiveId())==='enter-d4','third orb points to the coastal temple');
   await t.teleport('sunreach:2,1',9.3,8.5);await clearFoes(t);await hook(9.3,8.5,'east',p=>p.x>11);await go('east','Hookshore Landing');await clearFoes(t);await t.shot('01-coast-landing');
   await go('east','Tide Garden');await clearFoes(t);await go('north','The Brineglass Temple');await clearFoes(t);await warp(8,6,'d4:2,3');await t.shot('02-tide-entrance');
-  t.expect(await t.eval(()=>window.__voxelHeroes.game.dungeons.dungeonRooms('d4').filter(r=>r.room).length)===25,'the temple registers twenty-five rooms on two floors');
+  t.expect(await t.eval(()=>window.__voxelHeroes.game.dungeons.dungeonRooms('d4').filter(r=>r.room).length)===26,'the temple registers twenty-six rooms on two floors');
   await go('west','Lantern Patrol');await kill();await t.walkTo(8,7);t.expect(await t.eval(()=>window.__voxelHeroes.game.keys.keyCount('d4'))===1,'lantern patrol gives the first key');
   await go('north','Tide Charts');await chest(8,4);await t.tap('map');await t.shot('03-tide-map');await t.tap('map');
   await go('west','Sluice Counterweight');await t.walkTo(4.5,7.5);await t.stick(1,0,4.5);await t.step(1);await t.walkTo(8,3);

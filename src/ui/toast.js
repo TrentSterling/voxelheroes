@@ -10,8 +10,10 @@
 import { state } from '../core/state.js';
 import { on } from '../core/events.js';
 import { registerUiPart, requestUi, COLORS } from './canvas/gfx.js';
+import { bannerView } from './banner.js';
 
 const FADE = 200; // ms in and out
+const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 let cur = null; // { text, t0, until }
 const lastShown = new Map();
 const live = (now) => !!cur && now < cur.until + FADE;
@@ -34,7 +36,7 @@ export function toast(text, seconds = 1.6) {
 }
 
 // What the toast says now, for tests.
-export const toastView = () => ({ text: cur?.text ?? '', visible: !!cur && performance.now() < cur.until });
+export const toastView = () => ({ text: cur?.text ?? '', visible: !!live(performance.now()) });
 
 // Drawn in the UI canvas: a small plate low in the view, fading in and out.
 registerUiPart({
@@ -43,13 +45,18 @@ registerUiPart({
   key: () => (live(performance.now()) ? cur.text : '-'),
   busy: live,
   draw(g) {
-    if (!live(g.now)) return;
+    if (!live(g.now) || (coarse && bannerView().visible)) return;
     const a = Math.min(1, (g.now - cur.t0) / FADE, (cur.until + FADE - g.now) / FADE);
     g.alpha(a);
-    const lines = g.wrap(cur.text, Math.max(24, g.w - g.safe.l - g.safe.r - 32));
+    const compact = coarse && g.h < 200;
+    const maxWidth = Math.max(24, Math.min(compact ? 84 : Infinity, g.w - g.safe.l - g.safe.r - 32));
+    let lines = g.wrap(cur.text, maxWidth);
+    // Feedback is transient; reserve the space above touch controls. Full story
+    // paragraphs remain in dialog/journal, while long feedback fits two rows.
+    if (coarse && lines.length > 2) lines = [lines[0], { text: g.fit(lines.slice(1).map(line => line.text).join(' '), maxWidth) }];
     const w = Math.max(...lines.map(line => g.measure(line.text))) + 16;
     const h = 4 + lines.length * 11;
-    const y = g.h - 36 - g.safe.b - h;
+    const y = coarse ? compact ? g.safe.t + 68 : Math.max(g.safe.t + 34, g.h - g.safe.b - 140 - h - 4) : g.h - 36 - g.safe.b - h;
     g.panel((g.w - w) / 2, y, w, h, { shadow: false });
     lines.forEach((line, i) => g.text(line.text, g.w / 2, y + 4 + i * 11, { align: 'center', color: COLORS.ink }));
   },

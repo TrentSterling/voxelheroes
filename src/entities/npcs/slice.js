@@ -36,10 +36,10 @@ class King extends CharmNpc {
     const sp = { speaker: this.name };
     if (hasFlag('campaign:complete')) {
       setFlag('overworld:celebrated');
-      return showDialog(['{hero}, the four lights shine again. The hollow crown has fallen.', 'You brought dawn back to the coast, the watch, the hive and our valley. Mossbrook will remember.', 'Your adventure is complete. Stay a while, help your friends, and explore whatever you left behind.'], sp);
+      return showDialog(['{hero}, the city clock is moving. For the first time in years, I heard a thirteenth bell and it was only someone laughing.', 'Caldrin tried to keep one perfect morning forever. He forgot that people have to leave a moment to reach each other.', 'You brought our four borrowed hours home. The barrow, nursery, watch and shore can belong to their people again.', 'Mossbrook is waiting. Visit the Clockfair, help the friends you met, and leave a light for anyone still on the road.'], sp);
     }
     if (!state.swords.equipped || !state.swords.owned?.length) {
-      await showDialog(['{hero}! Thank the stars you came.', 'The old barrow west of Mossbrook has broken open, and worse things walk out of it every night.', 'Take this blade and this shield. They were my father\'s.'], sp);
+      await showDialog(['{hero}! Mira says the town bell has rung thirteen times. She was counting the hours we have, and the one we lost.', 'Our city clock borrowed its light from four temples. Now the barrow is awake and its keeper will not let the first hour go.', 'My father promised those lights would always find their way home. I thought it was only a story for children.', 'Take his blade and this shield. Bring back the hour of return, and find out who is keeping tomorrow from us.'], sp);
       grant('blade-start', 1, { source: 'npc' });
       if (!state.swords.equipped) equipSword('blade-start');
       if ((state.gear.shield ?? 0) < 1) state.gear.shield = 1;
@@ -51,8 +51,11 @@ class King extends CharmNpc {
     // before this flag existed, or any other way the hero ends up already armed, still
     // needs one real talk with the king to move the "Next:" objective off his name.
     setFlag('overworld:talked:king');
-    if (hasFlag('boss:d1')) return showDialog(['You beat the warden of the barrow! The whole valley sleeps easier.', 'But the orb you found is only the first of four...'], sp);
-    return showDialog(['The barrow lies west of Mossbrook, then south.', 'Cut the grass as you go. Coins hide everywhere.'], sp);
+    if ([1,2,3,4].every(n=>hasFlag('orb:'+n))) return showDialog(['Four temple lights. They were never jewels for my crown. They were hours for our clock.', 'The Fourfold Tower stands east of Pilgrim Strand. Carry them through its door; Iona will know how to free the hands.', 'If you find Caldrin inside, tell him a town cannot stay in one morning forever.'], sp);
+    if (hasFlag('boss:d3')) return showDialog(['The watch kept the hour of reaching. Its trains once brought shore children to Mossbrook for the fair.', 'Go south from Sunreach to Brineglass. Its lamp was meant for the person who arrived after everyone else.', 'Mara still tends that coast. Ask her who was missing when the last train left.'], sp);
+    if (hasFlag('boss:d2')) return showDialog(['The nursery kept the hour of change. Its seedlings were meant for a town willing to grow.', 'Follow Sunreach east to the Buried Watch. Someone broke its last bridge and buried the timetable.', 'Bring its light home too. There are people a clock cannot replace.'], sp);
+    if (hasFlag('boss:d1')) return showDialog(['The barrow has given back the hour of return. The dead can rest without holding the living in place.', 'The forest nursery kept the next light. Its pumps still tend seedlings no one collected.', 'Go north from Barrowfield into Rootglass. I want to know who those seedlings were for.'], sp);
+    return showDialog(['The barrow lies west of Mossbrook, then south. Its first light belongs to the city clock.', 'Try Wyll\'s Clockfair in the southeast corner of Mossbrook Square if your hands need practice. Clay and a bright bell are better teachers than my speeches.'], sp);
   }
 }
 registerEntity('npc-king', (opts) => new King(opts));

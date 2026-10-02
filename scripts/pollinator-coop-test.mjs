@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import {mkdirSync,writeFileSync,readFileSync,readdirSync} from 'node:fs';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
+import {firefox} from 'playwright';
+import {launch,startServer} from './playtest.mjs';
+import {startRelay} from './lib/nostr-relay.mjs';
+const arg=n=>process.argv.find(a=>a.startsWith(`--${n}=`))?.slice(n.length+3);
+const out=arg('out')??'playtest-out/pollinator-coop',url=arg('url');mkdirSync(out,{recursive:true});
+const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(d,e.name)):[join(d,e.name)]),fp=createHash('sha256');
+for(const f of [...walk('src'),...walk('public/voices'),'index.html','package.json','package-lock.json'].sort()){fp.update(f.replaceAll('\\','/')+'\0');fp.update(readFileSync(f));}
+const result={startedUtc:new Date().toISOString(),sourceSha256:fp.digest('hex'),checks:[],fixtures:'Muted Chromium/Firefox, real local Trystero RTC, local Nostr and empty ICE. Gear, positions, one isolated moth, selected initial timers and a normal-length transfer warning are fixtures. Native guest movement and boomerang, physical owner departure and simultaneous physical chest pushes are tested. Heroes are vulnerable for the dodge; later transfer uses invulnerability. Greenhouse guards are killed through the damage API to isolate reward sharing. Solo scenarios separately verify actual sword kills. No public or separate-network connectivity claim.'};
+const pages=[];let server,relay,fox;
+const check=(ok,label)=>{assert.ok(ok,label);result.checks.push(label);console.log('PASS '+label);};
+try{
+ server=url?{url,close:async()=>{}}:await startServer();relay=await startRelay();fox=await firefox.launch({headless:true,firefoxUserPrefs:{'media.volume_scale':'0.0'}});
+ const host=await launch({url:server.url,out:`${out}/host`}),guest=await launch({url:server.url,out:`${out}/guest`,browser:fox});pages.push(host,guest);
+ for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.game.audio.setMuted(true);h.game.audio.setVolumes({master:0});h.game.settings.setSetting('npcVoices',false);h.game.progress.startNewGame({prologue:false});h.game.inventory.giveItem('boomerang');h.game.inventory.selectItem('boomerang');});
+ const config={appId:'voxelheroes-pollinator-test',relayUrls:[relay.url],rtcConfig:{iceServers:[]}};
+ await host.eval(c=>window.__voxelHeroes.game.party.createParty('POLLEN',c),config);await guest.eval(c=>window.__voxelHeroes.game.party.joinParty('POLLEN',c),config);
+ for(const t of pages)await t.page.waitForFunction(()=>window.__voxelHeroes.game.party.partyView().count===2&&window.__voxelHeroes.game.party.partyConnections().some(c=>c.state==='connected'),null,{timeout:45000});
+ const pump=async(n=1)=>{for(let i=0;i<n;i++){await Promise.all(pages.map(t=>t.step(.02)));await new Promise(r=>setTimeout(r,35));}};
+ const view=t=>t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return{screen:s.key,hp:h.state.hp,owner:h.game.party.roomOwner(s.key)===h.game.party.partyView().selfId,count:h.game.party.partyView().count,pieces:h.state.heartPieces,chest:s.key==='d2:0,1'?h.world.tile(s.x0+8,s.z0+3):null,opened:s.key==='d2:0,1'&&h.state.flags.has(`chest:${s.x0+8},${s.z0+3}`),moths:h.entities.filter(e=>!e.removed&&e.type==='nursery-pollinator').map(e=>({id:e.netId,ai:{...e.ai.pollinator},cue:e.cue.visible,pose:e.mesh.pose,hp:e.hp,stun:e.stunT,x:e.x-s.x0,z:e.z-s.z0})),hero:{x:h.player.x-s.x0,z:h.player.z-s.z0}};});
+ const until=async(pred,max=120)=>{for(let i=0;i<max;i++){const v=await Promise.all(pages.map(view));if(pred(v))return v;await pump();}throw Error('RTC did not converge: '+JSON.stringify(await Promise.all(pages.map(view))));};
+ check(true,'Muted Chromium and Firefox connect over real local RTC');
+ await host.teleport('d2:2,1',8.5,10.5);await guest.teleport('d2:2,1',9.5,6.5);await pump(60);
+ await host.eval(()=>{const h=window.__voxelHeroes;for(const e of [...h.entities])if(e.kind==='enemy'||e.kind==='projectile')e.remove();h.game.hero.hero.place(8.5,10.5);const e=h.spawn('nursery-pollinator',6.5,6.5);e.spawned=true;e.growT=1;e.holder.scale.setScalar(1);e.ai.pollinator.t=.6;});
+ let v=await until(v=>v.every(r=>r.moths.length===1));check(v[0].moths[0].id===v[1].moths[0].id,'Both friends see one shared native pollinator');
+ for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=0;h.setHp(h.state.maxHp);});const hp=(await Promise.all(pages.map(view))).map(v=>v.hp);
+ v=await until(v=>v.every(r=>r.moths[0]?.ai.phase==='tell'&&r.moths[0].cue));check(v.every(r=>r.moths[0].ai.dx>.99&&Math.abs(r.moths[0].ai.dz)<.01&&r.moths[0].pose==='tell'),'The guest-targeted committed warning and leaf pose reach both browsers');await guest.shot('01-shared-leaf-warning');
+ await guest.stick(0,-1,.2);v=await Promise.all(pages.map(view));check(v[1].hero.z<5.9,'Actual guest movement sidesteps the warned dive');
+ v=await until(v=>v.every(r=>r.moths[0]?.ai.dives===1&&r.moths[0].ai.phase==='rest'));check(v.every(r=>Math.abs(r.moths[0].z-6.5)<.03&&r.moths[0].x>9.5&&!r.moths[0].cue),'Both browsers retain the same straight dive and resting endpoint');
+ check(v.every((r,i)=>r.hp===hp[i]),'The vulnerable guest evades real contact while the owner remains unharmed');
+ for(const t of pages)await t.eval(()=>{window.__voxelHeroes.player.invT=999;});
+ await guest.eval(()=>{const h=window.__voxelHeroes;h.game.hero.hero.place(9.5,6.5);h.game.hero.hero.setFacing('west');});
+ await host.eval(()=>{const h=window.__voxelHeroes,e=h.entities.find(e=>e.type==='nursery-pollinator');e.x=h.screen().x0+6.5;e.z=h.screen().z0+6.5;Object.assign(e.ai.pollinator,{phase:'hover',t:.3});});
+ v=await until(v=>v.every(r=>r.moths[0]?.ai.phase==='tell'&&r.moths[0].cue));const dives=v[0].moths[0].ai.dives;await guest.tap('item');
+ v=await until(v=>v.every(r=>r.moths[0]?.ai.phase==='rest'&&r.moths[0].stun>1));check(v.every(r=>r.moths[0].hp===9&&!r.moths[0].cue),'Actual guest returning wood interrupts the shared moth for zero damage');await guest.shot('02-friend-interrupts-the-wings');await pump(25);
+ check((await Promise.all(pages.map(view))).every(r=>r.moths[0].ai.dives===dives),'Neither peer revives the canceled dive');
+ await guest.eval(()=>window.__voxelHeroes.game.hero.hero.place(9.5,7.5));
+ await host.eval(()=>{const h=window.__voxelHeroes,e=h.entities.find(e=>e.type==='nursery-pollinator');h.game.hero.hero.place(1.1,5.5);Object.assign(e,{stunT:0,knockT:0});Object.assign(e.ai.pollinator,{phase:'tell',t:.85,dx:1,dz:0,reach:3.75,left:0});});
+ v=await until(v=>v.every(r=>r.moths[0]?.ai.phase==='tell'&&r.moths[0].cue));const identity=v[0].moths[0].id;
+ await host.stick(-1,0,.35);v=await until(v=>v[1].owner&&v[1].moths[0]?.ai.phase==='tell',30);
+ check(v[1].moths[0].id===identity&&v[1].moths[0].ai.t>0,'Physical owner exit transfers the same live warning and remaining clock');
+ v=await until(v=>v[1].moths[0]?.ai.phase==='rest'&&v[1].moths[0].ai.dives===dives+1);check(v[1].moths[0].id===identity&&Math.abs(v[1].moths[0].z-6.5)<.03,'The new owner completes exactly one inherited dive');
+ check(v[0].screen==='d2:1,1'&&v[1].screen==='d2:2,1','Friends independently explore Three Watchers and Mossbridge');await guest.shot('03-guest-keeps-the-pollinator');
+ await host.teleport('d2:2,1',8.5,10.5);v=await until(v=>v[0].owner&&v.every(r=>r.moths.length===1&&r.moths[0].id===identity));check(true,'Reunion retains one enemy and returns room ownership');
+ await host.teleport('d2:0,1',13.5,6);await guest.teleport('d2:0,1',12.5,7);await pump(70);v=await until(v=>v.every(r=>r.moths.length===2&&r.chest==='h'));
+ check(v[0].moths.map(e=>e.id).sort().join()===v[1].moths.map(e=>e.id).sort().join(),'Both peers share the two greenhouse guards and hidden reward');
+ await host.eval(()=>{const h=window.__voxelHeroes;for(const e of h.entities.filter(e=>e.type==='nursery-pollinator'))h.game.damage.dealDamage(e,{amount:999,source:'bomb',from:{x:e.x,z:e.z-2}});});await until(v=>v.every(r=>r.moths.length===0&&r.chest==='c'));
+ for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.game.hero.hero.place(8.5,4.5);h.game.hero.hero.setFacing('north');});
+ await Promise.all(pages.map(t=>t.stick(0,-1,.4)));v=await until(v=>v.every(r=>r.pieces===1&&r.opened));check(true,'Simultaneous physical chest pushes grant exactly one permanent piece to each friend');await guest.shot('04-the-shared-heart');
+ await pump(60);for(const t of pages)await t.stick(0,-1,.3);await pump(10);v=await Promise.all(pages.map(view));check(v.every(r=>r.pieces===1),'Repeated pushes cannot duplicate either personal heart piece');
+ await host.eval(()=>window.__voxelHeroes.game.party.leaveParty());await pump(20);v=await until(v=>v[1].count===1&&v[1].owner);check(v[1].moths.length===0&&v[1].opened&&v[1].pieces===1,'Host departure preserves the cleared court and earned reward');
+ const saved=await guest.save();await guest.load(saved);await guest.step(.3);const loaded=await view(guest);check(loaded.pieces===1&&loaded.opened&&loaded.moths.length===0,'The remaining guest saves and reloads the completed greenhouse alone');
+ for(const t of pages)assert.deepEqual(t.errors,[]);check(true,'Neither browser reports game exceptions');result.ok=true;
+}catch(error){result.ok=false;result.error={message:error.message,stack:error.stack};result.snapshots=await Promise.all(pages.map(t=>t.state().catch(()=>null)));process.exitCode=1;console.error(error.stack);}
+finally{result.completedUtc=new Date().toISOString();writeFileSync(`${out}/result.json`,JSON.stringify(result,null,2));for(const t of pages)await t.close();await fox?.close();await relay?.close();await server?.close();}

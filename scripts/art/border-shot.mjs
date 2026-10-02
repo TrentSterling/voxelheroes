@@ -3,7 +3,7 @@
 import { chromium } from 'playwright';
 
 const [url = 'http://localhost:4179/', out = 'playtest-out/border.png'] = process.argv.slice(2);
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=d3d11'] });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio', '--use-angle=d3d11'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 await page.route(/widget\.json|discord/i, (r) => r.abort());
 await page.goto(`${url}?seed=1`);

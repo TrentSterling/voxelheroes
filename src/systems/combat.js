@@ -76,7 +76,16 @@ export function shieldBlocks(vx, vz) {
 export const enemiesLeft = () =>
   entities.filter((e) => !e.removed && e.kind === 'enemy' && e.countsForClear !== false).length;
 
+// Encounters can have a quiet interval before reinforcements arrive. Keep
+// that interval distinct from an empty, completed room.
+const clearBlockers = new Map();
+export function registerRoomClearBlocker(id, fn) {
+  if (clearBlockers.has(id) || typeof fn !== 'function') throw new Error(`Invalid room clear blocker: ${id}`);
+  clearBlockers.set(id, fn);
+}
+export const roomClearBlocked = () => [...clearBlockers.values()].some(fn => fn());
+
 // Called after an enemy dies: the last one emits 'room-cleared'.
 export function checkRoomCleared() {
-  if (enemiesLeft() === 0) emit('room-cleared', { screen: currentScreen() });
+  if (enemiesLeft() === 0 && !roomClearBlocked()) emit('room-cleared', { screen: currentScreen() });
 }

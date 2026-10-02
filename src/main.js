@@ -2,11 +2,8 @@
 // Module map and extension points: docs/ARCHITECTURE.md.
 import './style.css';
 import './content.js';
-import * as THREE from 'three';
 import { scene, mountRenderer, renderScene, look, camera, renderer } from './core/renderer.js';
-import { setCutaway } from './core/materials.js';
 import { hitstopTick } from './core/hitstop.js';
-import { GROUND_Y } from './core/constants.js';
 import { initCamera, placeCamera, followSubject, cameraPreset, currentCameraPreset } from './core/camera.js';
 import { initInput, input } from './core/input.js';
 import { initAudio } from './core/audio.js';
@@ -30,6 +27,7 @@ import { initLoadCard } from './ui/loadcard.js';
 import { installTestHook } from './debug/testhook.js';
 import { initCheats } from './debug/cheats.js';
 import { tickParty, initPartyInvite } from './game/party.js';
+import { updatePartyCamera, renderPartyCutaway } from './game/party-camera.js';
 
 mountRenderer(document.getElementById('game'));
 initCamera();
@@ -71,7 +69,7 @@ let sceneReady = false;
 // camera; the mode decides what else moves.
 function update(dt) {
   if (hitstopTick(dt)) {
-    placeCamera();
+    placeCamera(dt);
     return; // held presses stay buffered for the step after the hold
   }
   state.time += dt;
@@ -90,16 +88,15 @@ function update(dt) {
   updateStreaming(dt, state.mode === 'play');
   if (isManual()) pumpBuilds(state.mode === 'warp');
   syncScreenVisibility();
+  updatePartyCamera();
   followSubject(player, currentScreen());
-  placeCamera();
+  placeCamera(dt);
   input.endFrame();
 }
 
-const _cutHero = new THREE.Vector3();
-const _cutCam = new THREE.Vector3();
 function render() {
   refreshUi();
-  setCutaway(_cutHero.set(player.x, GROUND_Y + 0.5, player.z), camera.getWorldPosition(_cutCam), GROUND_Y);
+  renderPartyCutaway();
   renderScene();
 }
 

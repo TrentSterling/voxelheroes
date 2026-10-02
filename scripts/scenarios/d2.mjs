@@ -1,6 +1,6 @@
 import { clearFoes } from '../lib/helpers.mjs';
 
-export const description = 'Whisperwood route and wrong turns; fifteen hive rooms, three keys, real block and bomb input, map, cache, breaches, portal, queen phases, bomb counter, rewards, rematch and save/load. Room fights and the final boss kill use the damage API.';
+export const description = 'Whisperwood route and wrong turns; sixteen hive rooms, three keys, real block and bomb input, map, cache, breaches, portal, queen phases, bomb counter, rewards, rematch and save/load. Room fights and the final boss kill use the damage API.';
 
 export default async function(t) {
   const photograph=t.shot;
@@ -53,7 +53,7 @@ export default async function(t) {
   await push(8,4,0,-1,.3);
   t.expect(await t.eval(()=>window.__voxelHeroes.game.dungeons.hasMap('d2')),'real chest interaction gives the hive map');
   await t.tap('map');
-  t.expect((await t.eval(()=>window.__voxelHeroes.game.mapScreen.mapView())).rooms===15,'the map charts fifteen authored hive rooms');
+  t.expect((await t.eval(()=>window.__voxelHeroes.game.mapScreen.mapView())).rooms===16,'the map charts sixteen authored hive rooms');
   await t.shot('05-hive-map'); await t.tap('map');
   await go('west','Root Counterweight');
   t.expect(await tile(7,4)==='E','the counterweight treasury starts sealed');
@@ -74,8 +74,11 @@ export default async function(t) {
   await t.shot('08-breached-gallery');
   await go('south','Forgotten Pay'); await clearFoes(t); await push(8,4,0,-1,.3);
   await go('north','Breached Gallery'); await clearFoes(t);
-  await go('north','Crossfire Nursery'); await kill(); await t.walkTo(8,6);
-  t.expect(await keys()===1,'crossfire room drops the second key');
+  await go('north','Crossfire Nursery'); await kill();
+  t.expect(await keys()===0,'defeating the nursery guards alone does not bypass its pressure seals');
+  for (const [x,z] of [[4.5,4.5],[11.5,9.5],[11.5,4.5]]) await bomb(x,z,'north');
+  await t.walkTo(8,6);
+  t.expect(await keys()===1,'three actual bombs quiet the nursery and release the second key');
   await go('south','Breached Gallery'); await clearFoes(t);
   await bomb(13.5,6,'east'); await warp(15,5,'d2:4,2'); await push(8,4,0,-1,.3);
   t.expect(await t.eval(()=>window.__voxelHeroes.game.dungeons.hasBossKey('d2')),'two real breaches lead to the amber big key');

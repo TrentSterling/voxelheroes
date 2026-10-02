@@ -185,12 +185,19 @@ export default async function contractsM2(t) {
     ]);
   });
   swings = await count('sword-swing');
-  await t.eval(() => (window.__pad.button = 0));
-  await t.step(DT);
-  await t.eval(() => (window.__pad.button = -1));
-  await t.step(0.5);
+  // Keep the scripted one-tick pad pulse in the simulation operation. The
+  // independently drawing HUD can poll this fake source between RPC calls.
+  await t.eval(async () => {
+    const h = window.__voxelHeroes;
+    await h.tick();
+    window.__pad.button = 0;
+    await h.tick();
+    window.__pad.button = -1;
+    await h.step(0.5);
+  });
   r = await t.eval(() => window.__voxelHeroes.game.input.input.lastDevice());
-  t.expect((await count('sword-swing')) === swings + 1 && r === 'gamepad', 'gamepad A (button 0) swings once, and the last device is the gamepad');
+  const padSwings = (await count('sword-swing')) - swings;
+  t.expect(padSwings === 1 && r === 'gamepad', `gamepad A (button 0) swings once, and the last device is the gamepad (swings ${padSwings}, device ${r})`);
   s = await t.state();
   await t.eval(() => (window.__pad.axes = [0.25, 0]));
   await t.step(0.3);
@@ -1393,7 +1400,8 @@ export default async function contractsM2(t) {
       window.__gets.push(`${get.id}:${get.text}`);
       models[get.id] = get.model;
     });
-    out.meta = g.grants.grantMeta('heart-container');
+    const heartMeta=g.grants.grantMeta('heart-container');
+    out.meta={name:heartMeta.name,fanfare:heartMeta.fanfare,modelType:typeof heartMeta.model,object3D:heartMeta.model?.()?.isObject3D===true};
     g.grants.grant('heart-container');
     g.grants.grant('heart-container', 1, { fanfare: false });
     g.grants.grant('gems', 5);
@@ -1408,12 +1416,12 @@ export default async function contractsM2(t) {
     } catch (e) {
       out.badModel = e.message;
     }
-    out.models = [models['heart-container'] === null, models['probe-lamp'] === lampModel, g.grants.grantMeta('probe-lamp').model === lampModel];
+    out.models = [models['heart-container'] === heartMeta.model, models['probe-lamp'] === lampModel, g.grants.grantMeta('probe-lamp').model === lampModel];
     out.gets = window.__gets.join(' | ');
     out.maxHp = h.state.maxHp;
     return out;
   });
-  t.expect(r.meta.fanfare && r.meta.name === 'Heart Container' && r.meta.model === null, 'grantMeta describes a grant (model: null until its owner makes one)');
+  t.expect(r.meta.fanfare && r.meta.name === 'Heart Container' && r.meta.modelType==='function'&&r.meta.object3D, 'heart grant metadata builds an actual native prize model');
   t.expect(r.models.every(Boolean) && /model must be a function/.test(r.badModel), 'an item get carries the prize model the hero holds overhead (registerItem model)');
   t.expect(r.gets === 'heart-container:Heart container! Max health up | probe-lamp:A lamp! It lights dark rooms.', `fanfare grants and new items go through the item-get presenter; quiet ones do not (${r.gets})`);
   t.expect((await last('keys-changed'))?.delta === 1, "a small key fires 'keys-changed'");

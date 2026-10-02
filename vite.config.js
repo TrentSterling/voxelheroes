@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   base: './',
+  optimizeDeps: { entries: ['index.html'] },
+  server: { watch: { ignored: ['**/playtest-out/**', '**/dist-artifact/**', '**/dist/**'] } },
   plugins: [{
     name: 'portable-playtest-review',
     configureServer(server) {

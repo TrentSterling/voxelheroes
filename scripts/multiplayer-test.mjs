@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium, firefox } from 'playwright';
 import { startRelay } from './lib/nostr-relay.mjs';
 import { buildGame, startServer, CHROMIUM_ARGS } from './playtest.mjs';
+const out=process.argv.find(a=>a.startsWith('--out='))?.slice(6)??'playtest-out/multiplayer';
 
 const providedUrl = process.argv.find((arg) => arg.startsWith('--url='))?.slice(6);
 const startedUtc=new Date().toISOString();
@@ -11,8 +12,8 @@ const server = providedUrl ? null : await startServer();
 const relay = await startRelay();
 const browsers = [], pages = [], errors = [];
 const receipts = [];
-mkdirSync('playtest-out/multiplayer', { recursive: true });
-writeFileSync('playtest-out/multiplayer/result.json',JSON.stringify({passed:0,failed:null,pending:true,startedUtc},null,2));
+mkdirSync(out, { recursive: true });
+writeFileSync(`${out}/result.json`,JSON.stringify({passed:0,failed:null,pending:true,startedUtc},null,2));
 const defaultIce = !process.argv.includes('--local-ice');
 const options = { relayUrls: [relay.url], ...(defaultIce ? {} : { rtcConfig: { iceServers: [] } }) };
 let passed = 0;
@@ -26,9 +27,9 @@ const shot = async (page, file, caption, evidence) => {
     return { hero: { x: h.player.x, z: h.player.z, carrying: !!h.player.carrying, model: h.player.object.position.toArray() },
       enemies: h.entities.filter((e) => e.kind === 'enemy').map((e) => ({ id: e.netId, hp: e.hp, x: e.x, z: e.z, visible: e.object.visible })) };
   });
-  await page.screenshot({ path: `playtest-out/multiplayer/${file}.png` });
+  await page.screenshot({ path: `${out}/${file}.png` });
   receipts.push({ image: `${file}.png`, caption, evidence, sceneState, capturedUtc: new Date().toISOString() });
-  writeFileSync('playtest-out/multiplayer/receipts.json', JSON.stringify(receipts, null, 2));
+  writeFileSync(`${out}/receipts.json`, JSON.stringify(receipts, null, 2));
 };
 const settle = async (ms = 400) => {
   const end = Date.now() + ms;
@@ -52,11 +53,12 @@ const teleport = async (page, key, x, z) => {
 };
 try {
   for (const [name, engine] of Object.entries({ chromium, firefox })) {
-    const browser = await engine.launch({ headless: true, ...(name === 'chromium' ? { args: [...CHROMIUM_ARGS, ...(defaultIce ? [] : ['--disable-features=WebRtcHideLocalIpsWithMdns'])] } : defaultIce ? {} : {
-      firefoxUserPrefs: { 'media.peerconnection.ice.obfuscate_host_addresses': false, 'media.peerconnection.ice.loopback': true },
+    const browser = await engine.launch({ headless: true, ...(name === 'chromium' ? { args: [...CHROMIUM_ARGS, ...(defaultIce ? [] : ['--disable-features=WebRtcHideLocalIpsWithMdns'])] } : defaultIce ? { firefoxUserPrefs: { 'media.volume_scale': '0.0' } } : {
+      firefoxUserPrefs: { 'media.volume_scale': '0.0', 'media.peerconnection.ice.obfuscate_host_addresses': false, 'media.peerconnection.ice.loopback': true },
     }) });
     browsers.push(browser);
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
     page.on('pageerror', (error) => errors.push(`${name}: ${error.message}`));
     page.on('console', (message) => { if (process.argv.includes('--debug') && message.type() !== 'debug') console.log(name, message.text()); });
     await page.addInitScript(() => {
@@ -626,9 +628,9 @@ try {
   pass('Leaving clears remote heroes and resumes solo simulation');
   assert.deepEqual(errors, []);
   console.log(`${passed}/${passed} multiplayer checks passed (real Firefox + Chromium RTC connections)`);
-  writeFileSync('playtest-out/multiplayer/result.json', JSON.stringify({ passed, failed: 0, pending:false, startedUtc, errors, browsers: ['Chromium', 'Firefox'], transport: 'Real Trystero RTC; local Nostr signaling relay', ice: defaultIce?'default browser ICE settings':'local host candidates only', completedUtc: new Date().toISOString() }, null, 2));
+  writeFileSync(`${out}/result.json`, JSON.stringify({ passed, failed: 0, pending:false, startedUtc, errors, browsers: ['Chromium', 'Firefox'], transport: 'Real Trystero RTC; local Nostr signaling relay', ice: defaultIce?'default browser ICE settings':'local host candidates only', completedUtc: new Date().toISOString() }, null, 2));
 } catch (error) {
-  writeFileSync('playtest-out/multiplayer/result.json',JSON.stringify({passed,failed:1,pending:false,startedUtc,completedUtc:new Date().toISOString(),errors:[error.message,...errors]},null,2));
+  writeFileSync(`${out}/result.json`,JSON.stringify({passed,failed:1,pending:false,startedUtc,completedUtc:new Date().toISOString(),errors:[error.message,...errors]},null,2));
   console.error(error);
   for (const [i, page] of pages.entries()) if (!page.isClosed()) {
     console.error(`peer ${i}`, JSON.stringify(await view(page)), JSON.stringify(await actors(page)));

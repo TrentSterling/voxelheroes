@@ -12,7 +12,7 @@ export const TP = {
   soil: 0x7d6650,
   cave: 0x1a120c,
   waterBed: 0x2c5f9e,
-  leaf: 0x1aa818, leafDark: 0x0f8a10, leafLight: 0x86d45e, leafSpeck: 0xf2e2d6,
+  leaf: 0x388c72, leafDark: 0x285c59, leafLight: 0x96c69a, leafSpeck: 0xf0d5b1,
   trunk: 0x9a7458, trunkDark: 0x7a5a44,
   rock: 0x9c968c, rockDark: 0x77726a,
   stone: 0xa7a39a, stoneDark: 0x817d75,

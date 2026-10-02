@@ -1,108 +1,70 @@
-// Focused NPC conversations use installed English voices. No model or remote
-// speech service is downloaded; text remains usable on devices without voices.
+// Authored Kokoro recordings. The player downloads only the clip being spoken;
+// synthesis and model weights belong to the development recorder.
+import bank from './voice-bank.json';
+import { voiceKey } from './voice-text.js';
 import { state } from '../core/state.js';
 import { on } from '../core/events.js';
 import { isMuted, volumes } from '../core/audio.js';
-import { entities } from '../entities/manager.js';
 
-const CAST = {
-  'Old Tobin': { male: true, rate: .9, pitch: .85 },
-  'Pip': { male: true, rate: 1.08, pitch: 1.2 },
-  'Brannoc': { male: true, rate: .94, pitch: .9 },
-  'Tinker Wyll': { male: true, rate: 1.04, pitch: 1.02 },
-  'Rowan': { male: true, rate: .98, pitch: .96 },
-  'Hettie': { male: false, rate: 1, pitch: 1.02 },
-  'Nell': { male: false, rate: 1.06, pitch: 1.06 },
-  'Mags': { male: false, rate: 1, pitch: .96 },
-  'Wenna': { male: false, rate: .95, pitch: 1 },
-};
-let unlocked = false, line = null, boundSynth = null, serial = 0;
-let last = null;
-const synth = () => globalThis.speechSynthesis;
-const voiceList = () => {
-  try { return synth()?.getVoices().filter(v => v.localService && /^en(?:[-_]|$)/i.test(v.lang)) ?? []; }
-  catch { return []; }
-};
+const clips = new Map(bank.lines.map(row => [row.key, row]));
+const speakers = [...new Set(bank.lines.map(row => row.speaker))].sort((a, b) => b.length - a.length);
+let unlocked = false, line = null, serial = 0, last = null, ambientAfter = 0;
 const volume = () => { const v = volumes(); return v.master * v.sfx * .85; };
 const allowed = () => unlocked && state.settings.npcVoices && !isMuted() && volume() > 0 && !document.hidden;
-const speakerName = label => entities.find(e => e.kind === 'npc' && !e.removed && (label === e.name || label?.startsWith(e.name + ' ')))?.name;
-
-function chooseVoice(name) {
-  const voices = voiceList().sort((a,b) => a.name.localeCompare(b.name));
-  if (!voices.length) return null;
-  const style = CAST[name];
-  const preferred = style?.male ? /David|Mark|George|Guy|James|Ryan/i : /Zira|Hazel|Sonia|Aria|Jenny|Susan/i;
-  const candidates = style ? voices.filter(v => preferred.test(v.name)) : [];
-  const list = candidates.length ? candidates : voices;
-  const hash = [...name].reduce((n,c) => (n * 31 + c.charCodeAt(0)) >>> 0, 0);
-  return list[hash % list.length];
-}
-
-function bindVoices() {
-  const engine = synth();
-  if (engine === boundSynth) return;
-  boundSynth?.removeEventListener?.('voiceschanged', deliver);
-  boundSynth = engine;
-  engine?.addEventListener?.('voiceschanged', deliver);
-}
-
-function deliver() {
-  if (!line || line.sent || !allowed() || state.mode !== 'dialog') return;
-  const voice = chooseVoice(line.speaker);
-  if (!voice) { last.phase = 'waiting-for-local-voice'; return; }
-  const token = line.token;
-  try {
-    const utterance = new SpeechSynthesisUtterance(line.text);
-    const style = CAST[line.speaker] ?? { rate: .98, pitch: 1 };
-    utterance.voice = voice;
-    utterance.lang = voice.lang;
-    utterance.rate = style.rate;
-    utterance.pitch = style.pitch;
-    utterance.volume = volume();
-    utterance.onstart = () => { if (line?.token === token) last.phase = 'speaking'; };
-    utterance.onend = () => { if (line?.token === token) { last.phase = 'ended'; line = null; } };
-    utterance.onerror = e => { if (line?.token === token) { last.phase = 'unavailable'; last.error = e.error; line = null; } };
-    line.sent = true;
-    line.utterance = utterance; // Keep the live utterance from being collected by the browser.
-    last = { ...last, voice: voice.name, rate: utterance.rate, pitch: utterance.pitch, volume: utterance.volume, phase: 'queued' };
-    synth().speak(utterance);
-  } catch {
-    last.phase = 'unavailable';
-    line = null;
-  }
-}
+const speakerName = label => speakers.find(name => label === name || label?.startsWith(name + ' '));
+const stillCurrent = token => line?.token === token;
 
 export function stopNpcSpeech() {
   if (!line) return;
-  line = null;
+  const old = line; line = null;
+  old.audio.pause(); old.audio.removeAttribute('src'); old.audio.load();
   if (last) last.phase = 'cancelled';
-  try { boundSynth?.cancel(); } catch { /* Speech can be disabled independently of the game. */ }
 }
 
-export function speakNpcSegment(text, speaker, { voice } = {}) {
+function playClip(text, speaker, { continuation = false, ambient = false, voice = undefined, voiceText: override } = {}) {
+  const name = speakerName(speaker) ?? (voice === true ? speaker : null);
+  const key = voiceKey(name, override ?? text);
+  // A long authored page can span several phone screenfuls. Keep its recording
+  // playing as the subtitle continues, without repeating or cutting it short.
+  if (continuation && last?.key === key) return;
   stopNpcSpeech();
-  const name = voice === true ? speaker : speakerName(speaker);
-  if (voice === false || !name || !text?.trim() || !allowed() || typeof SpeechSynthesisUtterance !== 'function' || !synth()) return;
-  bindVoices();
-  line = { text: text.trim(), speaker: name, token: ++serial, sent: false };
-  last = { text: line.text, speaker: name, phase: 'waiting-for-local-voice', voice: null };
-  deliver();
+  if (voice === false || !name || !text?.trim() || !allowed() || typeof Audio !== 'function') return;
+  const clip = clips.get(key);
+  if (!clip) { last = { speaker: name, text, key, phase: 'unrecorded', engine: 'recorded-kokoro' }; return; }
+  const token = ++serial, audio = new Audio();
+  audio.preload = 'none'; audio.volume = volume();
+  line = { text, speaker: name, key, token, audio, ambient, clip };
+  last = { speaker: name, text, key, id: clip.id, voice: clip.voice, engine: 'recorded-kokoro', path: clip.path, duration: clip.duration, volume: audio.volume, phase: 'loading', ambient };
+  audio.addEventListener('playing', () => { if (stillCurrent(token)) last.phase = 'speaking'; });
+  audio.addEventListener('ended', () => { if (stillCurrent(token)) { last.phase = 'ended'; line = null; } });
+  audio.addEventListener('error', () => { if (stillCurrent(token)) { last.phase = 'unavailable'; last.error = audio.error?.code ?? 'media-error'; line = null; } });
+  audio.src = clip.path.startsWith('data:') ? clip.path : new URL(import.meta.env.BASE_URL + clip.path, document.baseURI).href;
+  audio.play().catch(error => { if (stillCurrent(token)) { last.phase = 'unavailable'; last.error = error.name; line = null; } });
+}
+
+export function speakNpcSegment(text, speaker, opts = {}) { playClip(text, speaker, opts); }
+
+export function speakNpcBark(text, speaker) {
+  if (!allowed() || state.mode !== 'play' || line || performance.now() < ambientAfter) return;
+  if (!clips.has(voiceKey(speaker, text))) return;
+  ambientAfter = performance.now() + 5500;
+  playClip(text, speaker, { ambient: true });
 }
 
 export const npcVoiceView = () => ({
-  supported: !!synth() && typeof SpeechSynthesisUtterance === 'function',
-  enabled: !!state.settings.npcVoices,
-  unlocked,
-  localVoices: voiceList().map(v => ({ name: v.name, lang: v.lang })),
-  current: line ? { text: line.text, speaker: line.speaker, sent: line.sent } : null,
+  supported: typeof Audio === 'function', enabled: !!state.settings.npcVoices, unlocked,
+  engine: 'recorded-kokoro', modelDownloads: 0, recordedLines: bank.lines.length, characters: speakers.length,
+  current: line ? { text: line.text, speaker: line.speaker, id: line.clip.id, sent: !line.audio.paused, ambient: line.ambient, time: line.audio.currentTime } : null,
   last: last ? { ...last } : null,
 });
 
-const unlock = event => { if (event.isTrusted) { unlocked = true; bindVoices(); deliver(); } };
+const unlock = event => { if (event.isTrusted) unlocked = true; };
 window.addEventListener('keydown', unlock, true);
 window.addEventListener('pointerdown', unlock, true);
 window.addEventListener('pagehide', stopNpcSpeech);
 document.addEventListener('visibilitychange', () => { if (document.hidden) stopNpcSpeech(); });
-on('mode-change', ({ to }) => { if (to !== 'dialog') stopNpcSpeech(); });
-on('settings-changed', ({ key }) => { if (['npcVoices', 'muted', 'volume', 'sfx'].includes(key)) stopNpcSpeech(); });
+on('mode-change', ({ to }) => { if (to !== 'dialog' || line?.ambient) stopNpcSpeech(); });
+on('settings-changed', ({ key }) => { if (['npcVoices', 'muted'].includes(key)) stopNpcSpeech(); });
 on('audio-muted', stopNpcSpeech);
+on('audio-levels-changed', () => { if (line) { line.audio.volume = volume(); last.volume = line.audio.volume; if (!allowed()) stopNpcSpeech(); } });
+on('screen-enter', stopNpcSpeech);

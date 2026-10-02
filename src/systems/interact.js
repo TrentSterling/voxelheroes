@@ -21,17 +21,21 @@ function facingEntity(p) {
   const fx = Math.sin(p.yaw);
   const fz = Math.cos(p.yaw);
   let best = null;
-  let bestD = Infinity;
+  let bestScore = Infinity;
   for (const e of entities) {
-    if (e.removed || !e.onInteract) continue;
+    if (e.removed || !e.onInteract || e.out === false || e.object?.visible === false) continue;
     const dx = e.x - p.x;
     const dz = e.z - p.z;
     const d = Math.hypot(dx, dz);
     if (d > (e.interactRange ?? TUNING.hero.interactRange) + e.r) continue;
-    if ((dx * fx + dz * fz) / (d || 1) < 0.5) continue; // roughly in front
-    if (d < bestD) {
+    const alignment = (dx * fx + dz * fz) / (d || 1);
+    if (alignment < 0.5) continue;
+    // A person directly under the facing direction wins over a slightly
+    // nearer neighbor at the edge of the cone, including crowded followers.
+    const score = d + (1 - alignment) * (e.interactRange ?? TUNING.hero.interactRange) * 1.5;
+    if (score < bestScore) {
       best = e;
-      bestD = d;
+      bestScore = score;
     }
   }
   return best;

@@ -1,6 +1,105 @@
 # Voxel Heroes
 
-A Three.js voxel action adventure in the spirit of 3D Dot Game Heroes and the SNES Zelda overworld.
+A Three.js voxel action adventure with real-time co-op combat and an original story across eras. Its new direction pairs a tangible voxel world with the color, character-driven adventure and time-travel consequences of classic RPGs.
+
+Sword, boots and other fanfare rewards now show native voxel items above the
+hero's raised hands. Guard moves one carried shield forward, including on
+co-op friends. See [reward and shield verification](docs/REWARD-SHIELD.md).
+
+The opening era chapter, **The Bell That Rang Tomorrow**, starts with Mira beside
+the copper hourgate in Mossbrook Square. Take a sword, visit the First Bloom and
+the Silent Year, and repair the past to grow a future garden. Friends can split
+across eras and watch those changes happen. Press **L** for the journal.
+
+Follow the eastern copperwalk to the **Singing Workshop** in the First Bloom.
+Clear the belt thieves and tune its pressure valve after restoring the square
+engine. In the Silent Year, the same route leads to the **Archive of Voices**:
+recover the Copper Memory and bring its lost festival choir to Tern. It awards
+two permanent magic gems. Cobble, mosaic, brick, glass, drains, rails, reeds,
+pipes, benches, lamps and salvage give the two eras different materials.
+
+Choose **Travel with Mira** at the end of her conversation to bring her along.
+She follows your route, catches up safely after an era change, and adds wrench
+strikes when you fight. Ask her to **Wait in town** to leave her in Mossbrook.
+In co-op there is one travelling Mira; she follows the living party leader,
+and follows the remaining hero when that leader leaves.
+
+Return the **Copper Memory** to Tern in the Silent Year to hear the recovered
+choir, then choose **Travel with Tern**. The brass caretaker travels alongside
+Mira; **Tend the garden** sends him home without dismissing her. Recruitment
+survives saves and is shared with friends. Both companions follow the living
+party leader, including after that player leaves.
+
+Near Tern, hold **Guard** and tap **Sword** for **Bell Shelter**. It spends two
+personal magic gems, shelters you and nearby friends for three seconds, and
+recharges in eight seconds. Its teal floor ring marks protection from ordinary
+blades and shots; hazards and explicitly unblockable attacks still hurt.
+The casting input also works with two fingers on the touch Guard/Sword buttons.
+Touch dialogue hides the gameplay pad; tap its panel to advance and tap a reply
+to choose. Feedback toasts stay above touch controls, with the technique hint
+temporarily yielding its space on short landscape screens.
+
+For silent companion acceptance, run `--scenario tern,companion,era-workshop`,
+`node scripts/tern-coop-test.mjs`, and
+`node scripts/companion-ui-test.mjs --tern`. The last check drives actual
+two-finger casting and touch/mouse dialogue choices, measures canvas text and
+DOM controls, and preserves all three Tern paragraphs at large text size.
+
+The archive's **Copper Memory** unlocks **Clockwork Cross**. Stay near Mira,
+hold the sword button until charged, then release. The combination spends two
+magic gems, deals six spin damage in a surrounding pulse, and recharges for
+four seconds. Normal charged spins still work when the combination is
+unavailable. Friends near Mira can use it too; it never damages other players.
+
+The Old Barrow's **Crossed Bones** now has a copper bell encounter. Its floor
+ring warns before four slow projectiles fire; throwing a pot at the bell cancels
+that volley and gives four seconds of quiet. Skeletons and a bat guard the first
+wave; a shielded warden and ranged gazer reinforce after a short pause. Shutters
+and the fourth key wait for both waves. Quiet the bell and open the eastern
+**Echo Memory** chest for one permanent magic gem and a note about tomorrow.
+The bell remains available after the fight, so the optional reward is retryable.
+Six barrow rooms now use cobble, copper rosettes, cracked slabs, repair channels,
+clock rubble and bell plinths. The journal's **Read** button (or confirm key)
+pages long descriptions while keeping progress, rewards and controls separate.
+
+NPC dialogue and nearby reactions use **baked Kokoro recordings**, with a
+consistent voice for each character. The 29-character cast currently has
+1,490 Opus clips: about 21.49 MB and 92 minutes of speech. Clips load only
+when spoken; no synthesis library or model ships with the game.
+
+Chests now offer **Open chest** on J/Z or touch A, including the Silent Year's
+four story vaults. A locked vault explains the repair or encounter it needs.
+Old Wick stands beside his Mossbrook Lane pot, and returning pots skip occupied
+ground. See [Town placement and future vaults](docs/TOWN-CHESTS.md).
+
+Rootglass's leaf-and-brass Pollinators warn a straight pink dive, then rest for
+a counterattack. The optional Pollinator Court west of Three Watchers guards
+one permanent heart piece. Petal stones and seed rails add quick floor variety.
+See [The nursery's remaining gardeners](docs/NURSERY-WINGS.md).
+
+Enable **NPC voices** in Settings. Page skipping, closing, muting and hiding
+the tab stop playback. Long authored pages keep their recording across phone
+subtitle screenfuls. Ambient reactions take turns and yield to conversations.
+The subtitles retain your chosen name; the recording says "hero". Missing or
+unsupported audio leaves working text instead of changing voice engines.
+
+`npm run voices:inventory` extracts the actual authored lines, quest branches,
+friendship scenes, gift responses, service prompts and reactions from source.
+`npm run voices:bake -- --download-model` records missing or changed lines
+in town, Crownhold, eras, wilds and temples batches. For a pilot use
+`--batch=town --limit=5`. Development recording uses installed Chrome/WebGPU,
+FFmpeg and the pinned `kokoro-js` 1.2.1 browser worker. Its fp32 model download
+belongs to the recorder only. Raw takes and checkpoints remain in ignored
+`playtest-out/voice-bake/`; `public/voices/` holds only compressed shipped clips.
+Voice, speed, engine and codec form stable take IDs, so unchanged clips can be
+reused. `node scripts/build-voice-review.mjs` builds a searchable listening page.
+`node scripts/voice-bank-audit.mjs` checks full source coverage and decodes every
+clip in Firefox and Chromium. A portable artifact embeds the same Opus clips.
+`npm run voices:check:assets` checks coverage, hashes and containers without
+opening a browser. `npm run test:audio-policy` checks every automated browser
+launch, including conditional branches, without playing or generating audio.
+Test Chromium launches use `--mute-audio`; Firefox uses a zero output-volume
+preference. Game settings remain available for normal play.
 
 ```sh
 npm install
@@ -9,7 +108,61 @@ npm run artifact   # build a single self-contained HTML page into dist-artifact/
 npm run playtest   # headless play-through with screenshots in playtest-out/
 npm run playtest:multiplayer # real Firefox + Chromium Trystero co-op checks
 npm run playtest:browsers    # startup with an ad-block filter, plus real party menu controls
+npm run gauntlet             # all cases, seed sweeps, Firefox, local co-op, recorded voices
+npm run gauntlet:quick       # movement, pots, both era quests/companions, guidance, world audit and input soak
 ```
+
+The gauntlet creates a new timestamped folder in `playtest-out/`. Its
+`index.html` links the screenshots; `result.json` records every case, assertion
+count, fixture limitations and screenshot SHA-256 hashes. Results checkpoint
+after each case, and the runner continues after failures. Existing receipts
+are never overwritten. Use `--out=playtest-out/my-fresh-run`,
+`--cases=eras,era-workshop`, `--url=http://127.0.0.1:5173/` or
+`--scenarios-only` for a focused run. Local multiplayer tests disable public
+ICE and use a local signaling relay. Public, separate-network connectivity
+needs its own verification.
+`node scripts/companion-coop-test.mjs` checks shared companion presentation,
+guest combinations, separate-era exploration and companion handoff using a
+local relay with public ICE disabled. `--scenario companion` covers the solo
+interaction, follow route, support damage, unlock, magic cost, cooldown, wall
+blocking, save/load, dismissal and phone presentation.
+`node scripts/companion-ui-test.mjs --out=playtest-out/my-touch-check` measures
+the technique panel in desktop and actual touch browser contexts, including
+arrival titles, contextual prompts and the ready/empty/recharging states.
+The companion slideshow is at `/playtest-out/companion-review/index.html`;
+its manifest links focused gameplay, local co-op and final touch receipts.
+`node scripts/build-companion-review.mjs` rebuilds that review from the saved
+receipts. `node scripts/verify-workshop-review.mjs playtest-out/companion-review`
+checks all embedded images, hashes, navigation and three viewport layouts.
+`--scenario barrow-echo` checks the bell warning, actual pot input, both waves,
+held room-clear rewards, safe reinforcement placement, memory chest and save.
+`node scripts/barrow-coop-test.mjs` checks real Firefox/Chromium guest pots,
+warning presentation, encounter handoff during reinforcement, split exploration
+and one-time shared magic. Position, spawn wait and damage fixtures are disclosed.
+`text-layout` checks every journal task, all barrow quest stages and full Read
+paragraph coverage at six sizes, including 320 by 568 and 568 by 320.
+`--scenario barrow-retry` checks a finished fight saved before key collection,
+actual pottery after loading, the late memory reward and a second return.
+The barrow slideshow is at `/playtest-out/barrow-review/index.html`, with links
+to the current source ZIP, portable build and focused acceptance receipts.
+`node scripts/build-barrow-review.mjs` rebuilds it from the saved receipts;
+the existing review verifier checks its fourteen images and three layouts.
+`node scripts/barrow-journal-input-test.mjs` drives actual mouse, touch and
+keyboard events, including the edge between adjacent task buttons and Read
+above the touch Pause control. Canvas menu gestures cannot press controls
+beneath them. Short title, party and temple-map layouts also fit 568 by 320.
+`python scripts/package-source.py playtest-out/my-fresh-delivery` packages the
+current source and verifies both ZIP readback and compressed voices embedded
+in the previously built portable HTML; it plays no audio.
+For a new pass, use `--title`, `--review`, `--regression` and `--coop` to select
+the delivery label and receipt folders. The ZIP includes uncommitted sources;
+build the portable HTML first so its compressed voice byte checks are current.
+
+To rerun failures without losing passing receipts, use
+`npm run gauntlet -- --resume=playtest-out/your-finished-run`. Reuse requires
+the same game source fingerprint and unchanged test/helper scripts. Changed
+or failed cases run again; results go into a new folder and link the original
+run by hash. A change to game source requires a fresh full run.
 
 Controls (gameplay spec 7.1; `src/core/input.js` holds the bindings):
 
@@ -49,14 +202,6 @@ thirty-arrow quiver and three bombs. The bow, bridge, dice and permanent reward
 are shared with friends; arrows remain personal. The village shop sells arrow
 refills once you own the bow. Pots stagger the vault guard, while frontal arrows
 hit its shield.
-
-NPC conversations use installed browser voices through `speechSynthesis`.
-Turn **NPC voices** on or off in Settings. Speech follows visible dialog pages,
-stops when skipped or muted, and uses the Volume and Effects levels. No speech
-model or remote service is downloaded. Voice quality and availability depend
-on the device; text works even without an installed English voice. Background
-town chatter and written signs stay silent. `node scripts/npc-voice-smoke.mjs`
-checks native Firefox and Chromium playback callbacks on the running dev server.
 
 Earned tools, quest keepsakes and heart containers show their native voxel model
 above the hero during the cheer animation. The camera gives the prize room below
@@ -114,9 +259,23 @@ strikes; flank it, bait a lunge or stagger it with a pot. The dungeon objective
 tracks the map, keys, boomerang and four-eye puzzle before the boss.
 
 The adventure journal lists village errands, their progress, locations and
-rewards. Nell's gold locket must be revealed by cutting a bush west of the path
+rewards. Select an unfinished task and press **Track** to keep its next step on
+the HUD, even while visiting a different era. **Untrack** or **Auto** restores
+normal guidance. Tap the HUD's **Quest:** line to open the chosen task; **Next:**
+opens the journal with normal guidance at the top.
+The choice is personal, survives saving, and is preserved when joining friends;
+shared quest completion releases a completed pin. Completed era routes point
+back to the hourgate instead of repeating reward or homecoming instructions.
+Journal titles and rewards wrap on phones; **Read** preserves long paragraphs.
+Tracked HUD instructions can use two portrait rows, with the full goal one tap away.
+Nell's gold locket must be revealed by cutting a bush west of the path
 at Barrow Crossing, then picked up and brought back for a heart piece. Entering
 the crossing alone does not finish the search.
+
+Guidance acceptance: `node scripts/gauntlet.mjs --cases=guidance,journal,eras,era-workshop,text-layout --scenarios-only`,
+`node scripts/journal-guidance-input-test.mjs` (actual mouse and coarse touch),
+and `node scripts/era-coop-test.mjs --guidance` (local Chromium/Firefox RTC).
+These commands mute browser output; the new fixtures also disable NPC voices.
 
 Use **Play with friends** on the title screen, or **Party** during play. Create
 a party, then share its code or copy the invite link. Up to eight heroes can

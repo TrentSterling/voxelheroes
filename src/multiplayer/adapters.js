@@ -16,4 +16,8 @@ export const partyHooks = {
   trigger: () => null,
   freeze: () => false,
   deflect: () => false,
+  leader: () => null,
+  companion: () => null,
+  companions: () => null,
+  technique: () => {},
 };
