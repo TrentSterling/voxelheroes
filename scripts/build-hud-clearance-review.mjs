@@ -11,6 +11,7 @@ const folders = {
   guardContracts: 'forest-hud-silent-output-final-contract-20261002',
   retakes: 'hud-clearance-retakes-touch-20261002',
   offline: 'hud-clearance-offline-20261002',
+  coop: 'hud-clearance-coop-20261002',
 };
 const results = Object.fromEntries(Object.entries(folders).map(([key, folder]) => [key, read(`playtest-out/${folder}/result.json`)]));
 const sourceSha256 = results.layout.sourceSha256;
@@ -22,6 +23,7 @@ assert.deepEqual(results.regression.integrity.changedTests, []);
 assert.equal(results.guard.ok, true); assert.equal(results.guardContracts.ok, true);
 assert.equal(results.retakes.ok, true); assert.equal(results.retakes.sourceSha256, sourceSha256);
 assert.equal(results.offline.status, 'passed'); assert.equal(results.offline.source.sha256, sourceSha256);
+assert.equal(results.coop.ok, true); assert.equal(results.coop.sourceSha256, sourceSha256);
 const packet = read(`${delivery}/package.json`); assert.equal(packet.ok, true);
 assert.equal(packet.artifact.sha256, results.offline.artifact.sha256);
 const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]);
@@ -50,9 +52,11 @@ receipts.package = { file: `${delivery}/package.json`, sha256: hash(readFileSync
 mkdirSync(out, { recursive: true });
 writeFileSync(`${out}/manifest.json`, JSON.stringify({ utc: new Date().toISOString(), sourceSha256, artifactSha256: packet.artifact.sha256,
   layoutChecks: 310, layoutCaptures: 60, regressionAssertions: results.regression.assertions, regressionCases: results.regression.passed,
-  nativeOutputGuardChecks: results.guard.checks.length, outputGuardContracts: results.guardContracts.checks.length, receipts,
+  nativeOutputGuardChecks: results.guard.checks.length, outputGuardContracts: results.guardContracts.checks.length,
+  localCoopChecks: results.coop.checks.length, receipts,
   limitations: ['Layout uses disclosed story, equipment, teleport and unrelated-hostile-removal fixtures.',
     'Output guards are verified without assessing audible voice quality. Scenario and HUD test output stays disconnected.',
+    'Local co-op uses disclosed equipment, placement, invulnerability and direct guard-defeat fixtures. Public signaling and separate-network ICE remain untested.',
     'The prior native journey ends at the bomb cache; Queen, later adventure and forest art/story remain separate work.'],
   slides: slides.map(({ image, ...slide }) => slide) }, null, 2));
 const data = JSON.stringify(slides).replaceAll('<', '\\u003c');

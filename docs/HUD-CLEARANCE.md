@@ -66,3 +66,9 @@ Firefox (three case/stage results, eight assertions). This is a startup and
 control check of the new HUD build, not a repeated full native journey.
 The four touch retakes also use a real Guard tap to select touch labels;
 no input-device value or prompt text is forced by the capture script.
+
+The local Chromium/Firefox co-op rerun passes all 21 contracts on this exact
+game source: shared pressure machinery, physical key pickup, separate-era
+exploration, owner handoff and save/reload. Its arranged progress, positions,
+invulnerability and direct guard-defeat fixtures remain disclosed. It does
+not establish public signaling or a native full second-temple victory.
