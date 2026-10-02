@@ -24,6 +24,7 @@ const testFiles=listScenarios().map(name=>`scripts/scenarios/${name}.mjs`);
 const testWalk=dir=>{for(const entry of readdirSync(dir,{withFileTypes:true})){const file=join(dir,entry.name);if(entry.isDirectory())testWalk(file);else testFiles.push(file);}};
 testWalk('scripts/lib');testFiles.push('scripts/playtest.mjs','scripts/test-audio-policy.mjs','scripts/browser-smoke.mjs','scripts/npc-voice-smoke.mjs','scripts/voice-bank-audit.mjs','scripts/voice-inventory.mjs','scripts/era-coop-test.mjs','scripts/companion-coop-test.mjs','scripts/barrow-coop-test.mjs','scripts/hive-coop-test.mjs','scripts/watch-coop-test.mjs','scripts/watch-layout-test.mjs','scripts/brineglass-coop-test.mjs','scripts/brineglass-layout-test.mjs','scripts/mara-coop-test.mjs','scripts/mara-layout-test.mjs','scripts/departure-coop-test.mjs','scripts/departure-layout-test.mjs','scripts/clock-coop-test.mjs','scripts/clock-layout-test.mjs','scripts/fair-coop-test.mjs','scripts/fair-layout-test.mjs','scripts/stone-eye-coop-test.mjs','scripts/stone-eye-touch-test.mjs','scripts/pollinator-coop-test.mjs','scripts/pollinator-touch-test.mjs','scripts/town-chests-coop-test.mjs','scripts/town-chests-touch-test.mjs','scripts/multiplayer-test.mjs');
 testFiles.push('scripts/barrow-path-coop-test.mjs','scripts/barrow-path-touch-test.mjs');
+testFiles.push('scripts/coilmaw-coop-test.mjs','scripts/coilmaw-touch-test.mjs','scripts/coilmaw-native-phone-test.mjs');
 testFiles.push('scripts/gauntlet.mjs','scripts/reward-shield-coop-test.mjs','scripts/reward-shield-touch-test.mjs','scripts/opening-coop-test.mjs','scripts/opening-touch-test.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
@@ -48,7 +49,7 @@ const unchanged=file=>previous?.testSources?previous.testSources[file]===report.
 async function run(name,seed,engine='chromium'){
   const id=`${engine}-${seed}-${name}`, dir=join(out,id);let timer;
   const prior=previous?.cases.find(c=>c.id===id&&c.ok);
-  const dependencies=name==='barrow-journey'?['first-road','opening']:name==='first-road'?['opening']:[];
+  const dependencies=name==='barrow-victory'?['barrow-journey','first-road','opening']:name==='barrow-journey'?['first-road','opening']:name==='first-road'?['opening']:[];
   if(prior&&unchanged(`scripts/scenarios/${name}.mjs`)&&dependencies.every(dep=>unchanged(`scripts/scenarios/${dep}.mjs`))){
     cpSync(join(resolve(value('resume')),id),dir,{recursive:true});report.cases.push({...prior,reusedFrom:resumeFile});save();console.log(`REUSE ${id}: identical game source and unchanged passing test`);return;
   }
@@ -91,7 +92,7 @@ try{
   if(!value('url')){await buildGame();server=await startServer();}
   report.url=value('url')??server.url;save();
   browser=await chromium.launch({headless:true,args:CHROMIUM_ARGS});
-  const critical=['barrow-journey','barrow-path','opening','first-road','road-bow','clockfair','campaign-story','tower-clock','hero','reward-shield','stone-eye','pollinator','town-chests','pots','eras','era-workshop','departure','companion','tern','mara','party-travel','party-camera','hit-feedback','barrow-echo','hive-pressure','hive-retry','watch-combat','watch-route','brineglass-combat','brineglass-route','world-audit','soak','voices'];
+  const critical=['barrow-victory','coilmaw','barrow-journey','barrow-path','opening','first-road','road-bow','clockfair','campaign-story','tower-clock','hero','reward-shield','stone-eye','pollinator','town-chests','pots','eras','era-workshop','departure','companion','tern','mara','party-travel','party-camera','hit-feedback','barrow-echo','hive-pressure','hive-retry','watch-combat','watch-route','brineglass-combat','brineglass-route','world-audit','soak','voices'];
   const names=value('cases')?.split(',')??(quick?[...critical,'guidance'].filter(n=>listScenarios().includes(n)):listScenarios());
   const unknown=names.filter(name=>!listScenarios().includes(name));
   if(unknown.length)throw Error(`Unknown scenarios: ${unknown.join(', ')}. Use scripts/playtest.mjs --list.`);
@@ -124,6 +125,8 @@ try{
     await stage('mara-layout','mara-layout-test.mjs');
     await stage('barrow-path-coop','barrow-path-coop-test.mjs');
     await stage('barrow-path-touch','barrow-path-touch-test.mjs');
+    await stage('coilmaw-coop','coilmaw-coop-test.mjs');
+    await stage('coilmaw-touch','coilmaw-touch-test.mjs');
     await stage('barrow-coop','barrow-coop-test.mjs');
     await stage('stone-eye-coop','stone-eye-coop-test.mjs');
     await stage('stone-eye-touch','stone-eye-touch-test.mjs');

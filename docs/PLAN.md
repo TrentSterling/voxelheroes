@@ -2,6 +2,15 @@
 
 Goal: an original real-time voxel co-op adventure (Three.js, Vite, vanilla JS). On September 30, 2026 Trent changed the creative direction: retain real-time combat, but use Chrono Trigger as the reference for expressive color, memorable characters, linked eras, personal stakes and authored encounters. This supersedes the older requirement to follow 3D Dot Game Heroes closely. Characters, models, dialogue and music remain original.
 
+The Old Barrow now has a turning copper block route, three personal rest
+hourstones and more pale, ash, root and copper flooring. Coilmaw marks its
+charge in coral, pauses after dashing and exposes a cancellable head attack.
+The HUD counts its coils, then head health. A fresh starter route now covers
+the complete first-temple victory, earned heart, first orb and native return
+stairs. See `BARROW-PATH.md` and `COILMAW.md` for mechanics and the distinction
+between native playthroughs and isolated fixtures. The later temples and
+larger era campaign still need more work.
+
 The opening now has safe unarmed travel to King Aldric, four town paving
 materials, directions for each road screen, three authored combat pairs and
 a reusable recovery spring before the barrow. The first bow teaches the

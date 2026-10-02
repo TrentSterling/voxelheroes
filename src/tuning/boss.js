@@ -25,7 +25,7 @@ export const boss = {
     // set 0.2 higher than the 0.6 s that actually lands.
     headKnock: 1.5, headStagger: 0.8,
     // the telegraphed lunge: a wind-up shake, then a fast straight dash it recovers from
-    lungeCooldown: 2.6, lungeTell: 0.5, lungeSpeed: 8, lungeTime: 0.55,
+    lungeCooldown: 2.6, lungeTell: 0.75, lungeSpeed: 8, lungeTime: 0.55, lungeRecovery: 0.7,
     // the glowing tail's tell (fun audit: the rule needs to read at a glance): a brighter pulse
     // and a few sparks while it glows, on top of the flat emissive tint.
     tailPulseRate: 7, tailPulseMin: 0x5a4a10, tailPulseMax: 0xffdd55, tailSparkEvery: 0.22,

@@ -120,6 +120,7 @@ export const EVENTS = {
   'room-cleared': E('{ screen }', 'hero: combat.js checkRoomCleared, after the last enemy that counts dies', 'dungeon (shutters, key drops), clears.js (remembered clears)'),
   'boss-intro': E('{ id, name, title, dungeon, hint }', "foes-dungeon when the boss fight starts (its 'boss-intro' mode pushes the camera in)", 'ui (name card, the hint line)'),
   'boss-phase': E('{ id, phase }', 'foes-dungeon at each phase change', 'ui, audio'),
+  'enemy-interrupted': E('{ entity, source, phase }', 'boss-serpent exposed-head hit cancels charge', 'UI, tests'),
   'boss-defeated': E('{ id, dungeon, refight }', 'dungeons.js defeatBoss (called by foes-dungeon)', 'dungeon (reward room, portal), ui, overworld'),
 
   // ---- dungeons

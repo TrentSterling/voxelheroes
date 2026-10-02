@@ -17,6 +17,7 @@
 // orb in hand) moves the story on either way.
 import { defineState, state, hasFlag } from '../core/state.js';
 import { currentScreen } from '../world/world.js';
+import { entities } from '../entities/manager.js';
 import { hasBossKey, bossDefeated, isComplete, hasMap } from './dungeons.js';
 import { hasItem } from '../items/inventory.js';
 import { eraJournalEntry, archiveJournalEntry } from '../systems/era-story.js';
@@ -288,6 +289,11 @@ export function currentStep() {
     return story;
   }
   if (story?.id==='beat-boss' && screen?.key==='d1:3,3') return {...story,text:'Rest at the western hourstone, then unlock the northern boss door. Its coil guard yields only at the tail.',short:'Hourstone; north to serpent.'};
+  if (story?.id==='beat-boss' && screen?.area.id==='d1-boss') {
+    const b=entities.find(e=>!e.removed&&e.type==='boss-serpent');
+    return {...story,text:b?.segments.length?'Circle behind the glowing tail. Sidestep the coral charge lane and strike during its rest.':'The head is exposed. Sidestep its charge, then strike while it rests.',short:b?.segments.length?'Glowing tail; dodge coral.':'Head exposed; dodge, strike.'};
+  }
+  if (isComplete('d1') && screen?.key==='d1:3,1') return {id:'barrow-homecoming',text:'Take the southern stairs back to Barrowfield. Return east to Mossbrook; the next temple lies north through Whisperwood.',short:'South stairs; home east.'};
   if (story?.id !== 'big-key') return story;
   return barrowStep(screen);
 }

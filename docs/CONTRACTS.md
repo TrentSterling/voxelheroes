@@ -463,6 +463,7 @@ its own use (`'items:bomb-lit'`).
 | `hive-pressure-burst` | `{ screen, lane }` | nursery machine after its warning |
 | `boss-intro` | `{ id, name, title, dungeon, hint }` | foes-dungeon, as its `boss-intro` mode starts |
 | `boss-phase` | `{ id, phase }` | foes-dungeon |
+| `enemy-interrupted` | `{ entity, source, phase }` | Coilmaw exposed-head hit cancels a charge |
 | `boss-defeated` | `{ id, dungeon, refight }` | `dungeons.defeatBoss` |
 | `dungeon-enter` | `{ id, via }` (`door`, `start`) | `dungeons.js` |
 | `dungeon-leave` | `{ id }` | `dungeons.js` |

@@ -13,7 +13,8 @@ import { g } from '../ui/canvas/gfx.js';
 import { playShortcutBounds } from '../ui/shortcuts.js';
 import { hudBounds } from '../ui/hud.js';
 import { rewardWorldBounds } from '../core/presentation.js';
-import { companionHintBounds } from '../ui/hud/companion.js';
+import { companionHintBounds, companionHintVisible } from '../ui/hud/companion.js';
+import { promptView } from '../ui/hud/prompts.js';
 
 const cachedBounds = new WeakMap();
 let targets = [], regions = [], regionsKey = '', touchKey = '', touchRects = [], currentFrame = null;
@@ -60,7 +61,10 @@ function freeRegions() {
     c.right = Math.max(c.right, r.x + r.w); c.bottom = Math.max(c.bottom, r.y + r.h); columns.set(side, c);
   }
   const obstacles = [...columns.values()].map(c => ({ x: c.x, y: c.y, w: c.right - c.x, h: c.bottom - c.y }));
-  obstacles.push(companionHintBounds(g), ...touchBounds());
+  if (targets.length > 1 || companionHintVisible(g)) obstacles.push(companionHintBounds(g));
+  const pads = touchBounds();
+  if (targets.length === 1 && pads.length) obstacles.push(...promptView().map(p => ({ x:p.x, y:p.y, w:p.w, h:16 })));
+  obstacles.push(...pads);
   const key = JSON.stringify([g.w, g.h, g.safe, obstacles]);
   if (key === regionsKey) return regions;
   regionsKey = key;
@@ -94,7 +98,9 @@ export function updatePartyCamera() {
   nearby.sort((a,b) => (a.kind === 'companion' ? 0 : 1) - (b.kind === 'companion' ? 0 : 1) ||
     Math.hypot(a.x-player.x,a.z-player.z)-Math.hypot(b.x-player.x,b.z-player.z));
   targets = [player, ...nearby.slice(0, 7)];
-  if (targets.length === 1) { currentFrame = null; setCameraFrame(null); return; }
+  // A solo touch hero needs the same unobstructed space as a nearby party.
+  // Keep the ordinary solo rig when no touch controls cover the viewport.
+  if (targets.length === 1 && !touchBounds().length) { currentFrame = null; setCameraFrame(null); return; }
   const points = [];
   for (const e of targets) {
     const figure = (e.hero ?? e.rig).figure, box = poseBounds(figure);

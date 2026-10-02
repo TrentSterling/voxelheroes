@@ -42,6 +42,8 @@ import { modelMesh } from '../../models/kit.js';
 
 const S = () => TUNING.boss.serpent;
 const DEG = Math.PI / 180;
+const chargeMarkGeometry = new THREE.PlaneGeometry(.26, .4).rotateX(-Math.PI / 2);
+const chargeMarkMaterial = new THREE.MeshBasicMaterial({ color:0xff796f, transparent:true, opacity:.95, depthWrite:false, toneMapped:false });
 export const SERPENT_NAME = 'Coilmaw';
 export const SERPENT_TITLE = 'Warden of the Barrow';
 export const SERPENT_HINT = 'Only the glowing tail gives way. Leave the rest alone!';
@@ -135,6 +137,17 @@ class Serpent extends Enemy {
     this.punishOrbs = new Map(); // swingId -> orbs a punish fired, undone if that same swing also broke the tail
     this.lungeT = s.lungeCooldown; // the telegraphed lunge: wind-up, then a fast straight dash
     this.lungeUntil = 0;
+    this.recoverT = 0;
+    this.chargeCue = new THREE.Group();
+    this.chargeCue.visible = false;
+    for (let i=0; i<13; i++) for (const side of [-1,1]) {
+      const mark = new THREE.Mesh(chargeMarkGeometry, chargeMarkMaterial);
+      mark.position.set(side*1.05,.03,.7+i*.4);
+      mark.rotation.y = -side*Math.PI/5;
+      mark.userData.sharedGeometry = true;
+      this.chargeCue.add(mark);
+    }
+    this.holder.add(this.chargeCue);
   }
 
   onAdd() {
@@ -278,6 +291,10 @@ class Serpent extends Enemy {
   // straight dash for lungeTime s before it recovers to normal curving.
   moveStep(dt) {
     const s = S();
+    if (this.recoverT>0) {
+      this.recoverT=Math.max(0,this.recoverT-dt);
+      return 0;
+    }
     const wasTelling = this.ai.pendingLunge;
     if (stepTell(this, dt)) return 0;
     if (wasTelling) {
@@ -287,7 +304,11 @@ class Serpent extends Enemy {
     }
     if (this.lungeUntil > 0) {
       this.lungeUntil -= dt;
-      if (this.lungeUntil <= 0) this.lungeT = s.lungeCooldown; // recovers; cooldown restarts
+      if (this.lungeUntil <= 0) {
+        this.lungeUntil=0;
+        this.recoverT=s.lungeRecovery;
+        this.lungeT=s.lungeCooldown;
+      }
       return s.lungeSpeed * dt;
     }
     this.steer(dt);
@@ -326,9 +347,12 @@ class Serpent extends Enemy {
     }
 
     // the forward fan
-    this.volleyT -= dt;
+    // A charge and its recovery get their own beat, without a second attack
+    // arriving over the warning. The volley clock resumes while circling.
+    const charging=this.ai.pendingLunge || this.lungeUntil>0 || this.recoverT>0;
+    if (!charging) this.volleyT -= dt;
     this.mesh.setPose(this.volleyT < 0.4 ? 'open' : 'shut');
-    if (this.volleyT <= 0) {
+    if (!charging && this.volleyT <= 0) {
       this.volleyT += s.volleyEvery;
       const n = s.volleyCount;
       for (let i = 0; i < n; i++) {
@@ -340,12 +364,41 @@ class Serpent extends Enemy {
     }
   }
 
+  update(dt) {
+    super.update(dt);
+    this.present();
+  }
+
+  // Replicas reconstruct the committed lane from the owner's scalar clocks
+  // and heading, so the same warning survives a room ownership handoff.
+  present() {
+    this.harmless=this.recoverT>0;
+    const warning=this.spawned && this.ai.pendingLunge && this.ai.tellT>0 && !(this.stunT>0 || this.knockT>0);
+    this.chargeCue.visible=!!warning;
+    if (!warning) return;
+    this.chargeCue.rotation.y=Math.PI/2-this.heading-this.holder.rotation.y;
+    const screen=currentScreen(),reach=S().lungeSpeed*S().lungeTime+this.r;
+    for (const mark of this.chargeCue.children) {
+      const x=this.x+Math.cos(this.heading)*mark.position.z+Math.sin(this.heading)*mark.position.x;
+      const z=this.z+Math.sin(this.heading)*mark.position.z-Math.cos(this.heading)*mark.position.x;
+      mark.visible=mark.position.z<=reach && (!screen || x>screen.x0+1 && x<screen.x1-1 && z>screen.z0+1 && z<screen.z1-1);
+    }
+  }
+
   // Only reached once the body is gone (guards() gates it before this).
   // Unlike a normal boss part, the exposed head actually staggers: a real
   // punish for landing a hit on a real fight, not free follow-up damage
   // (fun audit: hits never staggered it, so a naive bot never got a window).
   hurt(hit) {
     const s = S();
+    const interrupted=this.ai.pendingLunge || this.lungeUntil>0;
+    this.ai.pendingLunge=false;
+    this.ai.tellT=0;
+    this.mesh.position.x=0;
+    this.lungeUntil=0;
+    this.lungeT=s.lungeCooldown;
+    this.recoverT=s.lungeRecovery;
+    if (interrupted) emit('enemy-interrupted',{entity:this,source:hit.source,phase:'charge'});
     return super.hurt({ ...hit, tiles: s.headKnock, stun: s.headStagger, bossStagger: true });
   }
 
