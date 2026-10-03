@@ -13,7 +13,7 @@
 //     },
 //   });
 //
-//   learnSpell('spell-reflect')   own it, max magic +1 (TUNING.progression.spellMagic), 'spell-learned';
+//   learnSpell('spell-reflect')   own it, raise magic by at least one and enough to cast, 'spell-learned';
 //                                 grant('spell-reflect') does the same with the item get
 //   spellCost('spell-quake')      for this hero: the focus trait's column, the thrift special
 //   castSpell('spell-quake')      checks canAct (not in a doorway) and the magic, casts, then
@@ -70,12 +70,13 @@ export const allSpells = () => [...spells.values()].sort((a, b) => a.order - b.o
 export const knowsSpell = (id) => spells.has(id) && hasItem(id);
 export const knownSpells = () => allSpells().filter((s) => hasItem(s.id));
 
-// Learn a spell: owned, on the ring, +1 max magic (and a refill). True the first time.
+// A first optional sage must teach a usable spell even when earlier sages were
+// skipped. Subsequent lessons retain their ordinary capacity growth and refill.
 export function learnSpell(id) {
   if (!spells.has(id)) throw new Error(`Unknown spell "${id}"`);
   if (hasItem(id)) return false;
   giveItem(id);
-  addMaxMagic(TUNING.progression.spellMagic, { reason: 'spell' });
+  addMaxMagic(Math.max(TUNING.progression.spellMagic,spellCost(id)-state.maxMagic), { reason: 'spell' });
   emit('spell-learned', { id });
   return true;
 }

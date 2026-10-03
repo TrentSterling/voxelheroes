@@ -30,6 +30,7 @@ testFiles.push('scripts/forest-hud-layout-test.mjs','scripts/test-silent-output.
 testFiles.push('scripts/rootglass-hud-layout-test.mjs');
 testFiles.push('scripts/watch-station-hud-layout-test.mjs','scripts/colossus-coop-test.mjs');
 testFiles.push('scripts/equipment-layout-test.mjs','scripts/equipment-gamepad-test.mjs','scripts/undertow-equipment-coop-test.mjs','scripts/probe-earned-brineglass.mjs','scripts/probe-earned-undertow.mjs');
+testFiles.push('scripts/crown-coop-test.mjs','scripts/probe-earned-tower.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -54,6 +55,10 @@ async function run(name,seed,engine='chromium'){
   const id=`${engine}-${seed}-${name}`, dir=join(out,id);let timer;
   const prior=previous?.cases.find(c=>c.id===id&&c.ok);
   const dependencies={
+    'tower-victory':['tower-journey','brineglass-victory','brineglass-crown-journey','brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'tower-recovery':['tower-victory','tower-journey','brineglass-victory','brineglass-crown-journey','brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'tower-journey':['brineglass-victory','brineglass-crown-journey','brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'first-spell':['tower-journey','brineglass-journey'],
     'brineglass-victory':['brineglass-crown-journey','brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'brineglass-recovery':['brineglass-crown-journey','brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'brineglass-crown-journey':['brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],

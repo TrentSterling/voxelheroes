@@ -22,7 +22,7 @@ import { toast } from '../../ui/toast.js';
 import { clockAnchorCount, clockUnwound } from '../../systems/tower-clock.js';
 
 const MASK={id:'boss-bishop',name:'Veyl',title:'Keeper of False Light',hint:'Cast Truesight. Only the real body has a shadow; strike it before it disappears. Wisps drop life and magic.'};
-const CROWN={id:'boss-king',name:'Caldrin',title:'The Hollow Crown',hint:'Leave the marked lightning squares. Guard storms with the Bastion Shield. Dash sideways out of the bright charged shot.'};
+const CROWN={id:'boss-king',name:'Caldrin',title:'The Hollow Crown',hint:'Strike when the gold ring marks recovery. Leave lightning squares, guard storms with Bastion, and step sideways out of the bright charged-shot line.'};
 const SITES=[[5,4],[16,10],[5,10],[16,4],[11,7]];
 const cleanup=()=>{for(const e of [...entities])if(['crown-shot','crown-charge','crown-storm','crown-lightning','crown-wisp','bishop-copy'].includes(e.type))e.remove();};
 function fireAt(e,type='crown-shot',spread=0,speed=5){
@@ -72,21 +72,33 @@ class Copy extends Enemy{
 class Wisp extends Enemy{
  constructor(opts){super({...opts,crowned:false},{hp:3,r:.3,speed:2.3,contactDamage:1,drops:false,height:.4,model:crownWispModel()});this.index=opts.index??0;this.countsForClear=false;this.flying=true;}
  think(dt,{toP,dist}){const d=dist||1;this.walk(toP.x/d*dt*2.3,toP.z/d*dt*2.3);this.mesh.position.y=.4+Math.sin(this.x+this.z)*.1;}
- die(hit){const x=this.x,z=this.z;super.die(hit);spawn(this.index%2?'magic':'heart',{x,z});}
+ die(hit){
+  const x=this.x,z=this.z;super.die(hit);
+  // A violet wisp supplies one normal Truesight cast. The first spell can
+  // be learned here, so rebuilding a single charge must not take three waves.
+  if(this.index%2)for(const offset of[-.18,0,.18])spawn('magic',{x:x+offset,z});
+  else spawn('heart',{x,z});
+ }
 }
 class King extends Enemy{
  constructor(opts){
   super({...opts,crowned:false},{hp:140,r:1.6,speed:1.4,contactDamage:2,drops:false,model:hollowCrownModel()});
   this.boss=true;this.dungeon=opts.dungeon??'tower-crown';this.introDone=!!opts.skipIntro;
   this.tailMesh=modelMesh(crownTailModel(),this.mat);this.tailMesh.position.set(0,.1,-1.3);this.tailMesh.rotation.y=Math.PI;this.holder.add(this.tailMesh);
-  this.ai={phase:'stalk',t:1.6,clock:0,attack:0,dx:0,dz:1,shotT:0,shots:0};
+  this.ai={phase:'stalk',t:1.6,clock:0,attack:0,dx:0,dz:1,shotT:0,shots:0,openHits:0};
   this.line=new THREE.Group();const geo=new THREE.BoxGeometry(.14,.03,.45);
-  for(let i=0;i<13;i++){const m=new THREE.Mesh(geo,this.mat);m.position.set(0,.02,2.5+i*.8);this.line.add(m);}this.holder.add(this.line);this.line.visible=false;
+  for(let i=0;i<13;i++){const m=new THREE.Mesh(geo,this.mat);m.position.set(0,.02,2.5+i*.8);this.line.add(m);}this.line.position.y=.14;this.holder.add(this.line);this.line.visible=false;
+  this.opening=new THREE.Group();const openingGeo=new THREE.BoxGeometry(.13,.035,.13),openingMat=new THREE.MeshBasicMaterial({color:0xf6d387});
+  for(let i=0;i<24;i++){const a=i*Math.PI/12,m=new THREE.Mesh(openingGeo,openingMat);m.position.set(Math.sin(a)*2.15,.11,Math.cos(a)*2.15);this.opening.add(m);}this.holder.add(this.opening);this.opening.visible=false;
  }
  onAdd(){if(!hasFlag('tower:mask-broken')||hasFlag('campaign:complete'))this.remove();}
+ guards(){return this.ai.phase!=='recover'||this.ai.openHits>=3;}
+ onBlocked(){sfx.block();}
+ present(){this.opening.visible=!this.guards();this.line.visible=this.ai.phase==='charge-tell';if(this.line.visible)this.line.rotation.y=Math.atan2(this.ai.dx,this.ai.dz)-this.holder.rotation.y;this.mesh.rotation.x=this.opening.visible?-.08:0;}
+ update(dt){super.update(dt);this.present();}
  canBeHit(hit){return this.flashT<=0&&super.canBeHit(hit);}
- hurt(hit){super.hurt({...hit,tiles:0,stun:0});if(!this.removed){this.flashT=.2;this.ai.shots=3;this.ai.shotT=.3;}}
- setPhase(phase,t){this.ai.phase=phase;this.ai.t=t;}
+ hurt(hit){super.hurt({...hit,tiles:0,stun:0});if(!this.removed){this.ai.openHits++;this.flashT=.2;if(this.ai.openHits===3){this.ai.shots=1;this.ai.shotT=.35;}this.present();}}
+ setPhase(phase,t){this.ai.phase=phase;this.ai.t=t;if(phase==='recover')this.ai.openHits=0;}
  lightning(){const s=currentScreen(),p=this.targetHero()??player;const points=[[p.x,p.z],[s.x0+5,s.z0+5],[s.x0+16,s.z0+10],[s.x0+5,s.z0+10],[s.x0+16,s.z0+5]];if(this.hp<47)points.push([s.x0+11,s.z0+12],[s.x0+11,s.z0+3]);for(const[x,z]of points)spawn('crown-lightning',{x:Math.floor(x)+.5,z:Math.floor(z)+.5});}
  think(dt){
   if(!this.introDone){this.introDone=true;startBossIntro(this,CROWN);}
@@ -97,12 +109,12 @@ class King extends Enemy{
    this.walk(dx/d*dt*(this.hp<47?2:1.4),dz/d*dt*(this.hp<47?2:1.4));this.yaw=Math.atan2(dx,dz);
    if(a.t<=0){a.attack++;a.dx=dx/d;a.dz=dz/d;if(d<3.5&&a.attack%2)this.setPhase('tail-tell',.8);else if(this.hp<47&&a.attack%3===0)this.setPhase('charge-tell',1.15);else if(a.attack%2===0){this.lightning();this.setPhase('lightning',1.4);}else this.setPhase('storm-tell',.8);}
   }else if(a.t<=0){
-   if(a.phase==='tail-tell'){for(let i=0;i<9;i++){const angle=Math.atan2(a.dz,a.dx)+(i-4)*.3;spawn('crown-storm',{x:this.x+Math.cos(angle)*1.8,z:this.z+Math.sin(angle)*1.8,dir:{x:Math.cos(angle),z:Math.sin(angle)},speed:5,range:3});}this.setPhase('recover',1.1);}
-   else if(a.phase==='charge-tell'){spawn('crown-charge',{x:this.x+a.dx*1.8,z:this.z+a.dz*1.8,dir:{x:a.dx,z:a.dz},speed:11});sfx.shoot();this.setPhase('recover',1.4);}
-   else if(a.phase==='storm-tell'){for(let i=0;i<10;i++){const angle=i*Math.PI*2/10;spawn('crown-storm',{x:this.x+Math.cos(angle)*1.8,z:this.z+Math.sin(angle)*1.8,dir:{x:Math.cos(angle),z:Math.sin(angle)},speed:4.3});}this.setPhase('recover',1.2);}
+   if(a.phase==='tail-tell'){for(let i=0;i<9;i++){const angle=Math.atan2(a.dz,a.dx)+(i-4)*.3;spawn('crown-storm',{x:this.x+Math.cos(angle)*1.8,z:this.z+Math.sin(angle)*1.8,dir:{x:Math.cos(angle),z:Math.sin(angle)},speed:5,range:3});}this.setPhase('recover',1.5);}
+   else if(a.phase==='charge-tell'){spawn('crown-charge',{x:this.x+a.dx*1.8,z:this.z+a.dz*1.8,dir:{x:a.dx,z:a.dz},speed:11});sfx.shoot();this.setPhase('recover',1.5);}
+   else if(a.phase==='storm-tell'){for(let i=0;i<10;i++){const angle=i*Math.PI*2/10;spawn('crown-storm',{x:this.x+Math.cos(angle)*1.8,z:this.z+Math.sin(angle)*1.8,dir:{x:Math.cos(angle),z:Math.sin(angle)},speed:4.3});}this.setPhase('recover',1.5);}
    else this.setPhase('stalk',this.hp<47?1:1.6);
   }
-  this.harmless=a.phase.endsWith('tell')||a.phase==='lightning';this.line.visible=a.phase==='charge-tell';
+  this.harmless=a.phase.endsWith('tell')||a.phase==='lightning';this.present();
   if(a.phase.endsWith('tell'))this.yaw=Math.atan2(a.dx,a.dz);
   this.tailMesh.rotation.y=Math.PI+(a.phase==='tail-tell'?Math.sin(a.clock*11)*.5:Math.sin(a.clock*3)*.12);
  }

@@ -151,10 +151,13 @@ export default async function contractsM2(t) {
   await t.eval(() => window.__voxelHeroes.setMode('play'));
   await t.press('Space');
   await t.press('Tab');
+  t.expect((await t.state()).mode==='inventory','Tab opens the actual Equipment screen');
+  await t.press('Tab');
+  t.expect((await t.state()).mode==='play','a second Tab closes Equipment before probing the quick-item action');
   await t.press('KeyE');
   r = await t.eval(() => ({ acts: window.__acts.join(','), muted: window.__voxelHeroes.state.settings.muted }));
   t.expect(afterM === 'map', `M presses the map action and opens the map screen (mode: ${afterM})`);
-  t.expect(r.acts === 'map,dash,inventory,next-item' && !r.muted, `M, Space, Tab and E press map, dash, inventory and next-item in play (${r.acts}), and M does not mute`);
+  t.expect(r.acts === 'map,dash,inventory,next-item' && !r.muted, `M, Space, Tab and E press map, dash, Equipment and next-item in play (${r.acts}), and M does not mute`);
   t.expect((await count('sword-swing')) === swings, 'Space no longer swings the sword');
   await t.press('KeyN');
   r = await t.eval(() => ({ muted: window.__voxelHeroes.state.settings.muted, audio: window.__voxelHeroes.game.audio.isMuted(), label: window.__voxelHeroes.game.hud.muteLabel() }));

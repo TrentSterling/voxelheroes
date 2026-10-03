@@ -337,3 +337,15 @@ Fresh-title victory and natural-death recovery cases extend the earned crown
 through Nacre, its permanent heart, the fourth orb and the return shortcut.
 See [NACRE-TIDEWELL.md](NACRE-TIDEWELL.md) for retained failures, fixture scopes
 and exact-source receipts. The tower and broader game work remain ongoing.
+
+### Tower memories and crown openings (2026-10-03)
+
+The earned campaign now exercises all three memory rematches and the two final
+bosses. Six native floor materials and four room plans distinguish amber, sand,
+tide and ash. Iona's first spell can be cast even when earlier sages were skipped;
+one violet wisp supplies a normal Truesight charge. Caldrin guards between visible
+recovery openings, with a raised committed charge warning. The final south stairs
+permit physical retreat to the last well while preserving the broken mask.
+See [CROWN-MEMORIES.md](CROWN-MEMORIES.md) for gameplay, fixture disclosures and
+silent verification. Native co-op campaign play, broader story/activity variety,
+additional encounter work and art polish remain ongoing.
