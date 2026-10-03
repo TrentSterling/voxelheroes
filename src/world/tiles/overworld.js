@@ -430,7 +430,7 @@ registerTile('overworld', 'v', {
   onSword: (ctx) => breakPot(ctx),
   onBomb: (ctx) => breakPot(ctx),
 });
-registerTile('overworld', 'C', { name: 'chest', solid: true, grapple: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, prompt: 'Open chest', onInteract: interactChest, onPush: openChest });
+registerTile('overworld', 'C', { name: 'chest', chest: true, solid: true, grapple: true, ground: 'grass', build: (ctx) => land(ctx), prop: chestProp, prompt: 'Open chest', onInteract: interactChest, onPush: openChest });
 
 // ---------------------------------------------------------------- secrets (fun audit: every
 // screen earns a find, ALttP-style). A cracked rock looks exactly like a plain one until a bomb

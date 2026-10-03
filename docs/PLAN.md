@@ -1,5 +1,10 @@
 # Voxel Heroes build plan
 
+The reported chest trap has a focused clearance fix: a reward reveal clears
+overlapping heroes and travelling companions before adding its solid chest.
+See `CHEST-CLEARANCE.md` for native input, occupied floor and local co-op checks.
+The broader adventure task remains paused at the requested stopping point.
+
 Goal: an original real-time voxel co-op adventure (Three.js, Vite, vanilla JS). On September 30, 2026 Trent changed the creative direction: retain real-time combat, but use Chrono Trigger as the reference for expressive color, memorable characters, linked eras, personal stakes and authored encounters. This supersedes the older requirement to follow 3D Dot Game Heroes closely. Characters, models, dialogue and music remain original.
 
 The Old Barrow now has a turning copper block route, three personal rest

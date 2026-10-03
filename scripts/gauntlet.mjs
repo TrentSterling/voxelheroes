@@ -31,6 +31,7 @@ testFiles.push('scripts/rootglass-hud-layout-test.mjs');
 testFiles.push('scripts/watch-station-hud-layout-test.mjs','scripts/colossus-coop-test.mjs');
 testFiles.push('scripts/equipment-layout-test.mjs','scripts/equipment-gamepad-test.mjs','scripts/undertow-equipment-coop-test.mjs','scripts/probe-earned-brineglass.mjs','scripts/probe-earned-undertow.mjs');
 testFiles.push('scripts/crown-coop-test.mjs','scripts/probe-earned-tower.mjs');
+testFiles.push('scripts/chest-clearance-coop-test.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -158,6 +159,7 @@ try{
     await stage('pollinator-coop','pollinator-coop-test.mjs');
     await stage('pollinator-touch','pollinator-touch-test.mjs');
     await stage('town-chests-coop','town-chests-coop-test.mjs');
+    await stage('chest-clearance-coop','chest-clearance-coop-test.mjs');
     await stage('town-chests-touch','town-chests-touch-test.mjs');
     await stage('hive-coop','hive-coop-test.mjs');
     await stage('hive-layout','hive-layout-test.mjs');

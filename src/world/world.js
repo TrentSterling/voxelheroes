@@ -712,6 +712,7 @@ export class World {
     const def = getTile(screen.tileset, ch);
     if (!def) throw new Error(`setTile: unknown tile "${ch}" in tileset "${screen.tileset}"`);
     screen.tiles[lz][lx] = ch;
+    if (def.chest) this.clearChestSpace(screen, tx, tz, def);
     this.removeProp(screen, lx, lz);
     if (def.prop) this.addProp(screen, lx, lz);
     if (rebuild) {
@@ -722,6 +723,32 @@ export class World {
     partyHooks.tile({ tx, tz, to: ch, screen: screen.key, persist, rebuild, reason });
     emit('tile-changed', { tx, tz, from, to: ch, screen, reason });
     return true;
+  }
+
+  // Reward chests appear on authored floor while someone may still stand
+  // there. Clear the body before adding the prop, including on a party tile
+  // update. Each peer moves its own hero; remote hero positions stay remote.
+  clearChestSpace(screen, tx, tz, def) {
+    const box = solidExtent(this.locate(tx, tz), tx, tz);
+    const bodies = [...new Set([player, ...entities, ...bucketOf(screen)])].filter(e =>
+      !e.removed && (e === player || e.solid || e.kind === 'enemy' || (e.kind === 'companion' && e.object?.visible)));
+    for (const body of bodies) {
+      if (body.kind === 'friend' || !isSolidDef(def, body) ||
+          body.x + body.r <= box[0] || body.x - body.r >= box[2] ||
+          body.z + body.r <= box[1] || body.z - body.r >= box[3]) continue;
+      const occupied = (x, z) => bodies.some(other => other !== body &&
+        Math.hypot(other.x - x, other.z - z) < other.r + body.r);
+      const safe = this.freeSpot(screen, body.x - screen.x0, body.z - screen.z0, body.r, { body, occupied });
+      if (!safe) continue;
+      body.x = screen.x0 + safe.x;
+      body.z = screen.z0 + safe.z;
+      body.resetTileTracking?.();
+      if (body.object) {
+        body.object.position.x = body.x;
+        body.object.position.z = body.z;
+      }
+      emit('chest-clearance', { screen, tx, tz, body });
+    }
   }
 
   // Tiles marked `regrow` (bushes) come back each time a screen is entered.

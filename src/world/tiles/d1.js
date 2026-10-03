@@ -434,6 +434,7 @@ registerTile('dungeon', 'Z', {
 // ---------------------------------------------------------------- chests
 registerTile('dungeon', 'c', {
   name: 'chest-2',
+  chest: true,
   solid: true,
   grapple: true,
   build: (ctx) => fineFloor(ctx),
