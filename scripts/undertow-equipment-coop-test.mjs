@@ -10,7 +10,7 @@ const url=arg('url')??'http://127.0.0.1:5173/',out=arg('out')??'playtest-out/und
 assert.ok(!existsSync(`${out}/result.json`),'Choose a fresh output folder.');mkdirSync(out,{recursive:true});
 const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(d,e.name)):[join(d,e.name)]);
 const fingerprint=()=>{const h=createHash('sha256');for(const f of [...walk('src'),...walk('public/voices'),'index.html','package.json','package-lock.json'].sort()){h.update(f.replaceAll('\\','/')+'\0');h.update(readFileSync(f));}return h.digest('hex');};
-const result={startedUtc:new Date().toISOString(),sourceSha256:fingerprint(),checks:[],scope:'Actual local Chromium/Firefox Trystero RTC. Owned blades are shared grant fixtures; equipment selection and friendly sword knockback use actual inputs. Arena/campaign/committed phase fixtures and invulnerability isolate cues and ownership transfer. Native phase clocks remain active. Public signaling, separate-network ICE and full native co-op campaign are outside this scope. Speaker output disconnected before navigation.'};
+const result={startedUtc:new Date().toISOString(),sourceSha256:fingerprint(),checks:[],scope:'Actual local Chromium/Firefox Trystero RTC. Owned blades are shared grant fixtures; equipment selection and friendly sword knockback use actual inputs. Personal low-HP and room-placement fixtures isolate normal tidewell interactions. Arena/campaign/committed phase fixtures and invulnerability isolate cues and ownership transfer. Native phase clocks remain active. Public signaling, separate-network ICE and full native co-op campaign are outside this scope. Speaker output disconnected before navigation.'};
 const pages=[];let browser,relay;
 const check=(ok,label)=>{assert.ok(ok,label);result.checks.push(label);console.log('PASS '+label);};
 try{
@@ -37,6 +37,12 @@ try{
   check(v.every((r,i)=>r.hp===before[i].hp)&&Math.hypot(v[0].x-before[0].x,v[0].z-before[0].z)>.1,'An equipped Warden swing knocks the other hero back with expired immunity and zero PvP damage');
   await guest.shot('01-personal-blades-friendly-whack');
   for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;for(const id of['d1','d2','d3']){h.state.flags.add(`dungeon:${id}:entered`);h.game.dungeons.giveBossKey(id);h.game.dungeons.defeatBoss(id);h.game.dungeons.completeDungeon(id);}h.state.flags.add('dungeon:d4:entered');h.game.dungeons.giveBossKey('d4');});
+  await host.teleport('d4:2,5',6.5,8.5);await guest.teleport('d4:2,5',12.5,6.5);await pump(10);
+  for(const t of pages)await t.eval(()=>window.__voxelHeroes.setHp(2));
+  await guest.stick(0,-1,1/60);await guest.tap('sword');await pump(8);v=await Promise.all(pages.map(view));
+  check(v[0].hp===2&&v[1].hp===await guest.eval(()=>window.__voxelHeroes.state.maxHp),'Actual guest tidewell rest heals only that hero while the friend keeps personal vitals');await guest.shot('04-guest-personal-tidewell');
+  await host.eval(()=>{const h=window.__voxelHeroes;h.game.hero.hero.place(12.5,4.5);h.game.hero.hero.setFacing('south');});await host.tap('sword');await pump(8);v=await Promise.all(pages.map(view));
+  check(v.every((r,i)=>r.hp===6),'The other friend can independently use the same tidewell through normal interaction');
   await host.teleport('d4-boss:0,0',3,13);await host.eval(()=>{window.__voxelHeroes.entities.find(e=>e.type==='boss-beast').introDone=true;});await guest.teleport('d4-boss:0,0',18,13);await pump(20);
   const ownerView=await view(host),owner=ownerView.owner===ownerView.self?host:guest,other=owner===host?guest:host;
   await owner.eval(()=>{const h=window.__voxelHeroes,b=h.entities.find(e=>e.type==='boss-beast');for(const e of [...h.entities])if(e.type==='beast-ink')e.remove();b.ai.phase='ripple';b.ai.t=1.5;for(const[i,e]of b.segments.entries()){e.ai.phase='tell';e.ai.t=1.5;e.ai.dx=i%2?0:1;e.ai.dz=i%2?-1:0;e.holder.rotation.y=-.8;}b.present();for(const e of b.segments)e.present();});

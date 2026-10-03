@@ -31,3 +31,12 @@ export const shoreBeaconModel = (lit = false) => model(`shore-beacon-${lit}`, ()
   g.box(2, 39, 2, 22, 41, 22, brass); g.box(7, 41, 7, 17, 44, 17, 0x6c8097);
   return g;
 });
+export const tidewellModel=()=>model('keeper-tidewell',()=>{
+  const g=new DenseGrid(20,22,20),stone=0x789ba7,brass=0xd4b581;
+  g.box(1,0,1,19,3,19,0x455e70);g.box(4,3,4,16,6,16,brass);
+  g.box(7,6,7,13,12,13,stone);g.box(2,12,2,18,15,18,brass);
+  g.box(3,15,3,17,18,17,stone);g.box(5,16,5,15,19,15,0x76d6cf);
+  for(const x of[2,16])g.box(x,15,2,x+2,20,18,brass);
+  for(const z of[2,16])g.box(2,15,z,18,20,z+2,brass);
+  g.box(8,19,8,12,22,12,0xffd79a);return g;
+});

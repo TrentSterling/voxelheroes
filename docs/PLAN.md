@@ -325,3 +325,15 @@ from fresh acceptance. Exact-source layout, native input, local RTC, portable
 HTML and image-only slideshow receipts are described in
 [EQUIPMENT-UNDERTOW.md](EQUIPMENT-UNDERTOW.md). The fourth boss victory, tower,
 additional room art and the broader story/co-op goals remain ongoing.
+
+### Nacre and room architecture (2026-10-02)
+
+Brineglass now uses twelve native floor materials in six room-specific plans.
+Charts have a compass inlay, kilns use fired clay and vents, sluices use drained
+stone, vaults have quiet ceremonial mosaics, and Undertow has clear slate banks.
+The antechamber's physical tidewell restores personal life and magic before
+the fourth keeper. Normal co-op rest preserves the other hero's own vitals.
+Fresh-title victory and natural-death recovery cases extend the earned crown
+through Nacre, its permanent heart, the fourth orb and the return shortcut.
+See [NACRE-TIDEWELL.md](NACRE-TIDEWELL.md) for retained failures, fixture scopes
+and exact-source receipts. The tower and broader game work remain ongoing.

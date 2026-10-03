@@ -1,4 +1,4 @@
-export const description = 'Muted actual one/two-block fire melt, wall/bowl boundaries, physical coastal beacon, future memorial vault, one-time magic reward, tracked quest stages and save/load. All 26 temple rooms, boss court and eight coastal screens captured; actual push tests on all six local floor types. Equipment, positions, enemy restraint and tile reset fixtures disclosed.';
+export const description = 'Muted actual one/two-block fire melt, wall/bowl boundaries, physical coastal beacon, future memorial vault, one-time magic reward, tracked quest stages and save/load. All 26 temple rooms, boss court and eight coastal screens captured; actual push tests on all twelve local floor types. Equipment, positions, enemy restraint and tile reset fixtures disclosed.';
 export default async function(t) {
   await t.eval(()=>{const h=window.__voxelHeroes;h.game.progress.startNewGame({prologue:false});h.game.audio.setMuted(true);h.game.audio.setVolumes({master:0});h.game.settings.setSetting('npcVoices',false);h.player.invT=999;h.game.objective.trackQuest('shore-light');});await t.give('fire-wand');
   const place=(x,z,f='north')=>t.eval(([x,z,f])=>{const h=window.__voxelHeroes;h.game.hero.hero.place(x,z);h.game.hero.hero.setFacing(f);h.game.inventory.selectItem('fire-wand');h.player.invT=999;},[x,z,f]);
@@ -24,14 +24,14 @@ export default async function(t) {
   const rooms=await t.eval(()=>[...window.__voxelHeroes.world.screens.values()].filter(s=>s.area.id==='d4').map(s=>({key:s.key,name:s.name})));t.expect(rooms.length===26,'The temple includes 25 campaign rooms and the optional kiln');
   for(const[i,s]of rooms.entries()){
     await t.teleport(s.key,8,9.5);await t.step(1.5);await t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;for(const e of h.entities)if(e.kind==='enemy')e.think=()=>{};});
-    t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return s.tileset==='brineglass'&&new Set(s.tiles.flat().filter(c=>['e','a','j','u','o','p'].includes(c))).size>=4&&s.tiles.every((r,z)=>r.every((c,x)=>!['e','a','j','u','o','p'].includes(c)||h.world.tileDefAt(s.x0+x,s.z0+z).pushableFloor&&!h.world.tileDefAt(s.x0+x,s.z0+z).solid));}),s.name+' has varied walkable brineglass floors');
+    t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen(),floors=['e','a','j','u','o','p','b','i','k','d','q','m'];return s.tileset==='brineglass'&&new Set(s.tiles.flat().filter(c=>floors.includes(c))).size>=4&&s.tiles.every((r,z)=>r.every((c,x)=>!floors.includes(c)||h.world.tileDefAt(s.x0+x,s.z0+z).pushableFloor&&!h.world.tileDefAt(s.x0+x,s.z0+z).solid));}),s.name+' has varied walkable brineglass floors');
     await shot(String(i+7).padStart(2,'0')+'-'+s.name.toLowerCase().replaceAll(' ','-'));
   }
   await t.teleport('d4-boss:0,0',11,13.5);await t.step(3);await shot('33-undertow-court');
   const coast=await t.eval(()=>[...window.__voxelHeroes.world.screens.values()].filter(s=>s.area.id==='tidecoast').map(s=>({key:s.key,name:s.name})));t.expect(coast.length===8,'Brineglass Coast includes its seven routes and the new keeper beacon');
   for(const[i,s]of coast.entries()){await t.teleport(s.key,5.5,10.5);await t.step(1);await t.eval(()=>{for(const e of window.__voxelHeroes.entities)if(e.kind==='enemy')e.think=()=>{};});await shot(String(i+34)+'-'+s.name.toLowerCase().replaceAll(' ','-'));}
   await t.teleport('d4:0,2',4.5,6.5);
-  for(const ch of['e','a','j','u','o','p']){
+  for(const ch of['e','a','j','u','o','p','b','i','k','d','q','m']){
     await t.eval(ch=>{const h=window.__voxelHeroes,s=h.screen();h.world.setTile(s.x0+5,s.z0+6,'Q');h.world.setTile(s.x0+6,s.z0+6,ch);h.game.hero.hero.place(4.5,6.5);},ch);
     await t.eval(async()=>{const h=window.__voxelHeroes,s=h.screen();h.input.setStick(1,0);try{for(let i=0;i<120&&h.world.tile(s.x0+5,s.z0+6)==='Q';i++)await h.tick();}finally{h.input.setStick(0,0);}});
     t.expect(await tile(6,6)==='Q','Real counterweight blocks can be pushed over '+ch+' flooring');await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();h.world.setTile(s.x0+6,s.z0+6,s.base[6][6]);});

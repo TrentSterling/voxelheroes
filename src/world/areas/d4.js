@@ -1,12 +1,14 @@
 import { registerArea } from '../areas.js';
 import { GOLD } from '../palette.js';
 import { D4_ENTRANCE,D4_EXIT } from './coast.js';
+import { brineglassStyle,brineglassFloor } from '../brineglass-layout.js';
 export const TIDE_PALETTE={...GOLD,floor:0x4e656c,floorRing:0x759399,grout:0x394c56,floorUnder:0x26373e,wall:0x779cad,wallDark:0x567888,mortar:0x324f60,trim:0x8f5b4e,ledge:0xb8ceca};
 const room=(name,doors,props=[],extra={})=>{
   const rows=Array.from({length:12},(_,z)=>Array.from({length:16},(_,x)=>x===0||x===15||z===0||z===11?'W':'.'));
-  for(let z=1;z<11;z++)for(let x=1;x<15;x++)rows[z][x]=x===7||x===8?'u':z===2||z===9?'e':(x+z)%7===0?'o':(x*3+z)%6===0?'j':x%4===0?'a':(x+z*2)%9===0?'p':'.';
+  const floorStyle=brineglassStyle(name);
+  for(let z=1;z<11;z++)for(let x=1;x<15;x++)rows[z][x]=brineglassFloor(floorStyle,x,z);
   for(const[side,tile]of Object.entries(doors))for(const k of[0,1])rows[side==='n'?0:side==='s'?11:5+k][side==='w'?0:side==='e'?15:7+k]=tile;
-  for(const[x,z,ch]of props)rows[z][x]=ch;return {name,...extra,rows:rows.map(r=>r.join(''))};
+  for(const[x,z,ch]of props)rows[z][x]=ch;return {name,floorStyle,...extra,rows:rows.map(r=>r.join(''))};
 };
 const band=(from,to,ch)=>Array.from({length:to-from+1},(_,i)=>Array.from({length:14},(_,x)=>[x+1,from+i,ch])).flat();
 const lower={area:'d4',screen:[2,1],x:8,z:9.5,yaw:0};
@@ -36,12 +38,12 @@ const screens={
   '1,6':room('Cooled Glass Hall',{s:'.',w:'.'},[...band(4,6,':'),[3,8,'T']],{tablet:['Fire a path through the ice to the western doorway.','The crown bowl beyond needs two more flames.']}),
   '0,6':room('Crown of the Tide',{e:'.'},[[5,7,'f'],[10,7,'f'],[8,4,'h'],[4,3,'F'],[11,3,'F']],{torchReward:'chest',chest:'key-boss'}),
   '2,6':room('The Tide Bridge',{s:'.',n:'.'},[...band(4,6,'~'),[8,2,'&'],[8,8,'&']]),
-  '2,5':room('Undertow Antechamber',{s:'.',n:'B'},[[8,6,'Z'],[3,8,'Y'],[5,4,'T'],[3,3,'F'],[12,3,'F']],{tablet:['The beast surfaces on four banks. Its ink can be stopped by the magic shield.','Tentacles regrow; hurting them never hurts the body. Fire clears a space to cross.','One hit drives the body under. Watch the next ripple, then follow it with the grapple.'],warps:{B:{area:'d4-boss',screen:[0,0],x:11,z:13.5,yaw:Math.PI},'3,8':{area:'d4',screen:[2,3],x:11.5,z:8.5,yaw:0}}}),
+  '2,5':room('Undertow Antechamber',{s:'.',n:'B'},[[8,6,'Z'],[3,8,'Y'],[5,4,'T'],[3,3,'F'],[12,3,'F'],[12,5,'R']],{tablet:['The keeper left a warm tidewell here. Rest at its cup before crossing into Undertow.','The beast surfaces on four banks. Its ink can be stopped by the magic shield.','Tentacles regrow; hurting them never hurts the body. Fire clears a space to cross.','One hit drives the body under. Watch the next ripple, then follow it with the grapple.'],warps:{B:{area:'d4-boss',screen:[0,0],x:11,z:13.5,yaw:Math.PI},'3,8':{area:'d4',screen:[2,3],x:11.5,z:8.5,yaw:0}}}),
   '0,5':room('Fourth Light',{s:'X'},[[8,4,'c'],[3,3,'F'],[12,3,'F']],{chest:'orb-4',spawnsAt:{'4,6':{type:'npc-sage',name:'Sage Neru',spell:'spell-freeze',grantLines:['Four lights awake. Still the water and hear its quiet.','Freeze holds nearby foes for five seconds. It turns flame walls into ice your sword can break.'],afterLines:['The four lights belong at the old tower.','The pilgrim strand leads east; your fire wand clears the old trees.']}}}),
 };
 registerArea({id:'d4',name:'Brineglass Temple',kind:'dungeon',tileset:'brineglass',lighting:'crypt',camera:'dungeon',rooms:true,origin:[252,0],start:[2,3],entrance:D4_ENTRANCE,keyGroup:'d4',palette:TIDE_PALETTE,spawns:{s:'skeleton',n:'barrow-warden',g:'gazer',t:'turret'},warps:{X:D4_EXIT},screens});
 const arena=Array.from({length:16},(_,z)=>Array.from({length:22},(_,x)=>x===0||x===21||z===0||z===15?'W':x>=8&&x<=11&&z>=3&&z<=12?'~':'.'));
-for(let z=1;z<15;z++)for(let x=1;x<21;x++)if(arena[z][x]==='.')arena[z][x]=x===6||x===13?'u':z===2||z===13?'e':(x+z)%6===0?'o':x%4===0?'a':(x+z)%9===0?'j':'.';
+for(let z=1;z<15;z++)for(let x=1;x<21;x++)if(arena[z][x]==='.')arena[z][x]=x===7||x===12?'q':x===6||x===13?'u':z===2||z===13?'e':'i';
 for(const x of [10,11])for(const z of [0,15])arena[z][x]='U';
 for(const[x,z]of[[6,6],[13,6],[6,10],[13,10]])arena[z][x]='&';
 for(const[x,z]of[[2,2],[19,2],[2,13],[19,13]])arena[z][x]='F';
