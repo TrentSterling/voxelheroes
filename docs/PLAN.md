@@ -307,3 +307,21 @@ centered panels retain the complete text in short viewports. See CLOCKFAIR.md
 for scope, saved-state rules, fixtures and silent acceptance commands. The bank
 contains 1,490 compressed Kokoro recordings; no model ships. More town life,
 encounter variety, original story integration and art polish remain ongoing.
+
+### Equipment and Undertow road (2026-10-02)
+
+The fourth-temple audit exposed earned blades without a normal selection
+screen and Nacre warnings buried by the fine floor. Equipment now handles the
+existing Tab, standard gamepad Y and touch Menu actions, with a Pause entry.
+Players compare actual current damage/reach, equip an owned blade, retain their
+personal choice in co-op and restore it from a save. Nacre has distinct raised
+surfacing and committed lunge cues, with physical warning positions preserved
+while replica bodies interpolate.
+
+The new native crown journey continues the earned three-temple campaign through
+the coast, wand, optional Warden blade, shield, lens, crown and return shortcut.
+Its diagnostic failures and corrected walking targets are retained separately
+from fresh acceptance. Exact-source layout, native input, local RTC, portable
+HTML and image-only slideshow receipts are described in
+[EQUIPMENT-UNDERTOW.md](EQUIPMENT-UNDERTOW.md). The fourth boss victory, tower,
+additional room art and the broader story/co-op goals remain ongoing.

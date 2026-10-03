@@ -72,6 +72,7 @@ import * as clears from './clears.js';
 import * as party from './party.js';
 import * as partyUi from '../ui/screens/party.js';
 import * as journal from '../ui/screens/journal.js';
+import * as equipment from '../ui/screens/equipment.js';
 import * as errands from './errands.js';
 
 export const gameApi = {
@@ -120,6 +121,7 @@ export const gameApi = {
   party,
   partyUi,
   journal,
+  equipment,
   errands,
   entity,
   registry,

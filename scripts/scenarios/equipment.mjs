@@ -1,0 +1,31 @@
+export const description='Personal equipment through actual Tab, arrows, Enter, Escape, pause entry and mouse input; equipped blade stats and save/load are read back. Owned blades and passive gear are disclosed fixtures. No immunity, damage or health edits. Speaker output disconnected.';
+const view=t=>t.eval(()=>window.__voxelHeroes.game.equipment.equipmentView());
+export default async function(t){
+  await t.eval(()=>{const h=window.__voxelHeroes;h.game.progress.startNewGame({prologue:false});h.game.settings.setSetting('muted',true);h.game.settings.setSetting('npcVoices',false);});await t.step(1.5);
+  await t.press('Tab');let v=await view(t);
+  t.expect(v.open&&v.owned.length===1&&v.equippedId==='blade-start','actual Tab opens equipment and shows only the owned starter blade');
+  const before=await t.eval(()=>{const h=window.__voxelHeroes;return {x:h.player.x,z:h.player.z,swing:h.player.swingId};});
+  await t.press('Enter');await t.step(.5);
+  t.expect((await t.state()).mode==='inventory','Enter confirms within equipment instead of pausing or leaving it');
+  await t.press('Tab');
+  t.expect((await t.state()).mode==='play'&&await t.eval(v=>{const h=window.__voxelHeroes;return h.player.x===v.x&&h.player.z===v.z&&!h.player.attackT;},before),'closing the menu preserves position and drops any latched sword input');
+  await t.eval(()=>{const h=window.__voxelHeroes;h.game.swords.giveSword('blade-warden');h.game.swords.giveSword('blade-dawn');h.state.gear.shield=3;h.state.gear.boots='boots-swamp';h.state.gear.ring='ring-half';});
+  await t.press('Tab');await t.press('ArrowDown');v=await view(t);
+  t.expect(v.selectedId==='blade-warden'&&v.equippedId==='blade-start','arrow selection previews the earned blade without silently changing equipment');
+  await t.press('Enter');v=await view(t);
+  t.expect(v.open&&v.equippedId==='blade-warden','normal Confirm equips the selected Warden blade');
+  t.expect(await t.eval(()=>{const s=window.__voxelHeroes.game.swords;return s.bladeStats().strength===5&&s.bladeSize().reach>s.bladeSize(s.bladeStats({id:'blade-start'})).reach;}),'the chosen blade changes actual combat damage and reach');
+  await t.shot('170-equipment-warden');
+  await t.press('Escape');const saved=await t.save();await t.load(saved);await t.step(.3);await t.press('Tab');
+  t.expect((await view(t)).equippedId==='blade-warden','save/load restores the personal equipped blade');
+  await t.press('ArrowDown');await t.eval(()=>{const h=window.__voxelHeroes;h.render();});
+  const ui=await t.eval(()=>window.__voxelHeroes.game.ui.uiView()),hit=ui.hits.find(h=>h.id==='equipment-equip');
+  await t.page.mouse.click((hit.x+hit.w/2)*ui.scale,(hit.y+hit.h/2)*ui.scale);await t.step(1/60);
+  t.expect((await view(t)).equippedId==='blade-dawn','the actual canvas Equip button equips Dawn Blade');
+  await t.press('Escape');await t.press('KeyP');await t.press('Tab');
+  t.expect((await t.state()).mode==='inventory','Tab opens equipment from Pause too');
+  await t.press('Escape');t.expect((await t.state()).mode==='paused','Back returns to the same paused screen');
+  await t.eval(()=>{const h=window.__voxelHeroes;h.render();h.game.ui.pressUi('overlay-secondary');});
+  t.expect((await t.state()).mode==='inventory','the Pause Equipment button opens the same selector');
+  await t.press('Escape');await t.press('KeyP');t.expect((await t.state()).mode==='play','Resume returns to play after equipment selection');
+}

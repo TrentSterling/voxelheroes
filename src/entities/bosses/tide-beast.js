@@ -7,7 +7,6 @@ import { spawn,entities } from '../manager.js';
 import { player } from '../player.js';
 import { currentScreen,world } from '../../world/world.js';
 import { GROUND_Y } from '../../core/constants.js';
-import { getMaterial } from '../../core/materials.js';
 import { sfx } from '../../core/audio.js';
 import { modelMesh } from '../../models/kit.js';
 import { tombstoneModel } from '../../models/foes/foes.js';
@@ -22,13 +21,33 @@ const CARD={id:'boss-beast',name:'Nacre',title:'The Undertow Keeper',hint:'Follo
 // Alternate banks so the channel and its hooks are part of the fight.
 const BANKS=[[5.5,5.5],[15.5,10.5],[5.5,10.5],[15.5,5.5]];
 const ROOTS=[[4.5,8.5],[16.5,8.5],[4.5,11.5],[16.5,4.5]];
+const markerAnchor=new THREE.Vector3();
+const markerTurn=new THREE.Quaternion(),markerUp=new THREE.Vector3(0,1,0);
+function anchorMarks(e){
+  // Replica bodies interpolate toward their authority's position. A tell
+  // belongs to the committed physical position, including during that ease.
+  e.marks.position.copy(e.holder.worldToLocal(markerAnchor.set(e.x,GROUND_Y+.23,e.z)));
+}
 
 function ripple() {
   const group=new THREE.Group(),geo=new THREE.BoxGeometry(.45,.025,.14);
+  const ink=new THREE.MeshBasicMaterial({color:0x83f7ed,transparent:true,opacity:.9,depthWrite:false,toneMapped:false});
+  // Brineglass inlays rise 3/16 above GROUND_Y. Keep the tell above them,
+  // and pulse only its horizontal size so its height never sinks again.
+  group.position.y=.23;
   for(let i=0;i<12;i++){
-    const a=i*Math.PI/6,m=new THREE.Mesh(geo,getMaterial('prop'));
-    m.position.set(Math.cos(a)*1.3,.04,Math.sin(a)*1.3);m.rotation.y=-a+Math.PI/2;group.add(m);
+    const a=i*Math.PI/6,m=new THREE.Mesh(geo,ink);
+    m.position.set(Math.cos(a)*1.3,0,Math.sin(a)*1.3);m.rotation.y=-a+Math.PI/2;group.add(m);
   }
+  return group;
+}
+
+function lungeMarks(){
+  const group=new THREE.Group(),geo=new THREE.BoxGeometry(.4,.025,.14);
+  const ink=new THREE.MeshBasicMaterial({color:0xff9483,transparent:true,opacity:.9,depthWrite:false,toneMapped:false});
+  group.position.y=.23;
+  for(let i=0;i<11;i++){const m=new THREE.Mesh(geo,ink);m.position.set(0,0,.55+i*.23);group.add(m);}
+  for(const side of[-1,1]){const m=new THREE.Mesh(geo,ink);m.position.set(side*.16,0,3);m.rotation.y=side*Math.PI/4;group.add(m);}
   return group;
 }
 
@@ -66,7 +85,6 @@ class Beast extends Enemy {
     this.harmless=a.phase!=='surface';this.mesh.visible=a.phase==='surface'||a.phase==='dive';
     this.mesh.position.y=a.phase==='dive'?-(1-a.t/.4)*2.1:Math.sin(a.clock*5)*.05;
     this.shadow.visible=this.mesh.visible;
-    this.marks.visible=a.phase==='ripple';this.marks.scale.setScalar(1+Math.sin(a.clock*12)*.12);
     if(a.phase==='surface'){
       a.shotT-=dt;
       if(a.shots>0&&a.shotT<=0){
@@ -75,6 +93,12 @@ class Beast extends Enemy {
         spawn('beast-ink',{x:this.x+dx/d*1.2,z:this.z+dz/d*1.2,dir:{x:dx/d,z:dz/d},speed:this.refight?7:6});sfx.shoot();
       }
     }
+  }
+  update(dt){super.update(dt);this.present();}
+  present(){
+    this.marks.visible=this.spawned&&this.ai.phase==='ripple';
+    anchorMarks(this);
+    const pulse=1+Math.sin(this.ai.clock*12)*.12;this.marks.scale.set(pulse/Math.max(.001,this.holder.scale.x),1,pulse/Math.max(.001,this.holder.scale.z));
   }
   die(hit){
     const r=currentScreen(),safe=world.freeSpot(r,this.x-r.x0,this.z-r.z0,player.r,{body:player});
@@ -92,7 +116,7 @@ class Tentacle extends Enemy {
     this.head=opts.head;this.index=opts.index;this.flying=true;this.countsForClear=false;
     this.spawned=true;this.growT=1;this.holder.scale.setScalar(1);
     this.ai={phase:'root',t:1+this.index*.5,dx:0,dz:1,clock:0};
-    this.marks=ripple();this.marks.scale.setScalar(.4);this.holder.add(this.marks);
+    this.marks=lungeMarks();this.holder.add(this.marks);
   }
   canBeHit(hit){return this.ai.phase!=='buried'&&super.canBeHit(hit);}
   hurt(hit){return super.hurt({...hit,tiles:0,stun:hit.source==='grapple'?1:0});}
@@ -114,8 +138,18 @@ class Tentacle extends Enemy {
     }
     this.yaw=Math.atan2(a.dx,a.dz);this.mesh.visible=a.phase!=='buried';this.shadow.visible=this.mesh.visible;
     this.mesh.position.y=Math.sin(a.clock*7)*.07;this.harmless=a.phase!=='lunge';
-    this.marks.visible=a.phase==='tell';
     if(this.flashT<=0)this.mat.emissive.setHex(a.phase==='tell'?0x315767:0);
+  }
+  update(dt){super.update(dt);this.present();}
+  present(){
+    this.marks.visible=this.spawned&&this.ai.phase==='tell';
+    anchorMarks(this);
+    this.marks.scale.set(1/Math.max(.001,this.holder.scale.x),1,1/Math.max(.001,this.holder.scale.z));
+    // The direction is committed before the lunge. Body rotation eases, so
+    // compensate it on both the owner and replicas to mark the actual lane.
+    // Serialized quaternions can restore an equivalent Euler triple with
+    // flipped X/Z angles. Compose rotations without reading that Euler Y.
+    this.marks.quaternion.copy(this.holder.quaternion).invert().multiply(markerTurn.setFromAxisAngle(markerUp,Math.atan2(this.ai.dx,this.ai.dz)));
   }
 }
 

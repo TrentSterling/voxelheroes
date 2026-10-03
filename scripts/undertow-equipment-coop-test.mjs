@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { firefox } from 'playwright';
+import { launch } from './playtest.mjs';
+import { startRelay } from './lib/nostr-relay.mjs';
+const arg=n=>process.argv.find(a=>a.startsWith(`--${n}=`))?.slice(n.length+3);
+const url=arg('url')??'http://127.0.0.1:5173/',out=arg('out')??'playtest-out/undertow-equipment-coop';
+assert.ok(!existsSync(`${out}/result.json`),'Choose a fresh output folder.');mkdirSync(out,{recursive:true});
+const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(d,e.name)):[join(d,e.name)]);
+const fingerprint=()=>{const h=createHash('sha256');for(const f of [...walk('src'),...walk('public/voices'),'index.html','package.json','package-lock.json'].sort()){h.update(f.replaceAll('\\','/')+'\0');h.update(readFileSync(f));}return h.digest('hex');};
+const result={startedUtc:new Date().toISOString(),sourceSha256:fingerprint(),checks:[],scope:'Actual local Chromium/Firefox Trystero RTC. Owned blades are shared grant fixtures; equipment selection and friendly sword knockback use actual inputs. Arena/campaign/committed phase fixtures and invulnerability isolate cues and ownership transfer. Native phase clocks remain active. Public signaling, separate-network ICE and full native co-op campaign are outside this scope. Speaker output disconnected before navigation.'};
+const pages=[];let browser,relay;
+const check=(ok,label)=>{assert.ok(ok,label);result.checks.push(label);console.log('PASS '+label);};
+try{
+  relay=await startRelay();browser=await firefox.launch({headless:true,firefoxUserPrefs:{'media.volume_scale':'0.0'}});
+  const host=await launch({url,out:`${out}/host`,seed:17}),guest=await launch({url,browser,out:`${out}/guest`,seed:17});pages.push(host,guest);
+  for(const t of pages){await t.eval(()=>{const h=window.__voxelHeroes;h.game.progress.startNewGame({prologue:false});h.game.settings.setSetting('muted',true);h.game.settings.setSetting('npcVoices',false);});await t.step(1.5);}
+  const config={relayUrls:[relay.url],rtcConfig:{iceServers:[]}};
+  await host.eval(c=>window.__voxelHeroes.game.party.createParty('NACREBLADE',c),config);await guest.eval(c=>window.__voxelHeroes.game.party.joinParty('NACREBLADE',c),config);
+  for(const t of pages)await t.page.waitForFunction(()=>window.__voxelHeroes.game.party.partyView().count===2&&window.__voxelHeroes.game.party.partyConnections().some(c=>c.state==='connected'),null,{timeout:45000});
+  const pump=async(n=10)=>{for(let i=0;i<n;i++){await Promise.all(pages.map(t=>t.step(.04)));await new Promise(r=>setTimeout(r,30));}};
+  const view=t=>t.eval(()=>{const h=window.__voxelHeroes,s=h.screen(),b=h.entities.find(e=>e.type==='boss-beast');return {key:s.key,self:h.game.party.partyView().selfId,owner:h.game.party.roomOwner(s.key),hp:h.state.hp,x:h.player.x,z:h.player.z,blade:h.game.swords.equippedId(),owned:h.state.swords.owned,mode:h.state.mode,error:h.game.party.partyView().error,body:b?{id:b.netId,phase:b.ai.phase,t:b.ai.t,visible:b.marks.visible,y:b.marks.children[0].getWorldPosition(b.marks.children[0].position.clone()).y,limbs:b.segments.map(e=>({id:e.netId,phase:e.ai.phase,t:e.ai.t,visible:e.marks.visible,x:e.x,z:e.z,dx:e.ai.dx,dz:e.ai.dz,marks:e.marks.children.slice(0,11).map(m=>{const p=m.getWorldPosition(m.position.clone());return{x:p.x,y:p.y,z:p.z};})}))}:null};});
+  const wait=async(pred,label,max=140)=>{for(let i=0;i<max;i++){const v=await Promise.all(pages.map(view));if(pred(v))return v;await pump(1);}throw Error(`${label}: ${JSON.stringify(await Promise.all(pages.map(view)))}`);};
+  const equip=async(t,id)=>{await t.press('Tab');for(let i=0;i<10&&await t.eval(id=>window.__voxelHeroes.game.equipment.equipmentView().selectedId!==id,id);i++)await t.tap('next-item');await t.press('Enter');await t.press('Tab');};
+  await host.give('blade-warden');await pump(10);
+  await wait(v=>v.every(r=>r.owned.includes('blade-warden')&&r.blade==='blade-start'),'shared owned blade');
+  check(true,'A shared Warden reward reaches both inventories while their existing equipped blades remain personal');
+  await equip(guest,'blade-warden');await pump(10);let v=await Promise.all(pages.map(view));
+  check(v[0].blade==='blade-start'&&v[1].blade==='blade-warden','The guest selects Warden through normal Equipment inputs without changing the host blade');
+  await host.give('blade-dawn');await pump(10);await equip(host,'blade-dawn');await pump(10);v=await Promise.all(pages.map(view));
+  check(v[0].blade==='blade-dawn'&&v[1].blade==='blade-warden'&&v.every(r=>r.owned.includes('blade-dawn')),'Later shared loot preserves two independent equipped choices');
+  const spot=await host.eval(()=>{const h=window.__voxelHeroes,s=h.screen();for(let z=2.5;z<s.h-3;z++)for(let x=2.5;x<s.w-2;x++){const points=[[x,z],[x,z+2]];if(points.every(([px,pz])=>!h.world.blocked(s.x0+px,s.z0+pz,h.player.r,h.player)&&h.entities.filter(e=>e.kind==='npc').every(e=>Math.hypot(e.x-s.x0-px,e.z-s.z0-pz)>1.8)))return{x,z};}throw Error('No clear hub pair for the sword fixture');});
+  for(const[t,offset]of[[host,0],[guest,2]])await t.eval(([p,o])=>{const h=window.__voxelHeroes;h.game.hero.hero.place(p.x,p.z+o);h.game.hero.hero.setFacing('north');h.player.invT=0;},[spot,offset]);
+  await pump(6);const before=await Promise.all(pages.map(view));await guest.tap('sword');await pump(12);v=await Promise.all(pages.map(view));
+  check(v.every((r,i)=>r.hp===before[i].hp)&&Math.hypot(v[0].x-before[0].x,v[0].z-before[0].z)>.1,'An equipped Warden swing knocks the other hero back with expired immunity and zero PvP damage');
+  await guest.shot('01-personal-blades-friendly-whack');
+  for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;for(const id of['d1','d2','d3']){h.state.flags.add(`dungeon:${id}:entered`);h.game.dungeons.giveBossKey(id);h.game.dungeons.defeatBoss(id);h.game.dungeons.completeDungeon(id);}h.state.flags.add('dungeon:d4:entered');h.game.dungeons.giveBossKey('d4');});
+  await host.teleport('d4-boss:0,0',3,13);await host.eval(()=>{window.__voxelHeroes.entities.find(e=>e.type==='boss-beast').introDone=true;});await guest.teleport('d4-boss:0,0',18,13);await pump(20);
+  const ownerView=await view(host),owner=ownerView.owner===ownerView.self?host:guest,other=owner===host?guest:host;
+  await owner.eval(()=>{const h=window.__voxelHeroes,b=h.entities.find(e=>e.type==='boss-beast');for(const e of [...h.entities])if(e.type==='beast-ink')e.remove();b.ai.phase='ripple';b.ai.t=1.5;for(const[i,e]of b.segments.entries()){e.ai.phase='tell';e.ai.t=1.5;e.ai.dx=i%2?0:1;e.ai.dz=i%2?-1:0;e.holder.rotation.y=-.8;}b.present();for(const e of b.segments)e.present();});
+  v=await wait(v=>v.every(r=>r.body?.visible&&r.body.limbs.length===4&&r.body.limbs.every(e=>e.visible)),'shared Nacre tells');
+  check(v[0].body.id===v[1].body.id&&v[0].body.limbs.every((e,i)=>e.id===v[1].body.limbs[i].id),'Both browsers render one shared Nacre and four shared tentacles');
+  result.cueViews=v;
+  check(v.every(r=>r.body.y-.0125>.125+3/16&&r.body.limbs.every(e=>e.marks.every(p=>p.y-.0125>.125+3/16))),'Owner and replica warning geometry both clear the highest fine floor');
+  check(v.every(r=>r.body.limbs.every(e=>e.marks.every(p=>Math.abs((p.x-e.x)*e.dz-(p.z-e.z)*e.dx)<.03))),'Both browsers show the committed lunge directions despite body interpolation');
+  await other.shot('02-shared-undertow-tells');
+  await owner.teleport('mossbrook-future:0,0',13.5,13.5);v=await wait(v=>{const r=v[pages.indexOf(other)];return r.owner===r.self&&r.body?.visible&&r.body.t>0;},'live ripple ownership transfer',40);
+  const transferred=v[pages.indexOf(other)].body.t;
+  check(v[pages.indexOf(other)].body.limbs.every(e=>e.phase==='tell'&&e.t>0),'The remaining friend inherits the pending body ripple and tentacle tell clocks');
+  await pump(3);const later=await view(other);
+  check(later.body.t<transferred&&later.body.phase==='ripple','The inherited body clock advances under the new room owner');
+  await other.shot('03-undertow-owner-transfer');
+  check(pages.every(t=>!t.errors.length)&&(await Promise.all(pages.map(view))).every(r=>!r.error),'Both browsers remain free of page and party errors');
+  result.sourceUnchanged=result.sourceSha256===fingerprint();assert.ok(result.sourceUnchanged);result.ok=true;
+}catch(e){result.ok=false;result.error={message:e.message,stack:e.stack};result.snapshots=await Promise.all(pages.map(t=>t.state().catch(()=>null)));console.error(e.stack);process.exitCode=1;}
+finally{result.completedUtc=new Date().toISOString();result.passed=result.checks.length;writeFileSync(`${out}/result.json`,JSON.stringify(result,null,2));for(const t of pages)await t.close();await browser?.close();await relay?.close();}

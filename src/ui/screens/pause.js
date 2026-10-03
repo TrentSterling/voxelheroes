@@ -5,6 +5,7 @@ import { registerMode } from '../../core/modes.js';
 import { currentScreen } from '../../world/world.js';
 import { resumeGame } from '../../systems/flow.js';
 import { showOverlay, hideOverlay } from '../overlay.js';
+import { openEquipment } from './equipment.js';
 
 registerMode('paused', {
   enter() {
@@ -14,12 +15,14 @@ registerMode('paused', {
       button: 'Resume',
       kicker: currentScreen().name,
       onAction: resumeGame,
+      secondary: { label: 'Equipment', onAction: openEquipment },
     });
   },
   exit() {
     hideOverlay();
   },
   update() {
+    if (input.pressed('inventory')) { openEquipment(); return; }
     if (input.pressed('menu')) resumeGame();
   },
 });

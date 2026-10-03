@@ -29,6 +29,7 @@ testFiles.push('scripts/gauntlet.mjs','scripts/reward-shield-coop-test.mjs','scr
 testFiles.push('scripts/forest-hud-layout-test.mjs','scripts/test-silent-output.mjs','scripts/verify-silent-browser.mjs');
 testFiles.push('scripts/rootglass-hud-layout-test.mjs');
 testFiles.push('scripts/watch-station-hud-layout-test.mjs','scripts/colossus-coop-test.mjs');
+testFiles.push('scripts/equipment-layout-test.mjs','scripts/equipment-gamepad-test.mjs','scripts/undertow-equipment-coop-test.mjs','scripts/probe-earned-brineglass.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -53,6 +54,8 @@ async function run(name,seed,engine='chromium'){
   const id=`${engine}-${seed}-${name}`, dir=join(out,id);let timer;
   const prior=previous?.cases.find(c=>c.id===id&&c.ok);
   const dependencies={
+    'brineglass-crown-journey':['brineglass-journey','watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'brineglass-journey':['watch-victory','watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'watch-victory':['watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'watch-crown-journey':['watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'watch-journey':['nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
@@ -157,6 +160,9 @@ try{
     await stage('colossus-coop','colossus-coop-test.mjs');
     await stage('watch-station-hud-layout','watch-station-hud-layout-test.mjs');
     await stage('watch-layout','watch-layout-test.mjs');
+    await stage('equipment-layout','equipment-layout-test.mjs');
+    await stage('equipment-gamepad','equipment-gamepad-test.mjs');
+    await stage('undertow-equipment-coop','undertow-equipment-coop-test.mjs');
     if(!quick)await stage('multiplayer','multiplayer-test.mjs',['--no-build','--local-ice']);
   }
 }catch(error){report.fatal={message:error.message,stack:error.stack};}
