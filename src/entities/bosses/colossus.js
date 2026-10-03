@@ -7,7 +7,6 @@ import { spawn, entities } from '../manager.js';
 import { player } from '../player.js';
 import { currentScreen, world } from '../../world/world.js';
 import { GROUND_Y } from '../../core/constants.js';
-import { getMaterial } from '../../core/materials.js';
 import { sfx } from '../../core/audio.js';
 import { modelMesh } from '../../models/kit.js';
 import { tombstoneModel } from '../../models/foes/foes.js';
@@ -27,8 +26,20 @@ class Colossus extends Enemy {
     this.ai={phase:'idle',t:1.5,clock:0,shotT:0,attack:0,dx:0,dz:1,sweep:0,hopX:0,hopZ:0};
     this.marks=new THREE.Group();
     const geometry=new THREE.BoxGeometry(.18,.025,.4);
-    for(let i=0;i<9;i++){const mark=new THREE.Mesh(geometry,getMaterial('prop'));mark.position.set(0,.025,2+i*.9);this.marks.add(mark);}
+    const laserInk=new THREE.MeshBasicMaterial({color:0xff9483,transparent:true,opacity:.85,depthWrite:false,toneMapped:false});
+    const waveInk=new THREE.MeshBasicMaterial({color:0xffcf86,transparent:true,opacity:.85,depthWrite:false,toneMapped:false});
+    // Watch rails reach 3/16 tile. These marks sit above that floor, including
+    // on replicas; the old 0.025 offset was buried by the station ground kit.
+    for(let i=0;i<12;i++){const mark=new THREE.Mesh(geometry,laserInk);mark.position.set(0,.23,1.5+i*.7);this.marks.add(mark);}
     this.holder.add(this.marks);this.marks.visible=false;
+    this.waveMarks=new THREE.Group();this.landingMarks=new THREE.Group();
+    for(let i=0;i<16;i++){
+      const angle=i*Math.PI*2/16;
+      for(const [group,ink,radius]of[[this.waveMarks,waveInk,2.2],[this.landingMarks,laserInk,1.8]]){
+        const mark=new THREE.Mesh(geometry,ink);mark.position.set(Math.sin(angle)*radius,.23,Math.cos(angle)*radius);mark.rotation.y=angle;group.add(mark);
+      }
+    }
+    this.holder.add(this.waveMarks,this.landingMarks);this.waveMarks.visible=this.landingMarks.visible=false;
   }
   onAdd(){
     if(bossDefeated(this.dungeon)&&!this.refight){this.remove();return;}
@@ -81,9 +92,19 @@ class Colossus extends Enemy {
       this.x+=(a.hopX-this.x)*Math.min(1,dt*5);this.z+=(a.hopZ-this.z)*Math.min(1,dt*5);
       if(a.t<=0){this.airborne=false;this.mesh.position.y=0;this.wave(16);this.setPhase('idle',1.3);}
     }
-    this.marks.visible=a.phase==='laser-tell';
     this.harmless=a.phase==='laser-tell'||a.phase==='slam-tell';
     if(a.phase!=='leap'&&a.phase!=='slam-tell')this.mesh.position.y=this.stage===1?1.2:this.stage===2?.5:Math.max(0,Math.sin(a.clock*7))*.15;
+  }
+  update(dt){super.update(dt);this.present();}
+  present(){
+    const a=this.ai,yaw=this.holder.rotation.y;
+    this.marks.visible=this.spawned&&a.phase==='laser-tell';
+    this.marks.rotation.y=Math.atan2(a.dx,a.dz)-yaw;
+    this.waveMarks.visible=this.spawned&&a.phase==='slam-tell';
+    this.landingMarks.visible=this.spawned&&a.phase==='leap';
+    const dx=a.hopX-this.x,dz=a.hopZ-this.z;
+    this.landingMarks.position.set(Math.cos(yaw)*dx-Math.sin(yaw)*dz,0,Math.sin(yaw)*dx+Math.cos(yaw)*dz);
+    this.landingMarks.rotation.y=-yaw;
   }
   die(hit){
     const r=currentScreen(),safe=world.freeSpot(r,this.x-r.x0,this.z-r.z0,player.r,{body:player});

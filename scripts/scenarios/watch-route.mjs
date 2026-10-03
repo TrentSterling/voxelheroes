@@ -16,14 +16,14 @@ export default async function(t){
   const rooms=await t.eval(()=>[...window.__voxelHeroes.world.screens.values()].filter(s=>s.area.id==='d3').map(s=>({key:s.key,name:s.name})));t.expect(rooms.length===22,'Both Watch floors retain all 22 authored rooms');
   for(const[i,s]of rooms.entries()){
     await t.teleport(s.key,8,9);await t.step(1.4);await t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;for(const e of h.entities)if(e.kind==='enemy')e.think=()=>{};});
-    t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return s.tileset==='watch'&&new Set(s.tiles.flat().filter(c=>['e','a','j','f','o','p'].includes(c))).size>=4&&s.tiles.every((row,z)=>row.every((ch,x)=>!['e','a','j','f','o','p'].includes(ch)||h.world.tileDefAt(s.x0+x,s.z0+z).pushableFloor&&!h.world.tileDefAt(s.x0+x,s.z0+z).solid));}),s.name+' has varied walkable observatory flooring');
+    t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return s.tileset==='watch'&&new Set(s.tiles.flat().filter(c=>['e','a','j','f','r','o','p'].includes(c))).size>=4&&s.tiles.every((row,z)=>row.every((ch,x)=>!['e','a','j','f','r','o','p'].includes(ch)||h.world.tileDefAt(s.x0+x,s.z0+z).pushableFloor&&!h.world.tileDefAt(s.x0+x,s.z0+z).solid));}),s.name+' has varied walkable observatory flooring');
     await photo(String(i+4).padStart(2,'0')+'-'+s.name.toLowerCase().replaceAll(' ','-'));
   }
   await t.teleport('d3-boss:0,0',11,13.5);await t.step(4);await photo('26-colossus-court');
   const outdoors=await t.eval(()=>[...window.__voxelHeroes.world.screens.values()].filter(s=>s.area.id==='sunreach').map(s=>({key:s.key,name:s.name})));t.expect(outdoors.length===7,'The basin includes six existing screens and the optional sunken transit line');
   for(const[i,s]of outdoors.entries()){await t.teleport(s.key,5.5,s.key==='sunreach:2,3'?4.5:9.5);await t.step(1);await t.eval(()=>{const h=window.__voxelHeroes;h.player.invT=999;for(const e of h.entities)if(e.kind==='enemy')e.think=()=>{};});await photo(String(i+27)+'-'+s.name.toLowerCase().replaceAll(' ','-'));}
   await t.teleport('d3:0,2',4.5,6.5);
-  for(const ch of['e','a','j','f','o','p']){
+  for(const ch of['e','a','j','f','r','o','p']){
     await t.eval(ch=>{const h=window.__voxelHeroes,s=h.screen();h.world.setTile(s.x0+5,s.z0+6,'Q');h.world.setTile(s.x0+6,s.z0+6,ch);h.game.hero.hero.place(4.5,6.5);},ch);
     await t.eval(async()=>{const h=window.__voxelHeroes,s=h.screen();h.input.setStick(1,0);try{for(let i=0;i<120&&h.world.tile(s.x0+5,s.z0+6)==='Q';i++)await h.tick();}finally{h.input.setStick(0,0);}});
     t.expect(await t.eval(()=>{const h=window.__voxelHeroes,s=h.screen();return h.world.tile(s.x0+6,s.z0+6)==='Q';}),'Real blocks remain pushable over '+ch+' observatory floor');

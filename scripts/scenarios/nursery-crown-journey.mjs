@@ -27,9 +27,9 @@ async function select(t,id) {
   }
   throw Error(`The native quick ring could not select earned ${id}`);
 }
-async function fight(t,label) {
+async function fight(t,label,options={}) {
   await select(t,'boomerang');
-  const result=await t.fight({heal:-1,guard:true,tool:true,clearObstacles:true,seconds:90,soft:true});
+  const result=await t.fight({heal:-1,guard:true,tool:true,clearObstacles:true,seconds:90,soft:true,...options});
   t.note(`${label}: ${JSON.stringify(result)}`);
   t.expect(result.ok&&result.heals===0,`${label} clears with earned tools and no healing edits`);
 }
@@ -63,6 +63,9 @@ export default async function(t) {
   await passage(t,15.5,5.5,'d2:3,2');await fight(t,'Breached Gallery gazers');
   await room(t,'north','d2:3,1');await checkpoint(t,'41-earned-nursery-entry');
   await t.shot('41-native-pressure-nursery');
+  // Clear pursuing guardians before standing beside seals with a live fuse.
+  // The machine stays active throughout this ordinary-input fight.
+  await fight(t,'Crossfire Nursery guardians before fuse work',{maxKills:3});
   for(const [index,x,z,rx,rz] of [[0,4.5,4.5,2.5,6],[1,11.5,9.5,13.5,6],[2,11.5,4.5,13.5,6]]) {
     await bomb(t,x,z,0,-1,rx,rz);
     t.expect(await t.eval(i=>window.__voxelHeroes.state.flags.has(`dungeon:d2:nursery-valve:${i}`),index),`native fuse breaks brass seal ${index+1}`);

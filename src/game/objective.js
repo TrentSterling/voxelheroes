@@ -269,6 +269,37 @@ function hiveRoomStep(screen,story) {
   return null;
 }
 
+function watchRoomStep(screen,story) {
+  if(!['watch-key','watch-boss'].includes(story?.id))return null;
+  const goal=(id,text,short)=>({id,text,short});
+  if(screen?.area.id==='d3-boss'){
+    const b=entities.find(e=>!e.removed&&e.type==='boss-colossus');if(!b)return null;
+    if(b.ai.phase==='leap')return goal('watch-leap','Leave the marked landing circle. Wait for the core to land, then strike while it is low.','Leave landing; then strike core.');
+    const part=b.stage===1?'feet':b.stage===2?'arms':'core';
+    return goal(`watch-${part}`,'Strike the glowing '+part+'. Sidestep the coral laser lane; your shield blocks the golden round waves.','Strike '+part+'; dodge coral, guard gold.');
+  }
+  if(screen?.area.id!=='d3')return null;
+  const hook=hasItem('grapple'),counterweight=hasFlag('dungeon:d3:keytaken:C-1');
+  const routes={
+    'd3:2,3':!hasMap('d3')?['watch-map','Clear Shield Patrol west, then open Watch Charts north of it.','Patrol west; map north.']:!hook?['watch-grapple','The grapple waits beyond the eastern lock in Divided Hall. The second key is west of Watch Charts.','Divided Hall north; grapple east.']:['watch-stair','Go north to Broken Stair. Hook its far post and take the northern stair to the upper landing.','Broken Stair north; hook its post.'],
+    'd3:1,3':['watch-patrol','Break the shield patrol with a flank, a thrown pot or returning wood. Collect its key, then take the northern map room.','Defeat patrol; key, then north.'],
+    'd3:1,2':!hasMap('d3')?['watch-map-chest','Open the central map chest. The counterweight key waits in the western room.','Open map; counterweight west.']:!counterweight?['watch-counterweight-route','The western counterweight releases another key. Then return east through Divided Hall to the grapple vault.','Counterweight west; grapple east.']:['watch-divided-route','Return east to Divided Hall. Its eastern lock leads to the grapple vault.','East to Divided Hall.'],
+    'd3:0,2':!counterweight?['watch-counterweight','Push the square block east along its rail onto the matching plate. Collect the key from the northern floor.','Push block east; collect key north.']:['watch-counterweight-return','The counterweight key is yours. Return east through Watch Charts and Divided Hall.','Key earned; return east.'],
+    'd3:2,2':!hook?['watch-grapple','Open this hall\'s eastern lock. Defeat the Chain Vault guards and open its central grapple chest.','Spend patrol key east; grapple cache.']:!counterweight?['watch-counterweight-route','Find the counterweight key west of Watch Charts before climbing the upper watch.','Counterweight west of Watch Charts.']:['watch-stair','Head north to Broken Stair. Cast at the far striped post and climb the northern stair.','North: hook post; climb stair.'],
+    'd3:3,2':!hook?['watch-grapple-cache','Use cover and returning wood against the vault guards. Open the central chest for the grapple.','Defeat vault guards; open grapple.']:['watch-first-cast','Rest at the western platform clock. Test the chain south in First Cast, or return west and north to Broken Stair.','Rest west; First Cast south.'],
+    'd3:3,3':['watch-first-cast','Face east from the western bank and hook the striped post. The optional coin island is east.','Hook east across the channel.'],
+    'd3:4,3':['watch-island','Hook the northern chest from the southern bank. Open it, then hook the southern post to return.','Hook chest north; return post south.'],
+    'd3:2,1':['watch-stair','Cast north at the striped post from the southern bank, then take the stair beyond it. The blue-eye detour is west.','Hook north; climb northern stair.'],
+    'd3:2,7':hasBossKey('d3')?['watch-upper-return','The crown is yours. Cross north, unlock the upper door, and wake the antechamber shortcut.','North; upper lock and shortcut.']:['watch-upper-crossing','A longer chain waits west. Cross the northern bridge, then follow the eastern arsenal to the crown.','Sun Dial west; crown northeast.'],
+    'd3:1,7':hasItem('sun-dial')?['watch-dial-return','The Sun Dial extends new casts to eight tiles. Return east, then cross north toward the crown.','Dial earned; east, then north.']:['watch-dial-guards','Hook the brass shutters open or strike after their volley. Clear the guards and open the Sun Dial chest.','Hook shutters; strike; open cache.'],
+    'd3:2,6':hasBossKey('d3')?['watch-upper-lock','Hook the northern post and spend the counterweight key at the northern door.','Hook north; unlock upper door.']:['watch-missing-bridge','Hook the far northern post. The eastern ledge leads into Crossing Arsenal and onward to the crown.','Hook north; eastern arsenal ledge.'],
+    'd3:3,6':['watch-arsenal','Defeat the sentry on this bank, hook the opposite striped post, then clear the other sentry to open both shutters.','Clear each bank; hook the other.'],
+    'd3:4,6':hasBossKey('d3')?['watch-crown-return','Return to the southern post, head west to the missing bridge and open its northern lock.','Hook south; west to upper lock.']:['watch-crown-chest','Cast north from the southern bank at the distant crown chest. Open it for the Colossus key.','Hook crown chest north; open it.'],
+    'd3:2,5':hasFlag('dungeon:d3:portal')?['watch-court','Rest at the western platform clock. The shortcut is awake; the Colossus waits through the northern crown door.','Rest clock west; Colossus north.']:['watch-shortcut','Rest at the western platform clock and step on the central plate to wake the shortcut. Then open the northern crown door.','Rest west; plate; Colossus north.'],
+  };
+  const row=routes[screen.key];return row?goal(...row):null;
+}
+
 // The first step not yet done, or null once every step is (the open goal).
 export function currentStep() {
   const screen = currentScreen(), pinned = trackedQuestId();
@@ -297,6 +328,23 @@ export function currentStep() {
   if (story?.id === 'tower-trial') return { ...story, ...clockGoal() };
   if(isComplete('d2')&&screen?.key==='d2:0,0')return {id:'hive-homecoming',text:'Take the southern stairs into Whisperwood. Follow the south exits home to Mossbrook; the next temple lies east.',short:'South stairs; home to Mossbrook.'};
   const hive=hiveRoomStep(screen,story);if(hive)return hive;
+  if(story?.id==='enter-d3'){
+    let route;
+    if(screen?.area.id==='lost-woods')route=['Leave Amber Gate by its south path. At earlier forks, the small southwest arch returns to Carved Stone.','South exit to Whisperwood.'];
+    else if(screen?.area.id==='forest')route=['Follow the woodland road south to Mossbrook, then head east through Mill Pond to Sunreach.','South to Mossbrook; then east.'];
+    else route={
+      'v1:1,0':['Return south to Mossbrook Square, then take the eastern Mill Pond road.','Square south; Mill Pond east.'],
+      'v1:1,1':['Follow the eastern road through Mill Pond to Sunreach. Your earned bombs clear Dustfall Road.','Mill Pond east; Sunreach beyond.'],
+      'v1:2,1':['Leave Mill Pond east for Dustfall Road. Bomb its central fallen stones and continue to the oasis.','East to Dustfall; bomb the stones.'],
+      'sunreach:0,1':['Bomb the two central road stones and move clear of the fuse. The oasis and its all-night inn are east.','Bomb stones; oasis east.'],
+      'sunreach:1,1':['Rest at the inn, then follow the northern dry river and turn east to the Buried Watch.','Rest here; Watch north, then east.'],
+      'sunreach:1,0':['Cross the dry river and follow its eastern road. The buried temple entrance is beyond the next patrols.','Cross river; Watch east.'],
+      'sunreach:2,0':['Clear the approach, then enter the buried temple in the northern stone facade.','Clear approach; temple north.'],
+    }[screen?.key];
+    if(route)return {...story,text:route[0],short:route[1]};
+  }
+  if(isComplete('d3')&&screen?.key==='d3:0,5')return {id:'watch-homecoming',text:'Take the southern stairs into Sunreach. Brineglass lies south of Post Islands; the grapple opens its road.',short:'South stairs; shore beyond islands.'};
+  const watch=watchRoomStep(screen,story);if(watch)return watch;
   if (story?.id === 'tide-key') {
     if (!hasMap('d4')) return { id: 'tide-map', text: 'Earn a patrol key west of the entrance. The map waits north of that room.' };
     if (!hasItem('fire-wand')) return { id: 'tide-wand', text: 'Open the lock east of Glass Junction, then clear Ember Cache for the fire wand.' };

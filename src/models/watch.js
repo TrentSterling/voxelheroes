@@ -29,3 +29,12 @@ export const sunDialModel = () => model('item-sun-dial', () => {
   g.box(9, 5, 6, 11, 12, 8, 0x8ae6df); g.box(10, 10, 6, 16, 12, 8, 0x8ae6df);
   return g;
 });
+export const watchRestClockModel = () => model('watch-rest-clock', () => {
+  const g=new DenseGrid(24,26,18),brass=0xd4a65d,teal=0x426b79;
+  g.box(1,0,1,23,3,17,0x586473);
+  for(const x of[3,18])g.box(x,3,4,x+3,8,15,brass);
+  g.box(2,8,5,22,11,17,teal);g.box(3,11,4,21,17,7,teal);
+  g.box(7,15,2,17,25,6,brass);g.box(8,16,6,16,24,7,0x345268);
+  g.box(11,17,7,13,22,8,0x9ae8db);g.box(12,20,7,15,22,8,0x9ae8db);
+  g.box(2,10,14,22,12,16,0x87bcb3);return g;
+},{origin:[12,0,9]});

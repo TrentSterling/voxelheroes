@@ -1,0 +1,66 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { existsSync,mkdirSync,readFileSync,readdirSync,writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { firefox } from 'playwright';
+import { launch } from './playtest.mjs';
+import { startRelay } from './lib/nostr-relay.mjs';
+const arg=n=>process.argv.find(a=>a.startsWith(`--${n}=`))?.slice(n.length+3);
+const url=arg('url')??'http://127.0.0.1:5173/',out=arg('out')??'playtest-out/colossus-coop';
+assert.ok(!existsSync(`${out}/result.json`),'Choose a fresh output folder');mkdirSync(out,{recursive:true});
+const walk=d=>readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(d,e.name)):[join(d,e.name)]);
+const fingerprint=()=>{const h=createHash('sha256');for(const f of [...walk('src'),...walk('public/voices'),'index.html','package.json','package-lock.json'].sort()){h.update(f.replaceAll('\\','/')+'\0');h.update(readFileSync(f));}return h.digest('hex');};
+const result={startedUtc:new Date().toISOString(),sourceSha256:fingerprint(),checks:[],scope:'Silent Chromium/Firefox, actual local Trystero RTC. Campaign, gear, placement, invulnerability, stationary initial AI and phase/stage fixtures (including removing parts) isolate replicated cues. Guest sword damage and ownership transfer are real inputs/state transfer. Low personal vitals and damage-API vault clearing isolate actual guarded/rest interactions. Full native solo victory is separate. Public signaling and separate-network ICE are outside scope.'};
+const check=(pass,label)=>{assert.ok(pass,label);result.checks.push(label);console.log('PASS '+label);};
+const pages=[];let fox,relay,view;
+try{
+  relay=await startRelay();fox=await firefox.launch({headless:true,firefoxUserPrefs:{'media.volume_scale':'0.0'}});
+  const host=await launch({url,out:`${out}/host`,seed:17}),guest=await launch({url,out:`${out}/guest`,seed:17,browser:fox});pages.push(host,guest);
+  for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.game.progress.startNewGame({prologue:false});h.game.settings.setSetting('muted',true);h.game.audio.setVolumes({master:0});h.game.settings.setSetting('npcVoices',false);h.state.flags.add('overworld:talked:king');h.give('blade-start');h.give('shield-1');for(const id of ['d1','d2']){h.state.flags.add(`dungeon:${id}:entered`);h.game.dungeons.giveBossKey(id);h.game.dungeons.defeatBoss(id);h.game.dungeons.completeDungeon(id);}h.state.flags.add('dungeon:d3:entered');h.game.dungeons.giveBossKey('d3');h.player.invT=999;});
+  const config={appId:'voxelheroes-rook-test',relayUrls:[relay.url],rtcConfig:{iceServers:[]}};
+  assert.equal(await host.eval(c=>window.__voxelHeroes.game.party.createParty('ROOKCOOP',c),config),true);
+  assert.equal(await guest.eval(c=>window.__voxelHeroes.game.party.joinParty('ROOKCOOP',c),config),true);
+  for(const t of pages)await t.page.waitForFunction(()=>window.__voxelHeroes.game.party.partyView().count===2&&window.__voxelHeroes.game.party.partyConnections().some(c=>c.state==='connected'),null,{timeout:45000});
+  const pump=async(n=1)=>{for(let i=0;i<n;i++){await Promise.all(pages.map(t=>t.step(1/60)));await new Promise(r=>setTimeout(r,35));}};
+  view=t=>t.eval(()=>{const h=window.__voxelHeroes,s=h.screen(),b=h.entities.find(e=>!e.removed&&e.type==='boss-colossus');h.game.ui.requestUi();h.render();const point=o=>{const p=o.getWorldPosition(o.position.clone());return{x:p.x,y:p.y,z:p.z};};return{key:s.key,owner:h.game.party.roomOwner(s.key)===h.game.party.partyView().selfId,hp:h.state.hp,magic:h.state.magic,maxHp:h.state.maxHp,maxMagic:h.state.maxMagic,mode:h.state.mode,bosses:h.entities.filter(e=>!e.removed&&e.type==='boss-colossus').length,parts:h.entities.filter(e=>!e.removed&&e.type==='colossus-part').map(e=>({id:e.netId,hp:e.hp,index:e.index})),guards:h.entities.filter(e=>!e.removed&&e.kind==='enemy'&&e.countsForClear!==false).length,b:b?{id:b.netId,stage:b.stage,hp:b.remainingHp(),phase:b.ai.phase,t:b.ai.t,laser:b.marks.visible,wave:b.waveMarks.visible,landing:b.landingMarks.visible,marks:b.marks.children.map(point),target:point(b.landingMarks),hop:{x:b.ai.hopX,z:b.ai.hopZ},hud:h.game.hud.hudView().widgets.some(w=>w.id==='colossus-progress')}:null};});
+  const until=async(fn,label,n=180)=>{for(let i=0;i<n;i++){const v=await Promise.all(pages.map(view));if(fn(v))return v;await pump();}throw Error(label+': '+JSON.stringify(await Promise.all(pages.map(view))));};
+  const place=(t,x,z)=>t.eval(([x,z])=>{const h=window.__voxelHeroes;h.game.hero.hero.place(x,z);h.game.hero.hero.setFacing('north');},[x,z]);
+  check(true,'Silent Chromium and Firefox connect through local RTC');
+  await host.teleport('d3-boss:0,0',3,12);await guest.teleport('d3-boss:0,0',3,12);
+  await until(v=>v.every(r=>r.mode==='play'&&r.b)&&v[0].owner&&!v[1].owner,'Shared arena ready',450);
+  await host.eval(()=>{const h=window.__voxelHeroes,b=h.entities.find(e=>e.type==='boss-colossus'),s=h.screen();window.__rookThink=b.think;b.think=()=>{};b.x=s.x0+11;b.z=s.z0+6;b.yaw=0;b.ai.phase='idle';b.ai.t=999;b.airborne=false;for(const e of [...h.entities])if(e.kind==='projectile')e.remove();});await pump(12);
+  let v=await until(v=>v.every(r=>r.parts.length===4&&r.b.hp===45),'Shared four-part body');
+  check(v[0].b.id===v[1].b.id&&v.every(r=>r.bosses===1),'One shared Rook and four parts exist without duplicates');
+  const part=v[1].parts.find(p=>p.index===0),before=part.hp;
+  await guest.eval(id=>{const h=window.__voxelHeroes,p=h.entities.find(e=>e.netId===id);h.game.hero.hero.place(p.x-h.screen().x0,p.z-h.screen().z0+1.7);h.game.hero.hero.setFacing('north');},part.id);
+  await guest.tap('sword');await pump(35);v=await until(v=>v.every(r=>(r.parts.find(p=>p.id===part.id)?.hp??0)<before),'Guest damages a shared foot');
+  check(v[0].b.hp===v[1].b.hp&&(v[0].parts.find(p=>p.id===part.id)?.hp??0)===(v[1].parts.find(p=>p.id===part.id)?.hp??0),'Guest sword damage reduces the same foot and total health in both browsers');
+  await place(guest,3,12);
+  for(const [stage,phase]of [[1,'laser-tell'],[2,'slam-tell'],[3,'leap']]){
+    await host.eval(([stage,phase])=>{const h=window.__voxelHeroes,b=h.entities.find(e=>e.type==='boss-colossus'),s=h.screen();for(const p of b.segments)if(stage===3||stage===2&&p.index<2)p.remove();b.stage=stage;b.mesh.setPose(stage===3?'core':'body');b.ai.phase=phase;b.ai.t=.9;b.ai.dx=1;b.ai.dz=0;b.ai.hopX=s.x0+6;b.ai.hopZ=s.z0+10;b.airborne=phase==='leap';b.present();},[stage,phase]);
+    v=await until(v=>v.every(r=>r.b.stage===stage&&r.b.phase===phase),'Shared '+phase);
+    const a=v[0].b,b=v[1].b;
+    check(a.laser===b.laser&&a.wave===b.wave&&a.landing===b.landing&&v.every(r=>r.b.hud),'Both browsers show the same active cue and stage HUD for '+phase);
+    if(stage===1)check(b.marks.every((p,i)=>p.y>.3125&&Math.hypot(p.x-a.marks[i].x,p.z-a.marks[i].z)<.02),'Replicated coral marks clear the rails and match committed world coordinates');
+    if(stage===3)check(Math.hypot(b.target.x-b.hop.x,b.target.z-b.hop.z)<.001,'The replicated landing remains on the committed target');
+    await guest.shot(`0${stage}-guest-${phase}`);
+  }
+  await host.teleport('d3:2,5',8,9);
+  v=await until(v=>v[1].owner,'Guest inherits Rook');
+  check(v[1].b.stage===3&&v[1].b.phase==='leap'&&v[1].parts.length===0,'Owner departure preserves core stage, landing and removed parts');
+  const time=v[1].b.t;await pump(8);v=await Promise.all(pages.map(view));
+  check(v[1].b.phase==='leap'?v[1].b.t<time:v[1].b.phase==='idle'&&!v[1].b.landing,'The inherited high-leap clock advances or completes on the new owner');await guest.shot('04-guest-inherits-core');
+  await host.teleport('d3:3,2',3.5,7.45);await guest.teleport('d3:3,2',3.5,7.45);
+  await until(v=>v.every(r=>r.guards>0)&&v[0].owner,'Both heroes reach the guarded rest clock');
+  for(const t of pages)await t.eval(()=>{const h=window.__voxelHeroes;h.setHp(2);h.game.vitals.addMaxMagic(3,{fill:false});h.game.vitals.setMagic(0);h.game.hero.hero.place(3.5,7.45);h.game.hero.hero.setFacing('north');h.player.invT=999;for(const e of h.entities)if(e.kind==='enemy'){e.think=()=>{};e.harmless=true;}});
+  await guest.tap('sword');await pump(8);v=await Promise.all(pages.map(view));
+  check(v.every(r=>r.hp===2&&r.magic===0),'Actual guest rest input cannot heal through the live room guards');
+  await host.step(1.5);await guest.step(1.5);
+  const clears=await host.eval(()=>{const h=window.__voxelHeroes;return [...h.entities].filter(e=>e.kind==='enemy').map(e=>({type:e.type,hit:h.game.damage.dealDamage(e,{amount:999,source:'bomb',from:{x:e.x,z:e.z-2}})}));});result.vaultFixtureClears=clears;
+  await until(v=>v.every(r=>r.guards===0),'Shared vault clear');
+  await place(guest,3.5,7.45);await guest.tap('sword');await pump(8);v=await Promise.all(pages.map(view));
+  check(v[1].hp===v[1].maxHp&&v[1].magic===v[1].maxMagic&&v[0].hp===2&&v[0].magic===0,'Actual guest rest restores only that hero; the independently controlled friend keeps their own vitals');await guest.shot('05-guest-personal-rest');
+  for(const t of pages)assert.deepEqual(t.errors,[]);check(true,'Both browsers remain free of game exceptions');
+  result.sourceUnchanged=result.sourceSha256===fingerprint();assert.ok(result.sourceUnchanged);result.ok=true;
+}catch(e){result.ok=false;result.error={message:e.message,stack:e.stack};result.snapshots=await Promise.all(pages.map(t=>view?view(t).catch(()=>null):t.state().catch(()=>null)));for(const t of pages)await t.shot('FAILED').catch(()=>{});console.error(e.stack);process.exitCode=1;}
+finally{result.completedUtc=new Date().toISOString();writeFileSync(`${out}/result.json`,JSON.stringify(result,null,2));for(const t of pages)await t.close();await fox?.close();await relay?.close();}

@@ -4,9 +4,23 @@ import { D3_ENTRANCE, D3_EXIT } from './desert.js';
 
 export const WATCH_PALETTE={...GOLD,floor:0x6b6256,floorRing:0x96816a,grout:0x4c4540,floorUnder:0x38312d,wall:0xb59c82,wallDark:0x887362,mortar:0x594a3b,trim:0x3e7287,ledge:0xd7b568};
 const floorAt=(x,z,seed)=>x===7||x===8?'f':(x+z+seed)%11===0?'o':z%4===seed%4?'a':(x*3+z+seed)%13===0?'p':(x+seed)%7===0?'j':'e';
+// Floor architecture follows each station's use. Props and passages below
+// overwrite these ground motifs, so the existing puzzle footprints stay intact.
+const stationFloor=(name,x,z,seed)=>{
+  const main=x===7||x===8;
+  if(name==='Colossus Court')return x===10||x===11?'f':z===8||z===9?'r':x===2||x===19||z===2||z===13?'a':(x===5||x===16)&&(z===5||z===11)?'o':'e';
+  if(['Watchkeeper Vestibule','Upper Landing','Colossus Antechamber','Divided Hall'].includes(name))return main?'f':z===5||z===6?'r':(x===3||x===12)&&(z===3||z===8)?'o':x===2||x===13?'a':'e';
+  if(name==='Counterweight Key')return z===7?'r':(x===5||x===9)&&z>=4&&z<=8?'a':z===2||z===9?'j':'e';
+  if(name==='Watch Charts')return main?'f':x>=4&&x<=11&&z>=3&&z<=8?'a':(x===3||x===12)&&(z===3||z===8)?'o':'e';
+  if(name==='Chain Vault'||name==='Hook and Guard')return main?'f':z===7?'r':x>=5&&x<=10&&z>=2&&z<=4?'a':(x===4||x===11)&&z===5?'o':'e';
+  if(name==='First Cast'||name==='Crossing Arsenal')return z===6?'r':x===6||x===10?'j':x===3||x===12?'a':'e';
+  if(['Chest Island','Broken Stair','The Missing Bridge','Watchkeeper Crown'].includes(name))return main?'f':z===3||z===7?'a':(x===4||x===11)&&(z===2||z===8)?'o':'e';
+  if(name==='Third Light')return main?'f':x>=3&&x<=12&&z>=3&&z<=6?'a':z===8?'r':'e';
+  return floorAt(x,z,seed);
+};
 const room=(name,doors,props=[],extra={})=>{
   const seed=[...name].reduce((n,ch)=>n+ch.charCodeAt(0),0);
-  const rows=Array.from({length:12},(_,z)=>Array.from({length:16},(_,x)=>x===0||x===15||z===0||z===11?'W':floorAt(x,z,seed)));
+  const rows=Array.from({length:12},(_,z)=>Array.from({length:16},(_,x)=>x===0||x===15||z===0||z===11?'W':stationFloor(name,x,z,seed)));
   for(const [side,tile] of Object.entries(doors))for(const k of [0,1])rows[side==='n'?0:side==='s'?11:5+k][side==='w'?0:side==='e'?15:7+k]=tile;
   for(const [x,z,tile] of props)rows[z][x]=tile;
   return {name,...extra,rows:rows.map(r=>r.join(''))};
@@ -23,7 +37,7 @@ const screens={
   '1,2':room('Watch Charts',{s:'.',e:'.',w:'.'},[[8,4,'c'],[3,3,'F'],[12,3,'F'],[4,8,'v']],{chest:'map'}),
   '0,2':room('Counterweight Key',{e:'.'},[[5,7,'Q'],[9,7,'_'],[4,4,'v'],[11,4,'v'],[8,8,'T']],{puzzle:'key',keyAt:[8,3],tablet:['Slide the square block onto its matching plate. The old weights release a second key.']}),
   '2,2':room('Divided Hall',{s:'.',w:'.',e:'l',n:'.'},[[5,4,'S'],[10,7,'S'],[3,8,'v'],[12,3,'v']]),
-  '3,2':room('Chain Vault',{w:'H',s:'.',n:'.'},[[8,4,'h'],[5,7,'s'],[10,7,'g'],[3,3,'v'],[12,8,'v'],[5,5,'S'],[11,4,'S']],{clear:'chest',chest:'grapple',encounterHint:'The gazer keeps moving. Hide behind stone, then strike when its shot misses.'}),
+  '3,2':room('Chain Vault',{w:'H',s:'.',n:'.'},[[8,4,'h'],[5,7,'s'],[10,7,'g'],[3,3,'v'],[12,8,'v'],[5,5,'S'],[11,4,'S'],[3,6,'L']],{clear:'chest',chest:'grapple',encounterHint:'The gazer keeps moving. Hide behind stone, then strike when its shot misses.'}),
   '3,3':room('First Cast',{n:'.',e:'.',w:'.'},[...trench('x',7,9),[7,1,'.'],[8,1,'.'],[7,2,'.'],[8,2,'.'],[11,6,'&'],[4,6,'&'],[3,3,'T']],{tablet:['Stand west of the channel and face east. Send the grapple to the striped post.','The hook reaches six tiles. A miss returns; a catch pulls you across.']}),
   '4,3':room('Chest Island',{w:'.'},[...trench('z',4,6),[1,5,'.'],[2,5,'.'],[1,6,'.'],[2,6,'.'],[8,2,'c'],[8,8,'&'],[3,8,'v'],[12,8,'v']],{chest:{grant:'coins',amount:90}}),
   '2,1':room('Broken Stair',{s:'.',w:'.',n:'y'},[[3,3,'T'],[12,8,'v'],...trench('z',4,6),[1,5,'.'],[2,5,'.'],[1,6,'.'],[2,6,'.'],[8,2,'&'],[8,8,'&']],{
@@ -42,7 +56,7 @@ const screens={
   '2,6':room('The Missing Bridge',{s:'.',e:'.',n:'l'},[...trench('z',4,6,'O'),[13,5,'.'],[14,5,'.'],[13,6,'.'],[14,6,'.'],[8,2,'&'],[8,8,'&'],[3,8,'T']],{tablet:['Face north from the southern post. The far post is within six tiles.','Pulling holds your blade and carries you over the pit.']}),
   '3,6':room('Crossing Arsenal',{w:'H',e:'H'},[...trench('x',7,9),[4,6,'&'],[11,6,'&'],[3,8,'v'],[12,3,'v'],[3,4,'S'],[12,7,'S']],{clear:'shutters',spawnsAt:{'4,3':'watch-sentinel','11,8':'watch-sentinel'},encounterHint:'Sidestep the marked volley. Hook a sentry open or strike during recovery.'}),
   '4,6':room('Watchkeeper Crown',{w:'.'},[...trench('z',4,7),[1,5,'.'],[2,5,'.'],[1,6,'.'],[2,6,'.'],[1,7,'.'],[2,7,'.'],[8,2,'c'],[8,9,'&'],[3,2,'F'],[12,2,'F']],{chest:'key-boss'}),
-  '2,5':room('Colossus Antechamber',{s:'.',n:'B'},[[8,6,'Z'],[3,8,'Y'],[5,4,'T'],[3,3,'F'],[12,3,'F'],[12,8,'v']],{
+  '2,5':room('Colossus Antechamber',{s:'.',n:'B'},[[8,6,'Z'],[3,8,'Y'],[5,4,'T'],[3,3,'F'],[12,3,'F'],[12,8,'v'],[5,8,'L']],{
     tablet:['Feet, then arms, then the core. Only the glowing parts take damage.','Pale lasers ignore shields. Step out of their marked line. The round slam waves can be guarded.','The final core hops. Keep your distance during its high leap.'],
     warps:{B:{area:'d3-boss',screen:[0,0],x:11,z:13.5,yaw:Math.PI},'3,8':{area:'d3',screen:[2,3],x:11.5,z:8.5,yaw:0}},spawnsAt:{'11,6':'bomb-supply'},
   }),
@@ -51,5 +65,5 @@ const screens={
 registerArea({id:'d3',name:'The Buried Watch',kind:'dungeon',tileset:'watch',lighting:'crypt',camera:'dungeon',rooms:true,origin:[236,0],start:[2,3],entrance:D3_ENTRANCE,keyGroup:'d3',palette:WATCH_PALETTE,spawns:{s:'skeleton',n:'barrow-warden',b:'bat',g:'gazer',t:'turret'},warps:{X:D3_EXIT},screens});
 registerArea({id:'d3-boss',name:'Colossus Court',kind:'arena',tileset:'watch',lighting:'crypt',camera:'boss',rooms:true,screen:[22,16],at:[244*16,0],entrance:D3_ENTRANCE,keyGroup:'d3',palette:WATCH_PALETTE,screens:{'0,0':{
   name:'Colossus Court',spawnsAt:{'11,4':{type:'boss-colossus',dungeon:'d3'},'11,11':{type:'colossus-tombstone',dungeon:'d3'}},warps:{'10,0':{area:'d3',screen:[0,5],x:8,z:9,yaw:Math.PI},'11,0':{area:'d3',screen:[0,5],x:8,z:9,yaw:Math.PI},'10,15':{area:'d3',screen:[2,5],x:8,z:2,yaw:0},'11,15':{area:'d3',screen:[2,5],x:8,z:2,yaw:0}},
-  rows:Array.from({length:16},(_,z)=>z===0||z===15?'WWWWWWWWWWUUWWWWWWWWWW':Array.from({length:22},(_,x)=>x===0||x===21?'W':(z===2||z===13)&&(x===2||x===19)?'F':floorAt(x,z,3)).join('')),
+  rows:Array.from({length:16},(_,z)=>z===0||z===15?'WWWWWWWWWWUUWWWWWWWWWW':Array.from({length:22},(_,x)=>x===0||x===21?'W':(z===2||z===13)&&(x===2||x===19)?'F':stationFloor('Colossus Court',x,z,3)).join('')),
 }}});

@@ -28,6 +28,7 @@ testFiles.push('scripts/coilmaw-coop-test.mjs','scripts/coilmaw-touch-test.mjs',
 testFiles.push('scripts/gauntlet.mjs','scripts/reward-shield-coop-test.mjs','scripts/reward-shield-touch-test.mjs','scripts/opening-coop-test.mjs','scripts/opening-touch-test.mjs');
 testFiles.push('scripts/forest-hud-layout-test.mjs','scripts/test-silent-output.mjs','scripts/verify-silent-browser.mjs');
 testFiles.push('scripts/rootglass-hud-layout-test.mjs');
+testFiles.push('scripts/watch-station-hud-layout-test.mjs','scripts/colossus-coop-test.mjs');
 report.testSources=Object.fromEntries(testFiles.map(file=>[file.replaceAll('\\','/'),createHash('sha256').update(readFileSync(file)).digest('hex')]));
 const resumeFile=value('resume')?resolve(value('resume'),'result.json'):null;
 const previous=resumeFile?JSON.parse(readFileSync(resumeFile)):null;
@@ -52,6 +53,9 @@ async function run(name,seed,engine='chromium'){
   const id=`${engine}-${seed}-${name}`, dir=join(out,id);let timer;
   const prior=previous?.cases.find(c=>c.id===id&&c.ok);
   const dependencies={
+    'watch-victory':['watch-crown-journey','watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'watch-crown-journey':['watch-journey','nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
+    'watch-journey':['nursery-victory','nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'nursery-victory':['nursery-crown-journey','nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'nursery-crown-journey':['nursery-journey','barrow-victory','barrow-journey','first-road','opening'],
     'nursery-journey':['barrow-victory','barrow-journey','first-road','opening'],
@@ -150,6 +154,8 @@ try{
     await stage('forest-hud-layout','forest-hud-layout-test.mjs');
     await stage('rootglass-hud-layout','rootglass-hud-layout-test.mjs');
     await stage('watch-coop','watch-coop-test.mjs');
+    await stage('colossus-coop','colossus-coop-test.mjs');
+    await stage('watch-station-hud-layout','watch-station-hud-layout-test.mjs');
     await stage('watch-layout','watch-layout-test.mjs');
     if(!quick)await stage('multiplayer','multiplayer-test.mjs',['--no-build','--local-ice']);
   }

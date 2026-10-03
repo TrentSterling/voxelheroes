@@ -89,7 +89,7 @@ registerEntity('npc-smith', (opts) => new Smith(opts));
 
 class Innkeeper extends CharmNpc {
   constructor(opts) {
-    super(opts, { rig: look({ tunic: 0x8a6a2a, tunicLight: 0xaa8a4a, cap: 0x6a3a2a, extras: ['apron', 'bun'] }), name: 'Wenna' });
+    super(opts, { rig: look({ tunic: 0x8a6a2a, tunicLight: 0xaa8a4a, cap: 0x6a3a2a, extras: ['apron', 'bun'] }), name: 'Wenna', schedule: 'always' });
     this.inn = opts.inn ?? 'inn-1';
   }
   talk() {

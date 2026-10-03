@@ -11,12 +11,20 @@ stairs. See `BARROW-PATH.md` and `COILMAW.md` for mechanics and the distinction
 between native playthroughs and isolated fixtures. The later temples and
 larger era campaign still need more work.
 
-The road after the first clocklight now has a native route to the Rootglass
-bomb cache. Guard plus sword stays in combat beside an NPC, and random group
-bodies clear room wall insets before they are announced to the party. See
-`NURSERY-CONTROLS.md` for controls, fresh playthrough scope and isolated
-fixtures. The Amber Queen, fuller forest tile variety and later campaign work
-remain in the larger adventure goal.
+The road after the first clocklight now has a native two-temple route through
+Rootglass and the Amber Queen. Four woodland ground builders vary eight
+forest screens, room-aware directions follow pressure seals and the crown,
+and compact Queen status clears actual touch prompts. See
+`NURSERY-CONTROLS.md` and `ROOTGLASS-GROUND.md` for fresh routes and fixtures.
+Guard plus sword stays in combat beside an NPC, and random group bodies clear
+room wall insets before they are announced to the party.
+
+The earned third-light journey now reaches the Watch through an all-night
+Sunreach inn. Two personal rest clocks, room-aware directions, station floor
+patterns and visible Rook laser, wave and landing cues extend the route.
+`WATCH-STATION.md` describes the fresh three-temple journey and separate
+local RTC and small-screen HUD checks. The fourth temple, tower and fuller
+era campaign remain in the larger adventure goal.
 
 The opening now has safe unarmed travel to King Aldric, four town paving
 materials, directions for each road screen, three authored combat pairs and
